@@ -1,0 +1,29 @@
+from sqlmodel import SQLModel, Field
+from typing import Optional
+from datetime import date, time, datetime
+
+
+class Event(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    # 'schedule' | 'homework' | 'announcement'
+    type: str = Field(index=True)
+    subject: Optional[str] = None
+    title: Optional[str] = None
+    body: str
+
+    # Дата/время события (для календаря)
+    date: Optional[date] = None
+    time: Optional[time] = None
+
+    # Telegram
+    chat_id: Optional[int] = None
+    topic_thread_id: Optional[int] = None  # message_thread_id (forum topic)
+
+    # После отправки ботом
+    sent_message_id: Optional[int] = None
+
+    # Метаданные
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    reminder_offset_hours: int = 24
+    reminder_sent: bool = False
+    source: Optional[str] = "admin"  # 'admin' или 'dekanat' (импорт)
