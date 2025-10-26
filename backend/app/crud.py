@@ -78,3 +78,11 @@ def set_sent_message(event_id: int, message_id: int) -> bool:
             conn.commit()
             return True
         return False
+
+def get_event_by_id(event_id: int):
+    """
+    Возвращает Event по id или None, если не найден.
+    """
+    with engine.connect() as conn:
+        ev = conn.get(Event, event_id)
+        return ev

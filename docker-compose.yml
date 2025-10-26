@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-m15db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - appnet
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    networks:
+      - appnet
+
+  backend:
+    build: ./backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+    networks:
+      - appnet
+
+  bot:
+    build: ./bot
+    env_file: .env
+    ports:
+      - "8081:8081"
+    depends_on:
+      - backend
+    volumes:
+      - ./bot:/app
+    networks:
+      - appnet
+
+  worker:
+    build: ./worker
+    env_file: .env
+    depends_on:
+      - backend
+      - bot
+      - redis
+    volumes:
+      - ./worker:/app
+    networks:
+      - appnet
+
+  parser:
+    build: ./parser
+    env_file: .env
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./parser:/app
+      - ./parser/icons:/app/icons
+      - ./parser/uploads:/tmp/parser_uploads
+    networks:
+      - appnet
+
+  frontend:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "echo 'Frontend placeholder' && tail -f /dev/null"
+    ports:
+      - "3000:3000"
+    networks:
+      - appnet
+
+volumes:
+  pgdata:
+
+networks:
+  appnet:
+    driver: bridge
