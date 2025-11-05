@@ -18,12 +18,12 @@ services:
       - appnet
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     env_file: .env
     ports:
       - "8000:8000"
-    depends_on:
-      - postgres
     volumes:
       - ./backend:/app
     networks:

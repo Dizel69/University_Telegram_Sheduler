@@ -2,10 +2,10 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
-from .database import init_db
-from .schemas import EventCreate, EventPublic
-from .models import Event
-from .crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
+from app.database import init_db
+from app.schemas import EventCreate, EventPublic
+from app.models import Event
+from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
 import httpx
 from typing import List
 from typing import List
