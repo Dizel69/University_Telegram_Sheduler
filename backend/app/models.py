@@ -1,33 +1,26 @@
-# backend/app/models.py
 from typing import Optional
-from datetime import date, time, datetime
+import datetime as dt
 
-from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import Date, Time, DateTime, Integer, Boolean, String, Text
+from sqlmodel import SQLModel, Field
 
 
 class Event(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True, sa_column=Column(Integer, autoincrement=True))
+    id: Optional[int] = Field(default=None, primary_key=True)
 
-    # 'schedule' | 'homework' | 'announcement'
-    type: str = Field(index=True, sa_column=Column(String(128)))
-    subject: Optional[str] = Field(default=None, sa_column=Column(String(256)))
-    title: Optional[str] = Field(default=None, sa_column=Column(String(256)))
-    body: str = Field(sa_column=Column(Text), default="")
+    type: str = Field(index=True)
+    subject: Optional[str] = Field(default=None)
+    title: Optional[str] = Field(default=None)
+    body: str
 
-    # Дата/время события (для календаря)
-    date: Optional[date] = Field(default=None, sa_column=Column(Date))
-    time: Optional[time] = Field(default=None, sa_column=Column(Time))
+    date: Optional[dt.date] = Field(default=None)
+    time: Optional[dt.time] = Field(default=None)
 
-    # Telegram
-    chat_id: Optional[int] = Field(default=None, sa_column=Column(Integer))
-    topic_thread_id: Optional[int] = Field(default=None, sa_column=Column(Integer))  # message_thread_id (forum topic)
+    chat_id: Optional[int] = Field(default=None)
+    topic_thread_id: Optional[int] = Field(default=None)
 
-    # После отправки ботом
-    sent_message_id: Optional[int] = Field(default=None, sa_column=Column(Integer))
+    sent_message_id: Optional[int] = Field(default=None)
 
-    # Метаданные
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime))
-    reminder_offset_hours: int = Field(default=24, sa_column=Column(Integer))
-    reminder_sent: bool = Field(default=False, sa_column=Column(Boolean))
-    source: Optional[str] = Field(default="admin", sa_column=Column(String(64)))  # 'admin' или 'dekanat' (импорт)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+    reminder_offset_hours: int = Field(default=24)
+    reminder_sent: bool = Field(default=False)
+    source: Optional[str] = Field(default="admin")

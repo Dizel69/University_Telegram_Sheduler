@@ -1,0 +1,63 @@
+import React, { useEffect, useState } from 'react'
+import axios from 'axios'
+
+export default function EventsList({ highlightId }) {
+  const [events, setEvents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await axios.get('/events')
+      setEvents(res.data || [])
+      setError(null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function sendNow(id) {
+    try {
+      await axios.post(`/events/${id}/send_now`)
+      load()
+    } catch (e) {
+      const serverData = e.response?.data
+      const msg = serverData?.detail ?? serverData ?? e.message
+      alert('Ошибка при отправке: ' + (typeof msg === 'object' ? JSON.stringify(msg) : msg))
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="list-header">
+        <h3>События</h3>
+        <button className="btn" onClick={load}>Обновить</button>
+      </div>
+
+      {loading && <div>Загрузка...</div>}
+      {error && <div className="error">Ошибка: {error}</div>}
+
+      {!loading && !events.length && <div>Событий нет.</div>}
+
+      <div className="events-grid">
+        {events.map(ev => (
+          <div key={ev.id} className={"event-card" + (highlightId===ev.id ? ' highlight':'' )}>
+            <div className="event-row">
+              <div className="event-title">{ev.title || ev.subject || ev.type}</div>
+              <div className="event-meta">{ev.date ? ev.date : ''} {ev.time ? ev.time : ''}</div>
+            </div>
+            <div className="event-body">{ev.body}</div>
+            <div className="event-actions">
+              <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

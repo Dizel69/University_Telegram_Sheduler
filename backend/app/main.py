@@ -16,6 +16,18 @@ BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID", None)
 
+# Optional per-type chat overrides (set these in your .env if you want messages routed
+# to different chats depending on type)
+CHAT_ID_SCHEDULE = os.getenv("CHAT_ID_SCHEDULE")
+CHAT_ID_HOMEWORK = os.getenv("CHAT_ID_HOMEWORK")
+CHAT_ID_ANNOUNCEMENTS = os.getenv("CHAT_ID_ANNOUNCEMENTS")
+
+TYPE_HASHTAG = {
+    'schedule': '#Расписание',
+    'homework': '#Домашнее_задание',
+    'announcement': '#Объявление'
+}
+
 app = FastAPI(title="M15 Scheduler Backend")
 
 app.add_middleware(
@@ -52,7 +64,39 @@ async def create_and_send(event_in: EventCreate):
 
     # Формируем текст сообщения и добавляем ссылку на запись в календаре
     link = f"{FRONTEND_URL}/calendar/m15/event/{created.id}"
-    text = f"{created.body}\n\nСсылка в календаре: {link}"
+    # Собираем текст в формате: #Тип \n #Предмет \nТело\n\nСсылка...
+    parts = []
+    parts.append(TYPE_HASHTAG.get(created.type, ''))
+    if created.subject:
+        subj_tag = '#' + created.subject.replace(' ', '_')
+        parts.append(subj_tag)
+    parts.append(created.body or '')
+    parts.append('')
+    parts.append(f"Ссылка в календаре: {link}")
+    text = '\n'.join([p for p in parts if p is not None and p != ''])
+
+    # Решаем, в какой чат отправлять по типу, если не указан chat_id у события
+    def _resolve_chat_id(ev_obj):
+        if ev_obj.chat_id:
+            return ev_obj.chat_id
+        # per-type overrides from env
+        try:
+            if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
+                return int(CHAT_ID_SCHEDULE)
+            if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
+                return int(CHAT_ID_HOMEWORK)
+            if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
+                return int(CHAT_ID_ANNOUNCEMENTS)
+        except Exception:
+            pass
+        if DEFAULT_CHAT_ID:
+            try:
+                return int(DEFAULT_CHAT_ID)
+            except Exception:
+                return None
+        return None
+
+    target_chat = _resolve_chat_id(created)
 
     # Отправляем на bot-service
     async with httpx.AsyncClient() as client:
@@ -60,7 +104,7 @@ async def create_and_send(event_in: EventCreate):
             resp = await client.post(
                 f"{BOT_SERVICE_URL}/send",
                 json={
-                    "chat_id": created.chat_id,
+                    "chat_id": target_chat,
                     "thread_id": created.topic_thread_id,
                     "text": text
                 },
@@ -187,17 +231,36 @@ async def send_now(event_id: int = Path(..., description="ID события")):
 
     # Формируем текст (как при создании)
     link = f"{FRONTEND_URL}/calendar/m15/event/{ev.id}"
-    text = f"{ev.body}\n\nСсылка в календаре: {link}"
+    parts = []
+    parts.append(TYPE_HASHTAG.get(ev.type, ''))
+    if ev.subject:
+        parts.append('#' + ev.subject.replace(' ', '_'))
+    parts.append(ev.body or '')
+    parts.append('')
+    parts.append(f"Ссылка в календаре: {link}")
+    text = '\n'.join([p for p in parts if p is not None and p != ''])
 
-    # определяем chat_id (сначала у события, иначе DEFAULT_CHAT_ID)
-    chat_id = ev.chat_id
-    if not chat_id:
+    # определяем chat_id (сначала у события, иначе per-type override, иначе DEFAULT_CHAT_ID)
+    def _resolve_chat_id_for(ev_obj):
+        if ev_obj.chat_id:
+            return ev_obj.chat_id
+        try:
+            if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
+                return int(CHAT_ID_SCHEDULE)
+            if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
+                return int(CHAT_ID_HOMEWORK)
+            if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
+                return int(CHAT_ID_ANNOUNCEMENTS)
+        except Exception:
+            pass
         if DEFAULT_CHAT_ID:
             try:
-                chat_id = int(DEFAULT_CHAT_ID)
+                return int(DEFAULT_CHAT_ID)
             except Exception:
-                chat_id = None
+                return None
+        return None
 
+    chat_id = _resolve_chat_id_for(ev)
     if not chat_id:
         raise HTTPException(status_code=400, detail="No chat_id set for this event and DEFAULT_CHAT_ID not configured")
 

@@ -1,4 +1,4 @@
-from sqlmodel import select
+from sqlmodel import select, Session
 from .models import Event
 from .database import engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,10 +11,10 @@ def add_event(event: Event) -> Event:
     Сохраняет Event (SQLModel объект) и возвращает обновлённый объект с id.
     """
     try:
-        with engine.begin() as conn:
-            conn.add(event)
-            conn.commit()
-            conn.refresh(event)
+        with Session(engine) as session:
+            session.add(event)
+            session.commit()
+            session.refresh(event)
             return event
     except SQLAlchemyError:
         raise
@@ -24,9 +24,9 @@ def get_public_events(limit: int = 500) -> List[Event]:
     """
     Возвращает все события (для публичного календаря), отсортированные по дате/времени.
     """
-    with engine.connect() as conn:
+    with Session(engine) as session:
         statement = select(Event).order_by(Event.date, Event.time)
-        result = conn.exec(statement).all()
+        result = session.exec(statement).all()
         return result[:limit]
 
 
@@ -36,9 +36,9 @@ def get_due_reminders(now: datetime | None = None) -> List[Event]:
     """
     if now is None:
         now = datetime.utcnow()
-    with engine.connect() as conn:
+    with Session(engine) as session:
         statement = select(Event).where(Event.reminder_sent == False)
-        rows = conn.exec(statement).all()
+        rows = session.exec(statement).all()
         due = []
         for ev in rows:
             if ev.date is None:
@@ -56,12 +56,12 @@ def mark_reminder_sent(event_id: int) -> bool:
     """
     Помечает remind_sent = True для заданного event_id.
     """
-    with engine.begin() as conn:
-        ev = conn.get(Event, event_id)
+    with Session(engine) as session:
+        ev = session.get(Event, event_id)
         if ev:
             ev.reminder_sent = True
-            conn.add(ev)
-            conn.commit()
+            session.add(ev)
+            session.commit()
             return True
         return False
 
@@ -70,12 +70,12 @@ def set_sent_message(event_id: int, message_id: int) -> bool:
     """
     Сохраняет sent_message_id после успешной отправки ботом.
     """
-    with engine.begin() as conn:
-        ev = conn.get(Event, event_id)
+    with Session(engine) as session:
+        ev = session.get(Event, event_id)
         if ev:
             ev.sent_message_id = message_id
-            conn.add(ev)
-            conn.commit()
+            session.add(ev)
+            session.commit()
             return True
         return False
 
@@ -83,6 +83,6 @@ def get_event_by_id(event_id: int):
     """
     Возвращает Event по id или None, если не найден.
     """
-    with engine.connect() as conn:
-        ev = conn.get(Event, event_id)
+    with Session(engine) as session:
+        ev = session.get(Event, event_id)
         return ev

@@ -66,13 +66,13 @@ services:
       - appnet
 
   frontend:
-    image: node:20
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-    command: sh -c "echo 'Frontend placeholder' && tail -f /dev/null"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3000:5173"
+    depends_on:
+      - backend
     networks:
       - appnet
 

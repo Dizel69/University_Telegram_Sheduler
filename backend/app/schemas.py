@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional
-from datetime import date, time
+from datetime import date as date_type, time as time_type
 
 
 class EventCreate(BaseModel):
@@ -8,11 +8,24 @@ class EventCreate(BaseModel):
     subject: Optional[str] = None
     title: Optional[str] = None
     body: str
-    date: Optional[date] = None
-    time: Optional[time] = None
+    date: Optional[date_type] = None
+    time: Optional[time_type] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
-    reminder_offset_hours: Optional[int] = 24
+    reminder_offset_hours: int = 24
+
+    @validator('date', pre=True)
+    def _empty_date_to_none(cls, v):
+        # convert empty strings to None so Pydantic doesn't try to coerce them
+        if v == "" or v is None:
+            return None
+        return v
+
+    @validator('time', pre=True)
+    def _empty_time_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
 
 
 class EventPublic(BaseModel):
@@ -21,8 +34,8 @@ class EventPublic(BaseModel):
     subject: Optional[str] = None
     title: Optional[str] = None
     body: str
-    date: Optional[date] = None
-    time: Optional[time] = None
+    date: Optional[date_type] = None
+    time: Optional[time_type] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
     sent_message_id: Optional[int] = None
