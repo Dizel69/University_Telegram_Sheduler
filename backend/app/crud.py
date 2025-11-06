@@ -86,3 +86,16 @@ def get_event_by_id(event_id: int):
     with Session(engine) as session:
         ev = session.get(Event, event_id)
         return ev
+
+
+def delete_event(event_id: int) -> bool:
+    """
+    Удаляет событие по id. Возвращает True если удалено, False если не найдено.
+    """
+    with Session(engine) as session:
+        ev = session.get(Event, event_id)
+        if not ev:
+            return False
+        session.delete(ev)
+        session.commit()
+        return True

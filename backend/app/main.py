@@ -130,6 +130,48 @@ def public_events():
     return get_public_events()
 
 
+@app.get("/events/{event_id}/resolve_chat")
+def resolve_chat(event_id: int):
+    """
+    Вспомогательный эндпоинт: вернуть разрешённый chat_id, который будет использован для отправки
+    (учитывает chat_id в событии, затем per-type env override, затем DEFAULT_CHAT_ID).
+    """
+    from .crud import get_event_by_id
+    ev = get_event_by_id(event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="event not found")
+
+    def _resolve(ev_obj):
+        if ev_obj.chat_id:
+            return ev_obj.chat_id
+        try:
+            if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
+                return int(CHAT_ID_SCHEDULE)
+            if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
+                return int(CHAT_ID_HOMEWORK)
+            if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
+                return int(CHAT_ID_ANNOUNCEMENTS)
+        except Exception:
+            pass
+        if DEFAULT_CHAT_ID:
+            try:
+                return int(DEFAULT_CHAT_ID)
+            except Exception:
+                return None
+        return None
+
+    return {"chat_id": _resolve(ev), "type": ev.type}
+
+
+@app.delete("/events/{event_id}")
+def delete_event_endpoint(event_id: int):
+    from .crud import delete_event
+    ok = delete_event(event_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="event not found")
+    return {"ok": True}
+
+
 @app.get("/events/due_reminders")
 def events_due_reminders():
     """

@@ -32,6 +32,25 @@ export default function EventsList({ highlightId }) {
     }
   }
 
+  async function deleteEvent(id) {
+    if (!confirm('Переместить событие в корзину (удалить)?')) return
+    try {
+      await axios.delete(`/events/${id}`)
+      load()
+    } catch (e) {
+      alert('Ошибка удаления: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  async function showTargetChat(id) {
+    try {
+      const res = await axios.get(`/events/${id}/resolve_chat`)
+      alert(`Тип: ${res.data.type}\nchat_id: ${res.data.chat_id}`)
+    } catch (e) {
+      alert('Не удалось определить чат: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
   return (
     <div className="card">
       <div className="list-header">
@@ -54,6 +73,8 @@ export default function EventsList({ highlightId }) {
             <div className="event-body">{ev.body}</div>
             <div className="event-actions">
               <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button>
+              <button className="btn btn-sm" onClick={() => showTargetChat(ev.id)}>Показать чат</button>
+              <button className="btn btn-sm" onClick={() => deleteEvent(ev.id)}>Удалить</button>
             </div>
           </div>
         ))}
