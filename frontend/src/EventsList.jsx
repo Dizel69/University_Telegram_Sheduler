@@ -45,7 +45,7 @@ export default function EventsList({ highlightId }) {
   async function showTargetChat(id) {
     try {
       const res = await axios.get(`/events/${id}/resolve_chat`)
-      alert(`Тип: ${res.data.type}\nchat_id: ${res.data.chat_id}`)
+      alert(`Тип: ${res.data.type}\nchat_id: ${res.data.chat_id}\nthread_id: ${res.data.thread_id}`)
     } catch (e) {
       alert('Не удалось определить чат: ' + (e.response?.data?.detail || e.message))
     }

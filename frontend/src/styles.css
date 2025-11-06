@@ -34,5 +34,20 @@ textarea{min-height:120px}
 .event-actions{display:flex;gap:8px}
 .error{color:#b91c1c}
 
+/* calendar styles */
+.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:12px}
+.weekday{font-weight:600;padding:8px 6px;background:#fff;border-radius:8px;text-align:center}
+.day{min-height:90px;background:#fff;border-radius:8px;padding:8px;border:1px solid #eef2ff}
+.day.empty{background:transparent;border:none}
+.date-num{font-weight:700;margin-bottom:6px}
+.cal-ev{background:linear-gradient(90deg,#f8fafc,#ffffff);padding:6px;border-radius:6px;margin-bottom:6px;font-size:13px}
+.cal-ev-type{font-size:11px;color:var(--muted)}
+.cal-ev-title{font-weight:600}
+
+/* modal styles for login */
+.modal-overlay{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(2,6,23,0.45);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal{background:#fff;padding:16px;border-radius:12px;min-width:320px;box-shadow:0 12px 40px rgba(2,6,23,0.12)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
 /* responsive tweaks */
 @media(max-width:640px){.container{padding:12px}.form-grid{grid-template-columns:1fr}}

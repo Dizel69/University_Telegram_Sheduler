@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 from io import BytesIO
 from utils import extract_images_from_page, simple_normalize_text, guess_type_from_text, extract_times, extract_date, ICON_DIR
@@ -10,6 +11,15 @@ import uuid
 import shutil
 
 app = FastAPI(title="M15 PDF Parser")
+
+# Allow CORS from local dev frontend (and others) so browser uploads work
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 UPLOAD_DIR = os.getenv("PARSER_UPLOAD_DIR", "/tmp/parser_uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)

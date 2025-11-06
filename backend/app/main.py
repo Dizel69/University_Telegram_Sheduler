@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
 from app.database import init_db
@@ -15,12 +15,18 @@ from pydantic import BaseModel
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID", None)
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
 # Optional per-type chat overrides (set these in your .env if you want messages routed
 # to different chats depending on type)
 CHAT_ID_SCHEDULE = os.getenv("CHAT_ID_SCHEDULE")
 CHAT_ID_HOMEWORK = os.getenv("CHAT_ID_HOMEWORK")
 CHAT_ID_ANNOUNCEMENTS = os.getenv("CHAT_ID_ANNOUNCEMENTS")
+
+# Optional per-type thread/topic overrides (message_thread_id in Telegram)
+THREAD_ID_SCHEDULE = os.getenv("THREAD_ID_SCHEDULE")
+THREAD_ID_HOMEWORK = os.getenv("THREAD_ID_HOMEWORK")
+THREAD_ID_ANNOUNCEMENTS = os.getenv("THREAD_ID_ANNOUNCEMENTS")
 
 TYPE_HASHTAG = {
     'schedule': '#Расписание',
@@ -44,12 +50,57 @@ def startup():
     init_db()
 
 
+def _resolve_chat_id(ev_obj):
+    """
+    Resolve chat_id for an event object: prefer explicit event.chat_id, then per-type env vars, then DEFAULT_CHAT_ID.
+    """
+    if getattr(ev_obj, "chat_id", None):
+        return ev_obj.chat_id
+    try:
+        if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
+            return int(CHAT_ID_SCHEDULE)
+        if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
+            return int(CHAT_ID_HOMEWORK)
+        if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
+            return int(CHAT_ID_ANNOUNCEMENTS)
+    except Exception:
+        pass
+    if DEFAULT_CHAT_ID:
+        try:
+            return int(DEFAULT_CHAT_ID)
+        except Exception:
+            return None
+    return None
+
+
+def _resolve_thread_id(ev_obj):
+    """
+    Resolve topic/thread id (message_thread_id) for an event: prefer explicit event.topic_thread_id,
+    then per-type THREAD_ID_* env vars, else None.
+    """
+    if getattr(ev_obj, "topic_thread_id", None):
+        return ev_obj.topic_thread_id
+    try:
+        if ev_obj.type == 'schedule' and THREAD_ID_SCHEDULE:
+            return int(THREAD_ID_SCHEDULE)
+        if ev_obj.type == 'homework' and THREAD_ID_HOMEWORK:
+            return int(THREAD_ID_HOMEWORK)
+        if ev_obj.type == 'announcement' and THREAD_ID_ANNOUNCEMENTS:
+            return int(THREAD_ID_ANNOUNCEMENTS)
+    except Exception:
+        pass
+    return None
+
+
 @app.post("/events/send", response_model=EventPublic)
-async def create_and_send(event_in: EventCreate):
+async def create_and_send(event_in: EventCreate, x_admin_token: str | None = Header(None)):
     """
     Сохранить событие и сразу отправить сообщение через bot-service.
     Возвращает объект события (с sent_message_id если удачно).
     """
+    # NOTE: Authorization temporarily disabled for local development
+    # If you want to re-enable, restore the ADMIN_TOKEN check here.
+
     # Подготовка модели
     ev = Event(**event_in.dict())
     if not ev.chat_id:
@@ -75,41 +126,30 @@ async def create_and_send(event_in: EventCreate):
     parts.append(f"Ссылка в календаре: {link}")
     text = '\n'.join([p for p in parts if p is not None and p != ''])
 
-    # Решаем, в какой чат отправлять по типу, если не указан chat_id у события
-    def _resolve_chat_id(ev_obj):
-        if ev_obj.chat_id:
-            return ev_obj.chat_id
-        # per-type overrides from env
-        try:
-            if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
-                return int(CHAT_ID_SCHEDULE)
-            if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
-                return int(CHAT_ID_HOMEWORK)
-            if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
-                return int(CHAT_ID_ANNOUNCEMENTS)
-        except Exception:
-            pass
-        if DEFAULT_CHAT_ID:
-            try:
-                return int(DEFAULT_CHAT_ID)
-            except Exception:
-                return None
-        return None
-
+    # Resolve chat and thread ids for sending
     target_chat = _resolve_chat_id(created)
+    target_thread = _resolve_thread_id(created)
 
-    # Отправляем на bot-service
+    # Отправляем на bot-service — debug: логируем outgoing payload и ответ
+    payload = {
+        "chat_id": target_chat,
+        "thread_id": target_thread,
+        "text": text
+    }
+    print("DEBUG: outgoing to bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
                 f"{BOT_SERVICE_URL}/send",
-                json={
-                    "chat_id": target_chat,
-                    "thread_id": created.topic_thread_id,
-                    "text": text
-                },
+                json=payload,
                 timeout=10.0
             )
+            # Log response for debugging
+            try:
+                resp_text = resp.text
+            except Exception:
+                resp_text = '<unable to read response body>'
+            print("DEBUG: bot-service response:", resp.status_code, resp_text)
             resp.raise_for_status()
             data = resp.json()
             message_id = data.get("message_id")
@@ -141,31 +181,14 @@ def resolve_chat(event_id: int):
     if not ev:
         raise HTTPException(status_code=404, detail="event not found")
 
-    def _resolve(ev_obj):
-        if ev_obj.chat_id:
-            return ev_obj.chat_id
-        try:
-            if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
-                return int(CHAT_ID_SCHEDULE)
-            if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
-                return int(CHAT_ID_HOMEWORK)
-            if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
-                return int(CHAT_ID_ANNOUNCEMENTS)
-        except Exception:
-            pass
-        if DEFAULT_CHAT_ID:
-            try:
-                return int(DEFAULT_CHAT_ID)
-            except Exception:
-                return None
-        return None
-
-    return {"chat_id": _resolve(ev), "type": ev.type}
+    # return both resolved chat_id and thread_id for UI convenience
+    return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": ev.type}
 
 
 @app.delete("/events/{event_id}")
-def delete_event_endpoint(event_id: int):
+def delete_event_endpoint(event_id: int, x_admin_token: str | None = Header(None)):
     from .crud import delete_event
+    # Authorization disabled for local development
     ok = delete_event(event_id)
     if not ok:
         raise HTTPException(status_code=404, detail="event not found")
@@ -187,10 +210,43 @@ def events_due_reminders():
             "body": ev.body,
             "date": ev.date.isoformat() if ev.date else None,
             "time": ev.time.isoformat() if ev.time else None,
-            "chat_id": ev.chat_id,
-            "thread_id": ev.topic_thread_id
+            # return resolved chat/thread so worker can post into correct topic
+            "chat_id": _resolve_chat_id(ev),
+            "thread_id": _resolve_thread_id(ev)
         })
     return result
+
+
+@app.get('/calendar')
+def calendar_view(start: str | None = None, end: str | None = None):
+    """
+    Return public events optionally filtered by ISO date range (YYYY-MM-DD).
+    Used by public calendar UI.
+    """
+    from .crud import get_public_events
+    all_ev = get_public_events(limit=1000)
+    def in_range(ev):
+        if start and ev.date and ev.date.isoformat() < start:
+            return False
+        if end and ev.date and ev.date.isoformat() > end:
+            return False
+        return True
+
+    filtered = [
+        {
+            'id': ev.id,
+            'type': ev.type,
+            'subject': ev.subject,
+            'title': ev.title,
+            'body': ev.body,
+            'date': ev.date.isoformat() if ev.date else None,
+            'time': ev.time.isoformat() if ev.time else None,
+            'chat_id': ev.chat_id,
+            'thread_id': ev.topic_thread_id
+        }
+        for ev in all_ev if in_range(ev)
+    ]
+    return filtered
 
 
 @app.post("/events/{event_id}/mark_reminder_sent")
@@ -262,7 +318,7 @@ def import_events(items: List[ParsedItem]):
     return {"created": created_ids, "count": len(created_ids)}
 
 @app.post("/events/{event_id}/send_now")
-async def send_now(event_id: int = Path(..., description="ID события")):
+async def send_now(event_id: int = Path(..., description="ID события"), x_admin_token: str | None = Header(None)):
     """
     Отправляет существующее событие (из БД) ботом и сохраняет sent_message_id.
     """
@@ -282,42 +338,31 @@ async def send_now(event_id: int = Path(..., description="ID события")):
     parts.append(f"Ссылка в календаре: {link}")
     text = '\n'.join([p for p in parts if p is not None and p != ''])
 
-    # определяем chat_id (сначала у события, иначе per-type override, иначе DEFAULT_CHAT_ID)
-    def _resolve_chat_id_for(ev_obj):
-        if ev_obj.chat_id:
-            return ev_obj.chat_id
-        try:
-            if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
-                return int(CHAT_ID_SCHEDULE)
-            if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
-                return int(CHAT_ID_HOMEWORK)
-            if ev_obj.type == 'announcement' and CHAT_ID_ANNOUNCEMENTS:
-                return int(CHAT_ID_ANNOUNCEMENTS)
-        except Exception:
-            pass
-        if DEFAULT_CHAT_ID:
-            try:
-                return int(DEFAULT_CHAT_ID)
-            except Exception:
-                return None
-        return None
+    # auth for send_now
+    # Authorization disabled for local development
 
-    chat_id = _resolve_chat_id_for(ev)
+    # determine chat_id and thread (prefer event explicit fields, then per-type env, then DEFAULT_CHAT_ID)
+    chat_id = _resolve_chat_id(ev)
+    thread_id = _resolve_thread_id(ev)
     if not chat_id:
         raise HTTPException(status_code=400, detail="No chat_id set for this event and DEFAULT_CHAT_ID not configured")
 
     # Отправляем в bot-service
+    # Отправляем в bot-service — debug outgoing payload and response
+    payload = {"chat_id": chat_id, "thread_id": thread_id, "text": text}
+    print("DEBUG: send_now outgoing to bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
                 f"{BOT_SERVICE_URL}/send",
-                json={
-                    "chat_id": chat_id,
-                    "thread_id": ev.topic_thread_id,
-                    "text": text
-                },
+                json=payload,
                 timeout=15.0
             )
+            try:
+                resp_text = resp.text
+            except Exception:
+                resp_text = '<unable to read response body>'
+            print("DEBUG: send_now bot-service response:", resp.status_code, resp_text)
             resp.raise_for_status()
             data = resp.json()
             message_id = data.get("message_id")
