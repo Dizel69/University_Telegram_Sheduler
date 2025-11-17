@@ -14,6 +14,19 @@ def init_db() -> None:
     Вызывается при старте приложения.
     """
     SQLModel.metadata.create_all(engine)
+    # Try to add end_time column if missing (safe for sqlite and postgres)
+    try:
+        with engine.connect() as conn:
+            dialect = engine.dialect.name
+            if dialect == 'postgresql':
+                # Postgres supports IF NOT EXISTS
+                conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS end_time time")
+            else:
+                # SQLite / others: try to add column, ignore if fails
+                conn.execute("ALTER TABLE event ADD COLUMN end_time TEXT")
+    except Exception:
+        # non-fatal; if DB schema already has column or DB doesn't allow alter, ignore
+        pass
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -7,9 +7,8 @@ from app.schemas import EventCreate, EventPublic
 from app.models import Event
 from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
 import httpx
-from typing import List
-from typing import List
-from datetime import datetime
+from typing import List, Optional
+from datetime import datetime, date, time
 from pydantic import BaseModel
 
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
@@ -167,7 +166,10 @@ def public_events():
     """
     Публичный список событий (для календаря).
     """
-    return get_public_events()
+    # By default we do not expose events created manually via the admin calendar UI
+    all_ev = get_public_events()
+    filtered = [ev for ev in all_ev if getattr(ev, 'source', None) != 'manual']
+    return filtered
 
 
 @app.get("/events/{event_id}/resolve_chat")
@@ -316,6 +318,46 @@ def import_events(items: List[ParsedItem]):
         created_ids.append(created.id)
 
     return {"created": created_ids, "count": len(created_ids)}
+
+
+@app.post("/events")
+def create_event(event_in: EventCreate, x_admin_token: str | None = Header(None)):
+    """
+    Create an event in the database without sending it via bot.
+    Used by the admin UI to add events manually.
+    """
+    # Authorization temporarily disabled for local development
+    from .models import Event
+    from .crud import add_event
+
+    ev = Event(**event_in.dict())
+    # mark events created via UI/manual calendar so they are excluded from reminders and Events list
+    ev.source = 'manual'
+    ev.reminder_sent = True
+    created = add_event(ev)
+    return created
+
+
+class EventUpdate(BaseModel):
+    date: Optional[date] = None
+    time: Optional[time] = None
+    end_time: Optional[time] = None
+    title: Optional[str] = None
+    body: Optional[str] = None
+    type: Optional[str] = None
+
+
+@app.put('/events/{event_id}')
+def update_event_endpoint(event_id: int, update: EventUpdate, x_admin_token: str | None = Header(None)):
+    """Update event fields (used for transferring/moving events)."""
+    from .crud import update_event, get_event_by_id
+    ev = get_event_by_id(event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail='event not found')
+    ok = update_event(event_id, **{k:v for k,v in update.dict().items() if v is not None})
+    if not ok:
+        raise HTTPException(status_code=500, detail='failed to update')
+    return {'ok': True}
 
 @app.post("/events/{event_id}/send_now")
 async def send_now(event_id: int = Path(..., description="ID события"), x_admin_token: str | None = Header(None)):

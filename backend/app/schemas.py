@@ -10,6 +10,7 @@ class EventCreate(BaseModel):
     body: str
     date: Optional[date_type] = None
     time: Optional[time_type] = None
+    end_time: Optional[time_type] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
     reminder_offset_hours: int = 24
@@ -36,6 +37,7 @@ class EventPublic(BaseModel):
     body: str
     date: Optional[date_type] = None
     time: Optional[time_type] = None
+    end_time: Optional[time_type] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
     sent_message_id: Optional[int] = None

@@ -14,6 +14,7 @@ class Event(SQLModel, table=True):
 
     date: Optional[dt.date] = Field(default=None)
     time: Optional[dt.time] = Field(default=None)
+    end_time: Optional[dt.time] = Field(default=None)
 
     chat_id: Optional[int] = Field(default=None)
     topic_thread_id: Optional[int] = Field(default=None)

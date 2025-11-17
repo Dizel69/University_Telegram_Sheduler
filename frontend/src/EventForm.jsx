@@ -58,7 +58,7 @@ export default function EventForm({ onCreated }) {
         <div>
           <label className="label">Тип</label>
           <select value={type} onChange={e => setType(e.target.value)}>
-            <option value="schedule">Расписание</option>
+            <option value="transfer">Перенос</option>
             <option value="homework">Домашнее задание</option>
             <option value="announcement">Объявление</option>
           </select>
@@ -79,10 +79,13 @@ export default function EventForm({ onCreated }) {
           <input type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
 
-        <div>
-          <label className="label">Время</label>
-          <input type="time" value={time} onChange={e => setTime(e.target.value)} />
-        </div>
+        {/* For homework type we don't show time */}
+        {type !== 'homework' && (
+          <div>
+            <label className="label">Время</label>
+            <input type="time" value={time} onChange={e => setTime(e.target.value)} />
+          </div>
+        )}
 
         <div>
           <label className="label">Напоминание (ч)</label>

@@ -99,3 +99,19 @@ def delete_event(event_id: int) -> bool:
         session.delete(ev)
         session.commit()
         return True
+
+
+    def update_event(event_id: int, **fields) -> bool:
+        """
+        Update given fields on an Event. Returns True if event found and updated.
+        """
+        with Session(engine) as session:
+            ev = session.get(Event, event_id)
+            if not ev:
+                return False
+            for k, v in fields.items():
+                if hasattr(ev, k):
+                    setattr(ev, k, v)
+            session.add(ev)
+            session.commit()
+            return True

@@ -9,8 +9,10 @@ export default function EventsList({ highlightId }) {
   async function load() {
     setLoading(true)
     try {
-      const res = await axios.get('/events')
-      setEvents(res.data || [])
+  const res = await axios.get('/events')
+  // hide events created manually via calendar UI (source === 'manual')
+  const list = (res.data || []).filter(ev => ev.source !== 'manual')
+  setEvents(list)
       setError(null)
     } catch (e) {
       setError(e.message)
