@@ -10,6 +10,7 @@ export default function EventForm({ onCreated }) {
   const [time, setTime] = useState('')
   const [reminder, setReminder] = useState(24)
   const [status, setStatus] = useState('')
+  const [saveOnly, setSaveOnly] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -32,11 +33,22 @@ export default function EventForm({ onCreated }) {
         body: message,
         reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
       }
+      // normalize type values to match calendar/backend expectations
+      if (payload.type === 'transfer') payload.type = 'перенос'
+      if (payload.type === 'homework') payload.type = 'домашняя_работа'
+      if (payload.type === 'announcement') payload.type = 'объявление'
       if (date) payload.date = date
       if (time) payload.time = time
 
-      const res = await axios.post('/events/send', payload)
-      setStatus('Отправлено — id: ' + res.data.id)
+      let res
+      if (saveOnly) {
+        // Create event in DB as manual (backend will mark source='manual') but don't send
+        res = await axios.post('/events', payload)
+        setStatus('Сохранено в календаре (ручная запись) — id: ' + res.data.id)
+      } else {
+        res = await axios.post('/events/send', payload)
+        setStatus('Отправлено — id: ' + res.data.id)
+      }
       setSubject('')
       setTitle('')
       setMessage('')
@@ -91,6 +103,13 @@ export default function EventForm({ onCreated }) {
           <label className="label">Напоминание (ч)</label>
           <input type="number" min="0" value={reminder} onChange={e => setReminder(Number(e.target.value))} />
         </div>
+      </div>
+
+      <div style={{marginTop:10}}>
+        <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
+          <input type="checkbox" checked={saveOnly} onChange={e => setSaveOnly(e.target.checked)} />
+          <span>Сохранить в календаре (без отправки) — скрыть во вкладке «События»</span>
+        </label>
       </div>
 
       <label className="label">Сообщение</label>

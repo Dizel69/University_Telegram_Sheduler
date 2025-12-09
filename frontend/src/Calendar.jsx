@@ -178,6 +178,25 @@ export default function Calendar() {
         <h3>{monthLabel(year, month)}</h3>
         <div>{loading ? 'Загрузка...' : ''}</div>
       </div>
+      {/* Legend explaining colors */}
+      <div style={{display:'flex',justifyContent:'flex-end',gap:12,marginTop:8,marginBottom:6}}>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:12,height:12,background:'#ef4444',borderRadius:3,display:'inline-block'}}></span>
+          <span style={{fontSize:13,color:'#374151'}}>Перенос</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:12,height:12,background:'#a78bfa',borderRadius:3,display:'inline-block'}}></span>
+          <span style={{fontSize:13,color:'#374151'}}>Домашняя работа</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:12,height:12,background:'#60a5fa',borderRadius:3,display:'inline-block'}}></span>
+          <span style={{fontSize:13,color:'#374151'}}>Расписание</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:12,height:12,background:'#34d399',borderRadius:3,display:'inline-block'}}></span>
+          <span style={{fontSize:13,color:'#374151'}}>Объявление</span>
+        </div>
+      </div>
       {loadError && (
         <div className="card" style={{marginTop:12,borderLeft:'4px solid #ef4444',padding:12,background:'#fff8f8'}}>
           <div style={{fontWeight:700,color:'#b91c1c'}}>Не удалось загрузить события</div>
@@ -210,6 +229,21 @@ export default function Calendar() {
                 <div key={ev.id} className="cal-ev" style={{display:'flex',gap:8,alignItems:'center',padding:4,marginTop:6,background: typeColor(ev.type),borderRadius:6,color:'#fff'}}>
                   <div style={{fontSize:11,opacity:0.9}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
                   <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.title || ev.subject || ev.type}</div>
+                  {/* delete button on mini-card (visible in edit mode) */}
+                  {editing && (
+                    <button className="btn btn-sm" onClick={async (e) => {
+                      e.stopPropagation()
+                      if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
+                      try {
+                        await axios.delete(`/events/${ev.id}`)
+                        // refresh calendar
+                        await load()
+                      } catch (err) {
+                        console.error(err)
+                        alert('Ошибка удаления: ' + (err.response?.data?.detail || err.message))
+                      }
+                    }} style={{marginLeft:8,background:'rgba(255,255,255,0.15)',border:'none',color:'#fff',padding:'2px 6px',borderRadius:4}}>✖</button>
+                  )}
                 </div>
               ))}
               {evs.length > 3 && <div style={{fontSize:12,color:'#6b7280'}}>+{evs.length-3} ещё</div>}
@@ -229,8 +263,11 @@ export default function Calendar() {
               {(events[openDay] || []).length === 0 && <div>Событий нет.</div>}
               {(events[openDay] || []).map(ev => (
                 <div key={ev.id} style={{padding:8,borderBottom:'1px solid #eef2ff'}}>
-                  <div style={{display:'flex',justifyContent:'space-between'}}>
-                    <div style={{fontWeight:700}}>{ev.title || ev.subject || ev.type}</div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{background: typeColor(ev.type), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
+                      <div style={{fontWeight:700}}>{ev.title || ev.subject || ''}</div>
+                    </div>
                     <div style={{fontSize:12,color:'#6b7280'}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
                   </div>
                   <div style={{marginTop:6}}>{ev.body}</div>
@@ -243,6 +280,20 @@ export default function Calendar() {
                     ) : null}
                     <button className="btn btn-sm" onClick={() => alert('Показать в календаре: ' + ev.id)}>Открыть</button>
                     <button className="btn btn-sm" onClick={() => setTransferEvent(ev)}>Перенести</button>
+                    <button className="btn btn-sm" onClick={async () => {
+                      if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
+                      try {
+                        await axios.delete(`/events/${ev.id}`)
+                        alert('Событие удалено')
+                        // refresh calendar and close day view if no events remain
+                        await load()
+                        // if the day has no events afterwards, close the panel
+                        if (!((events[openDay] || []).length)) setOpenDay(null)
+                      } catch (e) {
+                        console.error(e)
+                        alert('Ошибка удаления: ' + (e.response?.data?.detail || e.message))
+                      }
+                    }}>Удалить</button>
                   </div>
                 </div>
               ))}
@@ -311,13 +362,24 @@ export default function Calendar() {
 }
 
   function typeColor(t) {
-    // blue for schedule, purple for homework, red for transfer, grey default
+    // normalize and map to consistent colors
     if (!t) return '#6b7280'
-    if (t === 'schedule') return '#60a5fa'
-    if (t === 'homework') return '#a78bfa'
-    if (t === 'transfer') return '#ef4444'
-    if (t === 'announcement') return '#34d399'
+    const n = String(t).toLowerCase()
+    if (n === 'schedule' || n === 'расписание') return '#60a5fa'
+    if (n === 'homework' || n === 'домашнее' || n === 'домашняя' || n === 'домашнее_задание' || n === 'домашняя_работа') return '#a78bfa'
+    if (n === 'transfer' || n === 'перенос') return '#ef4444'
+    if (n === 'announcement' || n === 'announcement' || n === 'объявление') return '#34d399'
     return '#9ca3af'
+  }
+
+  function typeLabel(t) {
+    if (!t) return ''
+    const n = String(t).toLowerCase()
+    if (n === 'transfer' || n === 'перенос') return 'Перенос'
+    if (n === 'homework' || n.startsWith('home')) return 'Домашняя работа'
+    if (n === 'schedule' || n === 'расписание') return 'Расписание'
+    if (n === 'announcement' || n === 'объявление') return 'Объявление'
+    return t
   }
 
   function AddEventModal({ date, onClose, onSaved }) {

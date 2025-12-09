@@ -21,6 +21,26 @@ export default function EventsList({ highlightId }) {
     }
   }
 
+  function typeColor(t) {
+    if (!t) return '#6b7280'
+    const n = String(t).toLowerCase()
+    if (n === 'schedule' || n === 'расписание') return '#60a5fa'
+    if (n === 'homework' || n.includes('дом')) return '#a78bfa'
+    if (n === 'transfer' || n === 'перенос') return '#ef4444'
+    if (n === 'announcement' || n === 'объявление') return '#34d399'
+    return '#9ca3af'
+  }
+
+  function typeLabel(t) {
+    if (!t) return ''
+    const n = String(t).toLowerCase()
+    if (n === 'transfer' || n === 'перенос') return 'Перенос'
+    if (n === 'homework' || n.includes('дом')) return 'Дом.зад.'
+    if (n === 'schedule' || n === 'расписание') return 'Расписание'
+    if (n === 'announcement' || n === 'объявление') return 'Объявление'
+    return t
+  }
+
   useEffect(() => { load() }, [])
 
   async function sendNow(id) {
@@ -69,7 +89,11 @@ export default function EventsList({ highlightId }) {
         {events.map(ev => (
           <div key={ev.id} className={"event-card" + (highlightId===ev.id ? ' highlight':'' )}>
             <div className="event-row">
-              <div className="event-title">{ev.title || ev.subject || ev.type}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div style={{width:12,height:12,background:typeColor(ev.type),borderRadius:3}}></div>
+                <div className="event-title">{ev.title || ev.subject || ev.type}</div>
+                <div style={{fontSize:12,opacity:0.8,marginLeft:8,color:'#374151'}}>{typeLabel(ev.type)}</div>
+              </div>
               <div className="event-meta">{ev.date ? ev.date : ''} {ev.time ? ev.time : ''}</div>
             </div>
             <div className="event-body">{ev.body}</div>
