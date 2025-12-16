@@ -96,7 +96,7 @@ jobs:
           cd /tmp && tar -czf m15_deploy.tar.gz m15_deploy
 
       - name: Start SSH agent and add deploy key
-        uses: webfactory/ssh-agent@v0.8.1
+        uses: webfactory/ssh-agent@v0.5.3
         with:
           # expects a secret named DEPLOY_KEY containing the private key
           ssh-private-key: ${{ secrets.DEPLOY_KEY }}
