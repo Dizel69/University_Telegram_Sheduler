@@ -1,0 +1,161 @@
+name: CI/CD pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: (Optional) Run backend tests
+        working-directory: backend
+        run: |
+          if [ -f pytest.ini ] || [ -d tests ]; then
+            pytest -q || true
+          else
+            echo "No backend tests detected, skipping"
+          fi
+
+      - name: Build backend (docker image)
+        working-directory: backend
+        run: |
+          # Build backend docker image locally (used for CI artifact). Tag will not be pushed to registry.
+          if [ -f Dockerfile ]; then
+            docker build -t m15-backend:ci . || true
+          else
+            echo "No backend Dockerfile found, skipping docker build"
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm run build
+
+      - name: Prepare deploy (archive build)
+        run: |
+          mkdir -p /tmp/m15_deploy
+          # copy docker-compose and server deploy assets if present
+          cp -r backend frontend docker-compose.yml /tmp/m15_deploy || true
+          # include build output
+          if [ -d frontend/dist ]; then
+            cp -r frontend/dist /tmp/m15_deploy/frontend_dist
+          fi
+          # include .env from secret (raw multiline secret) if provided
+          if [ -n "${{ secrets.ENV_FILE }}" ]; then
+            # preserve newlines when writing the secret into the file
+            printf '%s\n' "${{ secrets.ENV_FILE }}" > /tmp/m15_deploy/.env
+            chmod 600 /tmp/m15_deploy/.env
+          fi
+          cd /tmp && tar -czf m15_deploy.tar.gz m15_deploy
+
+      - name: Start SSH agent and add deploy key
+        uses: webfactory/ssh-agent@v0.8.1
+        with:
+          # expects a secret named DEPLOY_KEY containing the private key
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
+      - name: Ensure remote host known
+        run: |
+          # add host to known_hosts to avoid prompts (DEPLOY_HOST should be set in repo secrets)
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "Warning: DEPLOY_HOST not set in secrets; skipping ssh-keyscan"
+          else
+            ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          fi
+
+      - name: Copy files to server
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ] || [ -z "${{ secrets.DEPLOY_USER }}" ] || [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "DEPLOY_HOST/DEPLOY_USER/DEPLOY_PATH secrets are required for deployment. Skipping deploy step.";
+            exit 0
+          fi
+          scp -r /tmp/m15_deploy.tar.gz "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/m15_deploy.tar.gz"
+
+      - name: Remote deploy: stop old containers, clean files and run docker compose
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'SSH_EOF'
+          set -e
+          if [ -d '${{ secrets.DEPLOY_PATH }}/m15_deploy' ]; then
+            cd '${{ secrets.DEPLOY_PATH }}/m15_deploy' || true
+            if command -v docker >/dev/null 2>&1; then
+              docker compose down --remove-orphans || true
+              docker compose rm -f || true
+            fi
+            cd ..
+            rm -rf '${{ secrets.DEPLOY_PATH }}/m15_deploy'
+          fi
+          mkdir -p '${{ secrets.DEPLOY_PATH }}'
+          tar -xzf '${{ secrets.DEPLOY_PATH }}/m15_deploy.tar.gz' -C '${{ secrets.DEPLOY_PATH}}' || true
+          cd '${{ secrets.DEPLOY_PATH }}/m15_deploy' || cd '${{ secrets.DEPLOY_PATH}}'
+          if [ -f '${{ secrets.DEPLOY_PATH }}/m15_deploy/.env' ]; then
+            chown ${{ secrets.DEPLOY_USER }}:${{ secrets.DEPLOY_USER }} '${{ secrets.DEPLOY_PATH }}/m15_deploy/.env' || true
+            chmod 600 '${{ secrets.DEPLOY_PATH }}/m15_deploy/.env' || true
+          fi
+          if command -v docker >/dev/null 2>&1; then
+            docker compose pull || true
+            docker compose up -d --build || true
+          else
+            echo 'Docker not found on remote host'
+          fi
+          SSH_EOF
+
+      - name: Cleanup tmp
+        run: rm -rf /tmp/m15_deploy* || true
+
+    env:
+      # These secrets should be configured in repository Settings → Secrets → Actions
+      # DEPLOY_KEY: private SSH key for the deploy user
+      # DEPLOY_HOST: host or IP of the remote server
+      # DEPLOY_USER: SSH user on remote server
+      # DEPLOY_PATH: path on remote server to deploy into
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
