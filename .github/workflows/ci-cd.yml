@@ -12,7 +12,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    environment: production
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,35 +116,33 @@ jobs:
             echo "DEPLOY_HOST/DEPLOY_USER/DEPLOY_PATH secrets are required for deployment. Skipping deploy step.";
             exit 0
           fi
-          scp -r /tmp/m15_deploy.tar.gz "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/m15_deploy.tar.gz"
+          scp -r /tmp/m15_deploy.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/m15_deploy.tar.gz"
 
-      - name: Remote deploy: stop old containers, clean files and run docker compose
+      - name: Remote deploy stop old containers, clean files and run docker compose
         run: |
-          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" << 'SSH_EOF'
-          set -e
-          if [ -d '${{ secrets.DEPLOY_PATH }}/m15_deploy' ]; then
-            cd '${{ secrets.DEPLOY_PATH }}/m15_deploy' || true
-            if command -v docker >/dev/null 2>&1; then
-              docker compose down --remove-orphans || true
-              docker compose rm -f || true
-            fi
-            cd ..
-            rm -rf '${{ secrets.DEPLOY_PATH }}/m15_deploy'
-          fi
-          mkdir -p '${{ secrets.DEPLOY_PATH }}'
-          tar -xzf '${{ secrets.DEPLOY_PATH }}/m15_deploy.tar.gz' -C '${{ secrets.DEPLOY_PATH}}' || true
-          cd '${{ secrets.DEPLOY_PATH }}/m15_deploy' || cd '${{ secrets.DEPLOY_PATH}}'
-          if [ -f '${{ secrets.DEPLOY_PATH }}/m15_deploy/.env' ]; then
-            chown ${{ secrets.DEPLOY_USER }}:${{ secrets.DEPLOY_USER }} '${{ secrets.DEPLOY_PATH }}/m15_deploy/.env' || true
-            chmod 600 '${{ secrets.DEPLOY_PATH }}/m15_deploy/.env' || true
-          fi
-          if command -v docker >/dev/null 2>&1; then
-            docker compose pull || true
-            docker compose up -d --build || true
-          else
-            echo 'Docker not found on remote host'
-          fi
-          SSH_EOF
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "set -e; \
+            if [ -d \"$DEPLOY_PATH/m15_deploy\" ]; then \
+              cd \"$DEPLOY_PATH/m15_deploy\" || true; \
+              if command -v docker >/dev/null 2>&1; then \
+                docker compose down --remove-orphans || true; \
+                docker compose rm -f || true; \
+              fi; \
+              cd ..; \
+              rm -rf \"$DEPLOY_PATH/m15_deploy\"; \
+            fi; \
+            mkdir -p \"$DEPLOY_PATH\"; \
+            tar -xzf \"$DEPLOY_PATH/m15_deploy.tar.gz\" -C \"$DEPLOY_PATH\" || true; \
+            cd \"$DEPLOY_PATH/m15_deploy\" || cd \"$DEPLOY_PATH\"; \
+            if [ -f \"$DEPLOY_PATH/m15_deploy/.env\" ]; then \
+              chown $DEPLOY_USER:$DEPLOY_USER \"$DEPLOY_PATH/m15_deploy/.env\" || true; \
+              chmod 600 \"$DEPLOY_PATH/m15_deploy/.env\" || true; \
+            fi; \
+            if command -v docker >/dev/null 2>&1; then \
+              docker compose pull || true; \
+              docker compose up -d --build || true; \
+            else \
+              echo 'Docker not found on remote host'; \
+            fi"
 
       - name: Cleanup tmp
         run: rm -rf /tmp/m15_deploy* || true
