@@ -25,19 +25,28 @@ export default function EventsList({ highlightId }) {
     if (!t) return '#6b7280'
     const n = String(t).toLowerCase()
     if (n === 'schedule' || n === 'расписание') return '#60a5fa'
-    if (n === 'homework' || n.includes('дом')) return '#a78bfa'
-    if (n === 'transfer' || n === 'перенос') return '#ef4444'
-    if (n === 'announcement' || n === 'объявление') return '#34d399'
+    if (n.includes('homework') || n.includes('дом')) return '#a78bfa'
+    if (n.includes('transfer') || n.includes('перенос')) return '#ef4444'
+    if (n.includes('announcement') || n.includes('объявлен')) return '#34d399'
     return '#9ca3af'
+  }
+
+  function eventColor(ev) {
+    try {
+      const body = (ev.body || '').toString().toLowerCase()
+      const title = (ev.title || '').toString().toLowerCase()
+      if (body.includes('перенос') || title.includes('перенос') || body.includes('перенес')) return '#ef4444'
+    } catch (e) {}
+    return typeColor(ev.type)
   }
 
   function typeLabel(t) {
     if (!t) return ''
     const n = String(t).toLowerCase()
-    if (n === 'transfer' || n === 'перенос') return 'Перенос'
-    if (n === 'homework' || n.includes('дом')) return 'Дом.зад.'
+    if (n.includes('transfer') || n.includes('перенос')) return 'Перенос'
+    if (n.includes('homework') || n.includes('дом')) return 'Домашняя работа'
     if (n === 'schedule' || n === 'расписание') return 'Расписание'
-    if (n === 'announcement' || n === 'объявление') return 'Объявление'
+    if (n.includes('announcement') || n.includes('объявлен')) return 'Объявление'
     return t
   }
 
@@ -90,7 +99,7 @@ export default function EventsList({ highlightId }) {
           <div key={ev.id} className={"event-card" + (highlightId===ev.id ? ' highlight':'' )}>
             <div className="event-row">
               <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <div style={{width:12,height:12,background:typeColor(ev.type),borderRadius:3}}></div>
+                <div style={{width:12,height:12,background:eventColor(ev),borderRadius:3}}></div>
                 <div className="event-title">{ev.title || ev.subject || ev.type}</div>
                 <div style={{fontSize:12,opacity:0.8,marginLeft:8,color:'#374151'}}>{typeLabel(ev.type)}</div>
               </div>

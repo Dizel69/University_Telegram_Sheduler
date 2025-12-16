@@ -33,10 +33,7 @@ export default function EventForm({ onCreated }) {
         body: message,
         reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
       }
-      // normalize type values to match calendar/backend expectations
-      if (payload.type === 'transfer') payload.type = 'перенос'
-      if (payload.type === 'homework') payload.type = 'домашняя_работа'
-      if (payload.type === 'announcement') payload.type = 'объявление'
+  // keep type as canonical token (english) so backend/frontend stay consistent
       if (date) payload.date = date
       if (time) payload.time = time
 
@@ -70,6 +67,7 @@ export default function EventForm({ onCreated }) {
         <div>
           <label className="label">Тип</label>
           <select value={type} onChange={e => setType(e.target.value)}>
+            <option value="schedule">Пара / Мероприятие</option>
             <option value="transfer">Перенос</option>
             <option value="homework">Домашнее задание</option>
             <option value="announcement">Объявление</option>

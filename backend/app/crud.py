@@ -4,6 +4,7 @@ from .database import engine
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List
 from datetime import datetime, timedelta
+from datetime import date as date_type
 
 
 def add_event(event: Event) -> Event:
@@ -115,3 +116,33 @@ def update_event(event_id: int, **fields) -> bool:
         session.add(ev)
         session.commit()
         return True
+
+
+def delete_events_by_date(target_date: date_type) -> int:
+    """
+    Delete all events with Event.date == target_date. Returns number deleted.
+    """
+    with Session(engine) as session:
+        statement = select(Event).where(Event.date == target_date)
+        rows = session.exec(statement).all()
+        count = 0
+        for ev in rows:
+            session.delete(ev)
+            count += 1
+        session.commit()
+        return count
+
+
+def delete_events_in_range(start_date: date_type, end_date: date_type) -> int:
+    """
+    Delete events where start_date <= Event.date <= end_date. Returns number deleted.
+    """
+    with Session(engine) as session:
+        statement = select(Event).where(Event.date >= start_date, Event.date <= end_date)
+        rows = session.exec(statement).all()
+        count = 0
+        for ev in rows:
+            session.delete(ev)
+            count += 1
+        session.commit()
+        return count

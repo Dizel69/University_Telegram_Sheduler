@@ -8,6 +8,7 @@ from app.models import Event
 from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
 import httpx
 from typing import List, Optional
+import calendar as _calendar
 from datetime import datetime, date, time
 from pydantic import BaseModel
 
@@ -91,6 +92,22 @@ def _resolve_thread_id(ev_obj):
     return None
 
 
+def _canonical_type(t: str) -> str:
+    """Return a canonical English token for known types regardless of incoming language/variants."""
+    if not t:
+        return t
+    n = str(t).lower().strip()
+    if 'перенос' in n or 'transfer' in n:
+        return 'transfer'
+    if 'домаш' in n or 'homework' in n:
+        return 'homework'
+    if 'распис' in n or 'schedule' in n:
+        return 'schedule'
+    if 'объяв' in n or 'announcement' in n:
+        return 'announcement'
+    return n
+
+
 @app.post("/events/send", response_model=EventPublic)
 async def create_and_send(event_in: EventCreate, x_admin_token: str | None = Header(None)):
     """
@@ -102,6 +119,18 @@ async def create_and_send(event_in: EventCreate, x_admin_token: str | None = Hea
 
     # Подготовка модели
     ev = Event(**event_in.dict())
+    # Defensive normalization before saving: if body/title mention 'перенос', force type
+    try:
+        text_lower_pre = ((ev.body or '') + ' ' + (ev.title or '')).lower()
+        if 'перенос' in text_lower_pre or 'перенес' in text_lower_pre:
+            ev.type = 'transfer'
+        else:
+            try:
+                ev.type = _canonical_type(ev.type)
+            except Exception:
+                pass
+    except Exception:
+        pass
     if not ev.chat_id:
         if DEFAULT_CHAT_ID:
             try:
@@ -138,26 +167,53 @@ async def create_and_send(event_in: EventCreate, x_admin_token: str | None = Hea
     print("DEBUG: outgoing to bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(
-                f"{BOT_SERVICE_URL}/send",
-                json=payload,
-                timeout=10.0
-            )
+            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
             # Log response for debugging
             try:
                 resp_text = resp.text
             except Exception:
                 resp_text = '<unable to read response body>'
             print("DEBUG: bot-service response:", resp.status_code, resp_text)
-            resp.raise_for_status()
-            data = resp.json()
-            message_id = data.get("message_id")
-            if message_id:
-                set_sent_message(created.id, int(message_id))
+
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            print('DEBUG: parsed bot response data:', data)
+
+            # If we didn't get a message_id back, and we attempted to send to a thread, retry without thread_id
+            message_id = data.get('message_id')
+            if not message_id and target_thread is not None:
+                print('DEBUG: no message_id received; retrying without thread_id')
+                payload2 = {"chat_id": target_chat, "text": text}
+                try:
+                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=10.0)
+                    try:
+                        resp2_text = resp2.text
+                    except Exception:
+                        resp2_text = '<unable to read response body>'
+                    print('DEBUG: bot-service response (retry):', resp2.status_code, resp2_text)
+                    try:
+                        data2 = resp2.json()
+                    except Exception:
+                        data2 = {}
+                    message_id = data2.get('message_id')
+                    if message_id:
+                        set_sent_message(created.id, int(message_id))
+                except Exception as e:
+                    print('Warning: retry without thread_id failed:', e)
+            else:
+                if message_id:
+                    set_sent_message(created.id, int(message_id))
         except Exception as e:
             # не падаем — запись создана, но отправка не удалась
             print("Warning: error sending to bot-service:", e)
 
+    # normalize returned type for frontend consistency
+    try:
+        created.type = _canonical_type(created.type)
+    except Exception:
+        pass
     return created
 
 
@@ -166,10 +222,59 @@ def public_events():
     """
     Публичный список событий (для календаря).
     """
-    # By default we do not expose events created manually via the admin calendar UI
-    all_ev = get_public_events()
-    filtered = [ev for ev in all_ev if getattr(ev, 'source', None) != 'manual']
-    return filtered
+    rows = get_public_events()
+    # normalize types to canonical tokens for frontend consistency
+    out = []
+    for ev in rows:
+        out.append({
+            'id': ev.id,
+            'type': _canonical_type(ev.type),
+            'subject': ev.subject,
+            'title': ev.title,
+            'body': ev.body,
+            'date': ev.date,
+            'time': ev.time,
+            'end_time': getattr(ev, 'end_time', None),
+            'chat_id': ev.chat_id,
+            'topic_thread_id': ev.topic_thread_id,
+            'sent_message_id': getattr(ev, 'sent_message_id', None),
+            'source': ev.source
+        })
+    return out
+
+
+@app.delete('/events/day')
+def delete_events_day(date: str, x_admin_token: str | None = Header(None)):
+    """
+    Удалить все события на указанную дату (YYYY-MM-DD).
+    """
+    from .crud import delete_events_by_date
+    try:
+        d = datetime.strptime(date, '%Y-%m-%d').date()
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid date format')
+    cnt = delete_events_by_date(d)
+    return {'deleted': cnt}
+
+
+@app.delete('/events/month')
+def delete_events_month(year: int, month: int, x_admin_token: str | None = Header(None)):
+    """
+    Удалить все события в указанном месяце (year, month) — month: 1-12
+    """
+    from .crud import delete_events_in_range
+    try:
+        y = int(year)
+        m = int(month)
+        if m < 1 or m > 12:
+            raise ValueError()
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid year/month')
+    first = date(y, m, 1)
+    last_day = _calendar.monthrange(y, m)[1]
+    last = date(y, m, last_day)
+    cnt = delete_events_in_range(first, last)
+    return {'deleted': cnt}
 
 
 @app.get("/events/{event_id}/resolve_chat")
@@ -184,7 +289,7 @@ def resolve_chat(event_id: int):
         raise HTTPException(status_code=404, detail="event not found")
 
     # return both resolved chat_id and thread_id for UI convenience
-    return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": ev.type}
+    return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": _canonical_type(ev.type)}
 
 
 @app.delete("/events/{event_id}")
@@ -237,7 +342,7 @@ def calendar_view(start: str | None = None, end: str | None = None):
     filtered = [
         {
             'id': ev.id,
-            'type': ev.type,
+            'type': _canonical_type(ev.type),
             'subject': ev.subject,
             'title': ev.title,
             'body': ev.body,
@@ -334,7 +439,24 @@ def create_event(event_in: EventCreate, x_admin_token: str | None = Header(None)
     # mark events created via UI/manual calendar so they are excluded from reminders and Events list
     ev.source = 'manual'
     ev.reminder_sent = True
+    # Defensive normalization BEFORE saving: look at body/title and adjust type
+    try:
+        text_lower_pre = ((ev.body or '') + ' ' + (ev.title or '')).lower()
+        if 'перенос' in text_lower_pre or 'перенес' in text_lower_pre:
+            ev.type = 'transfer'
+        else:
+            try:
+                ev.type = _canonical_type(ev.type)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     created = add_event(ev)
+    try:
+        created.type = _canonical_type(created.type)
+    except Exception:
+        pass
     return created
 
 
@@ -395,23 +517,47 @@ async def send_now(event_id: int = Path(..., description="ID события"), x
     print("DEBUG: send_now outgoing to bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(
-                f"{BOT_SERVICE_URL}/send",
-                json=payload,
-                timeout=15.0
-            )
+            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=15.0)
             try:
                 resp_text = resp.text
             except Exception:
                 resp_text = '<unable to read response body>'
             print("DEBUG: send_now bot-service response:", resp.status_code, resp_text)
-            resp.raise_for_status()
-            data = resp.json()
-            message_id = data.get("message_id")
-            if message_id:
-                set_sent_message(ev.id, int(message_id))
-                return {"ok": True, "message_id": message_id}
+
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            print('DEBUG: parsed bot response data (send_now):', data)
+
+            message_id = data.get('message_id')
+            if not message_id and thread_id is not None:
+                print('DEBUG: send_now no message_id received; retrying without thread_id')
+                payload2 = {"chat_id": chat_id, "text": text}
+                try:
+                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=15.0)
+                    try:
+                        resp2_text = resp2.text
+                    except Exception:
+                        resp2_text = '<unable to read response body>'
+                    print('DEBUG: send_now bot-service response (retry):', resp2.status_code, resp2_text)
+                    try:
+                        data2 = resp2.json()
+                    except Exception:
+                        data2 = {}
+                    message_id = data2.get('message_id')
+                    if message_id:
+                        set_sent_message(ev.id, int(message_id))
+                        return {"ok": True, "message_id": message_id}
+                    else:
+                        return {"ok": False, "error": data2}
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=str(e))
             else:
-                return {"ok": False, "error": data}
+                if message_id:
+                    set_sent_message(ev.id, int(message_id))
+                    return {"ok": True, "message_id": message_id}
+                else:
+                    return {"ok": False, "error": data}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))

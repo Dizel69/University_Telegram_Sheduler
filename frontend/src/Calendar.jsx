@@ -163,6 +163,36 @@ export default function Calendar() {
   for (let i=0;i<offset;i++) days.push(null)
   for (let d=1; d<=daysInMonth; d++) days.push(new Date(Date.UTC(year, month, d)))
 
+  async function deleteEventsForDay(day) {
+    if (!confirm('Удалить все события за день? Это действие нельзя отменить.')) return
+    try {
+      const resp = await fetch(`/events/day?date=${day}`, { method: 'DELETE' })
+      if (!resp.ok) throw new Error('delete failed: ' + resp.status)
+      const j = await resp.json()
+      alert('Удалено: ' + j.deleted)
+      setOpenDay(null)
+      load()
+    } catch (e) {
+      console.error(e)
+      alert('Ошибка удаления: ' + e.message)
+    }
+  }
+
+  async function deleteEventsForMonth() {
+    if (!confirm('Удалить все события за отображаемый месяц? Это действие нельзя отменить.')) return
+    try {
+      const resp = await fetch(`/events/month?year=${year}&month=${month+1}`, { method: 'DELETE' })
+      if (!resp.ok) throw new Error('delete failed: ' + resp.status)
+      const j = await resp.json()
+      alert('Удалено: ' + j.deleted)
+      // refresh calendar
+      load()
+    } catch (e) {
+      console.error(e)
+      alert('Ошибка удаления: ' + e.message)
+    }
+  }
+
   return (
     <div className="card">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -174,6 +204,9 @@ export default function Calendar() {
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {/* Временно показываем кнопку редактирования всегда для удобства локальной разработки */}
           <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
+          {editing && localStorage.getItem('admin_token') ? (
+            <button className="btn btn-danger" onClick={deleteEventsForMonth}>Удалить все события за месяц</button>
+          ) : null}
         </div>
         <h3>{monthLabel(year, month)}</h3>
         <div>{loading ? 'Загрузка...' : ''}</div>
@@ -226,7 +259,7 @@ export default function Calendar() {
             <div key={idx} className="day" onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
               <div className="date-num">{dt.getUTCDate()}</div>
               {evs.slice(0,3).map(ev => (
-                <div key={ev.id} className="cal-ev" style={{display:'flex',gap:8,alignItems:'center',padding:4,marginTop:6,background: typeColor(ev.type),borderRadius:6,color:'#fff'}}>
+                <div key={ev.id} className="cal-ev" style={{display:'flex',gap:8,alignItems:'center',padding:4,marginTop:6,background: eventColor(ev),borderRadius:6,color:'#fff'}}>
                   <div style={{fontSize:11,opacity:0.9}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
                   <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.title || ev.subject || ev.type}</div>
                   {/* delete button on mini-card (visible in edit mode) */}
@@ -256,8 +289,13 @@ export default function Calendar() {
         <div className="modal-overlay" onClick={() => setOpenDay(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{minWidth:360,maxWidth:680}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <h3>События за {openDay}</h3>
-              <button className="btn" onClick={() => setOpenDay(null)}>Закрыть</button>
+                <h3>События за {openDay}</h3>
+                <div style={{display:'flex',gap:8}}>
+                  {localStorage.getItem('admin_token') ? (
+                    <button className="btn btn-danger" onClick={() => deleteEventsForDay(openDay)}>Удалить все за день</button>
+                  ) : null}
+                  <button className="btn" onClick={() => setOpenDay(null)}>Закрыть</button>
+                </div>
             </div>
             <div style={{marginTop:8}}>
               {(events[openDay] || []).length === 0 && <div>Событий нет.</div>}
@@ -265,7 +303,7 @@ export default function Calendar() {
                 <div key={ev.id} style={{padding:8,borderBottom:'1px solid #eef2ff'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <div style={{background: typeColor(ev.type), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
+                      <div style={{background: eventColor(ev), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
                       <div style={{fontWeight:700}}>{ev.title || ev.subject || ''}</div>
                     </div>
                     <div style={{fontSize:12,color:'#6b7280'}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
@@ -364,21 +402,35 @@ export default function Calendar() {
   function typeColor(t) {
     // normalize and map to consistent colors
     if (!t) return '#6b7280'
-    const n = String(t).toLowerCase()
-    if (n === 'schedule' || n === 'расписание') return '#60a5fa'
-    if (n === 'homework' || n === 'домашнее' || n === 'домашняя' || n === 'домашнее_задание' || n === 'домашняя_работа') return '#a78bfa'
-    if (n === 'transfer' || n === 'перенос') return '#ef4444'
-    if (n === 'announcement' || n === 'announcement' || n === 'объявление') return '#34d399'
+    const n = String(t).toLowerCase().trim()
+    if (n.includes('schedule') || n.includes('расписание')) return '#60a5fa'
+    if (n.includes('homework') || n.includes('домаш') || n.includes('домашнее_задание') || n.includes('домашняя_работа')) return '#a78bfa'
+    if (n.includes('transfer') || n.includes('перенос')) return '#ef4444'
+    if (n.includes('announcement') || n.includes('объявлен')) return '#34d399'
     return '#9ca3af'
+  }
+
+  // eventColor: defensive color decision using event fields (type, body, title)
+  function eventColor(ev) {
+    try {
+      if (!ev) return typeColor(ev?.type)
+      const body = (ev.body || '').toString().toLowerCase()
+      const title = (ev.title || '').toString().toLowerCase()
+      // if body/title mention перенос — force transfer color
+      if (body.includes('перенос') || title.includes('перенос') || body.includes('перенес')) return '#ef4444'
+      return typeColor(ev.type)
+    } catch (e) {
+      return typeColor(ev?.type)
+    }
   }
 
   function typeLabel(t) {
     if (!t) return ''
-    const n = String(t).toLowerCase()
-    if (n === 'transfer' || n === 'перенос') return 'Перенос'
-    if (n === 'homework' || n.startsWith('home')) return 'Домашняя работа'
-    if (n === 'schedule' || n === 'расписание') return 'Расписание'
-    if (n === 'announcement' || n === 'объявление') return 'Объявление'
+    const n = String(t).toLowerCase().trim()
+    if (n.includes('transfer') || n.includes('перенос')) return 'Перенос'
+    if (n.includes('homework') || n.startsWith('home') || n.includes('домаш')) return 'Домашняя работа'
+    if (n.includes('schedule') || n.includes('расписание')) return 'Расписание'
+    if (n.includes('announcement') || n.includes('объявлен')) return 'Объявление'
     return t
   }
 

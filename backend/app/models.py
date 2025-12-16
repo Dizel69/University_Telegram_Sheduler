@@ -2,6 +2,7 @@ from typing import Optional
 import datetime as dt
 
 from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, BigInteger
 
 
 class Event(SQLModel, table=True):
@@ -16,10 +17,10 @@ class Event(SQLModel, table=True):
     time: Optional[dt.time] = Field(default=None)
     end_time: Optional[dt.time] = Field(default=None)
 
-    chat_id: Optional[int] = Field(default=None)
-    topic_thread_id: Optional[int] = Field(default=None)
+    chat_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    topic_thread_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
 
-    sent_message_id: Optional[int] = Field(default=None)
+    sent_message_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
 
     created_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
     reminder_offset_hours: int = Field(default=24)
