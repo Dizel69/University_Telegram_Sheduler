@@ -38,22 +38,23 @@ jobs:
             docker compose up --build -d || exit 1
             docker ps || exit 1
 
-  post:
-    name: Optional post-deploy commands
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Run post-deploy script on server (if enabled)
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            if [ "${{ secrets.RUN_POST }}" = "true" ]; then
-              cd ${{ secrets.DEPLOY_PATH }}
-              # example: run a one-off container task
-              docker compose run --rm worker python worker.py || true
-            else
-              echo "RUN_POST not enabled, skipping post-deploy commands"
-            fi
+  # post:
+  #   name: Optional post-deploy commands
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #     - name: Run post-deploy script on server (if enabled)
+  #       uses: appleboy/ssh-action@v0.1.10
+  #       with:
+  #         host: ${{ secrets.DEPLOY_HOST }}
+  #         username: ${{ secrets.DEPLOY_USER }}
+  #         key: ${{ secrets.DEPLOY_KEY }}
+  #         command_timeout: '30m'
+  #         script: |
+  #           if [ "${{ secrets.RUN_POST }}" = "true" ]; then
+  #             cd ${{ secrets.DEPLOY_PATH }}
+  #             # example: run a one-off container task
+  #             docker compose up -d worker || true
+  #           else
+  #             echo "RUN_POST not enabled, skipping post-deploy commands"
+  #           fi
