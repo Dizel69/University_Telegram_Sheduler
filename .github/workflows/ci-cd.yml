@@ -24,11 +24,11 @@ jobs:
       - name: Copy project to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.REMOTE_HOST }}
-          username: ${{ secrets.REMOTE_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
           source: "."
-          target: ${{ secrets.REMOTE_PATH }}
+          target: ${{ secrets.DEPLOY_PATH }}
 
   build:
     name: Build and restart on server
@@ -38,11 +38,11 @@ jobs:
       - name: Run docker compose on server
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.REMOTE_HOST }}
-          username: ${{ secrets.REMOTE_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
           script: |
-            cd ${{ secrets.REMOTE_PATH }}
+            cd ${{ secrets.DEPLOY_PATH }}
             docker compose down || true
             docker compose up --build -d || exit 1
             docker ps || exit 1
@@ -55,12 +55,12 @@ jobs:
       - name: Run post-deploy script on server (if enabled)
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.REMOTE_HOST }}
-          username: ${{ secrets.REMOTE_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
           script: |
             if [ "${{ secrets.RUN_POST }}" = "true" ]; then
-              cd ${{ secrets.REMOTE_PATH }}
+              cd ${{ secrets.DEPLOY_PATH }}
               # example: run a one-off container task
               docker compose run --rm worker python worker.py || true
             else
