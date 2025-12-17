@@ -12,15 +12,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Write .env from secret (if provided)
-        run: |
-          if [ -n "${{ secrets.ENV_FILE }}" ]; then
-            printf '%s\n' "${{ secrets.ENV_FILE }}" > .env
-            chmod 600 .env
-          else
-            echo "No ENV_FILE secret provided, skipping .env write"
-          fi
-
       - name: Copy project to server
         uses: appleboy/scp-action@v0.1.7
         with:
