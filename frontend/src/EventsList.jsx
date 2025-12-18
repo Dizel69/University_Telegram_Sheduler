@@ -5,6 +5,7 @@ export default function EventsList({ highlightId }) {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const adminToken = localStorage.getItem('admin_token')
 
   async function load() {
     setLoading(true)
@@ -54,7 +55,7 @@ export default function EventsList({ highlightId }) {
 
   async function sendNow(id) {
     try {
-      await axios.post(`/events/${id}/send_now`)
+      await axios.post(`/events/${id}/send_now`, null, { headers: { 'x-admin-token': adminToken } })
       load()
     } catch (e) {
       const serverData = e.response?.data
@@ -66,7 +67,7 @@ export default function EventsList({ highlightId }) {
   async function deleteEvent(id) {
     if (!confirm('Переместить событие в корзину (удалить)?')) return
     try {
-      await axios.delete(`/events/${id}`)
+      await axios.delete(`/events/${id}`, { headers: { 'x-admin-token': adminToken } })
       load()
     } catch (e) {
       alert('Ошибка удаления: ' + (e.response?.data?.detail || e.message))
@@ -107,9 +108,9 @@ export default function EventsList({ highlightId }) {
             </div>
             <div className="event-body">{ev.body}</div>
             <div className="event-actions">
-              <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button>
+              {adminToken ? <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button> : null}
               <button className="btn btn-sm" onClick={() => showTargetChat(ev.id)}>Показать чат</button>
-              <button className="btn btn-sm" onClick={() => deleteEvent(ev.id)}>Удалить</button>
+              {adminToken ? <button className="btn btn-sm" onClick={() => deleteEvent(ev.id)}>Удалить</button> : null}
             </div>
           </div>
         ))}

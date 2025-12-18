@@ -111,8 +111,26 @@ def _canonical_type(t: str) -> str:
     return n
 
 
+def require_admin(x_admin_token: str | None = Header(None)):
+    """
+    Require a valid X-ADMIN-TOKEN header that matches ADMIN_TOKEN from env.
+    If ADMIN_TOKEN is not configured, admin actions are disabled.
+    """
+    if not ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Admin actions are disabled on this instance")
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
+    return True
+
+
+@app.get('/admin/validate')
+def admin_validate(admin_ok: bool = Depends(require_admin)):
+    """Lightweight endpoint to validate admin token from the frontend during login."""
+    return {"ok": True}
+
+
 @app.post("/events/send", response_model=EventPublic)
-async def create_and_send(event_in: EventCreate, x_admin_token: str | None = Header(None)):
+async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
     Сохранить событие и сразу отправить сообщение через bot-service.
     Возвращает объект события (с sent_message_id если удачно).
@@ -247,7 +265,7 @@ def public_events():
 
 
 @app.delete('/events/day')
-def delete_events_day(date: str, x_admin_token: str | None = Header(None)):
+def delete_events_day(date: str, admin_ok: bool = Depends(require_admin)):
     """
     Удалить все события на указанную дату (YYYY-MM-DD).
     """
@@ -261,7 +279,7 @@ def delete_events_day(date: str, x_admin_token: str | None = Header(None)):
 
 
 @app.delete('/events/month')
-def delete_events_month(year: int, month: int, x_admin_token: str | None = Header(None)):
+def delete_events_month(year: int, month: int, admin_ok: bool = Depends(require_admin)):
     """
     Удалить все события в указанном месяце (year, month) — month: 1-12
     """
@@ -296,7 +314,7 @@ def resolve_chat(event_id: int):
 
 
 @app.delete("/events/{event_id}")
-def delete_event_endpoint(event_id: int, x_admin_token: str | None = Header(None)):
+def delete_event_endpoint(event_id: int, admin_ok: bool = Depends(require_admin)):
     from .crud import delete_event
     # Authorization disabled for local development
     ok = delete_event(event_id)
@@ -377,7 +395,7 @@ class ParsedItem(BaseModel):
     images: list | None = None
 
 @app.post("/events/import")
-def import_events(items: List[ParsedItem]):
+def import_events(items: List[ParsedItem], admin_ok: bool = Depends(require_admin)):
     """
     Импортировать распарсенные элементы (из parser) в базу.
     По умолчанию сохраняет source='dekanat' и НЕ отправляет сообщения ботом.
@@ -429,7 +447,7 @@ def import_events(items: List[ParsedItem]):
 
 
 @app.post("/events")
-def create_event(event_in: EventCreate, x_admin_token: str | None = Header(None)):
+def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
     Create an event in the database without sending it via bot.
     Used by the admin UI to add events manually.
@@ -473,7 +491,7 @@ class EventUpdate(BaseModel):
 
 
 @app.put('/events/{event_id}')
-def update_event_endpoint(event_id: int, update: EventUpdate, x_admin_token: str | None = Header(None)):
+def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = Depends(require_admin)):
     """Update event fields (used for transferring/moving events)."""
     from .crud import update_event, get_event_by_id
     ev = get_event_by_id(event_id)
@@ -485,7 +503,7 @@ def update_event_endpoint(event_id: int, update: EventUpdate, x_admin_token: str
     return {'ok': True}
 
 @app.post("/events/{event_id}/send_now")
-async def send_now(event_id: int = Path(..., description="ID события"), x_admin_token: str | None = Header(None)):
+async def send_now(event_id: int = Path(..., description="ID события"), admin_ok: bool = Depends(require_admin)):
     """
     Отправляет существующее событие (из БД) ботом и сохраняет sent_message_id.
     """

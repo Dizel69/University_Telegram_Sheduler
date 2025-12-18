@@ -27,6 +27,7 @@ export default function Calendar() {
   const [selected, setSelected] = useState(new Set())
   const [openDay, setOpenDay] = useState(null) // 'YYYY-MM-DD' or null
   const [transferEvent, setTransferEvent] = useState(null)
+  const [adminToken, setAdminToken] = useState(localStorage.getItem('admin_token'))
 
   useEffect(() => { load() }, [year, month])
 
@@ -121,7 +122,7 @@ export default function Calendar() {
     }
     if (!items.length) { alert('Ничего не выбрано'); return }
     try {
-      const resp = await fetch('/events/import', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(items) })
+  const resp = await fetch('/events/import', { method: 'POST', headers: { 'Content-Type':'application/json', 'x-admin-token': adminToken }, body: JSON.stringify(items) })
       if (!resp.ok) throw new Error('import failed: ' + resp.status)
       const j = await resp.json()
       alert('Импортировано: ' + j.count)
@@ -165,7 +166,7 @@ export default function Calendar() {
   async function deleteEventsForDay(day) {
     if (!confirm('Удалить все события за день? Это действие нельзя отменить.')) return
     try {
-      const resp = await fetch(`/events/day?date=${day}`, { method: 'DELETE' })
+      const resp = await fetch(`/events/day?date=${day}`, { method: 'DELETE', headers: { 'x-admin-token': adminToken } })
       if (!resp.ok) throw new Error('delete failed: ' + resp.status)
       const j = await resp.json()
       alert('Удалено: ' + j.deleted)
@@ -180,7 +181,7 @@ export default function Calendar() {
   async function deleteEventsForMonth() {
     if (!confirm('Удалить все события за отображаемый месяц? Это действие нельзя отменить.')) return
     try {
-      const resp = await fetch(`/events/month?year=${year}&month=${month+1}`, { method: 'DELETE' })
+      const resp = await fetch(`/events/month?year=${year}&month=${month+1}`, { method: 'DELETE', headers: { 'x-admin-token': adminToken } })
       if (!resp.ok) throw new Error('delete failed: ' + resp.status)
       const j = await resp.json()
       alert('Удалено: ' + j.deleted)
@@ -201,9 +202,35 @@ export default function Calendar() {
           <button className="btn" onClick={next}>▶</button>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {/* Временно показываем кнопку редактирования всегда для удобства локальной разработки */}
+          {/* Редактирование и войти/выйти как админ */}
           <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
-          {editing && localStorage.getItem('admin_token') ? (
+          <button className="btn" onClick={async () => {
+            if (adminToken) {
+              localStorage.removeItem('admin_token')
+              // notify other components
+              window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
+              setAdminToken(null)
+              setEditing(false)
+              alert('Выход выполнен')
+              return
+            }
+            const token = window.prompt('Введите admin token')
+            if (!token) return
+            try {
+              const resp = await fetch(backendBase() + '/admin/validate', { method: 'GET', headers: { 'x-admin-token': token } })
+              if (!resp.ok) throw new Error('invalid')
+              localStorage.setItem('admin_token', token)
+              // notify other components
+              window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: token }))
+              setAdminToken(token)
+              setEditing(true)
+              alert('Вход выполнен')
+            } catch (e) {
+              console.error(e)
+              alert('Неверный admin token')
+            }
+          }}>{adminToken ? 'Выйти' : 'Войти'}</button>
+          {editing && adminToken ? (
             <button className="btn btn-danger" onClick={deleteEventsForMonth}>Удалить все события за месяц</button>
           ) : null}
         </div>
@@ -267,7 +294,7 @@ export default function Calendar() {
                       e.stopPropagation()
                       if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
                       try {
-                        await axios.delete(`/events/${ev.id}`)
+                        await axios.delete(`/events/${ev.id}`, { headers: { 'x-admin-token': adminToken } })
                         // refresh calendar
                         await load()
                       } catch (err) {
@@ -290,7 +317,7 @@ export default function Calendar() {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <h3>События за {openDay}</h3>
                 <div style={{display:'flex',gap:8}}>
-                  {localStorage.getItem('admin_token') ? (
+                  {adminToken ? (
                     <button className="btn btn-danger" onClick={() => deleteEventsForDay(openDay)}>Удалить все за день</button>
                   ) : null}
                   <button className="btn" onClick={() => setOpenDay(null)}>Закрыть</button>
@@ -309,9 +336,9 @@ export default function Calendar() {
                   </div>
                   <div style={{marginTop:6}}>{ev.body}</div>
                   <div style={{marginTop:8,display:'flex',gap:8}}>
-                    {localStorage.getItem('admin_token') ? (
+                    {adminToken ? (
                       <button className="btn btn-sm" onClick={async () => {
-                        try { await axios.post(`/events/${ev.id}/send_now`); alert('Отправлено'); load(); }
+                        try { await axios.post(`/events/${ev.id}/send_now`, null, { headers: { 'x-admin-token': adminToken } }); alert('Отправлено'); load(); }
                         catch(e){ alert('Ошибка: ' + (e.response?.data?.detail || e.message)) }
                       }}>Отправить сейчас</button>
                     ) : null}
@@ -320,7 +347,7 @@ export default function Calendar() {
                     <button className="btn btn-sm" onClick={async () => {
                       if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
                       try {
-                        await axios.delete(`/events/${ev.id}`)
+                        await axios.delete(`/events/${ev.id}`, { headers: { 'x-admin-token': adminToken } })
                         alert('Событие удалено')
                         // refresh calendar and close day view if no events remain
                         await load()
@@ -358,7 +385,7 @@ export default function Calendar() {
           </div>
         )}
       <div style={{marginTop:12}}>
-        {localStorage.getItem('admin_token') ? (
+        {adminToken ? (
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <label className="btn">Импорт PDF<input type="file" accept=".pdf" style={{display:'none'}} onChange={e => handleFile(e.target.files[0])} /></label>
             {importing && <span>Парсинг...</span>}
