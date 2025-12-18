@@ -13,7 +13,10 @@ from datetime import datetime, date, time
 from pydantic import BaseModel
 
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# Host IP or name for services when deployed (example: 185.28.85.183)
+HOST = os.getenv("HOST")
+# FRONTEND_URL can be provided explicitly; if not, and HOST is set, build URL from HOST:PORT
+FRONTEND_URL = os.getenv("FRONTEND_URL") or (f"http://{HOST}:3000" if HOST else "http://127.0.0.1:3000")
 DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID", None)
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 

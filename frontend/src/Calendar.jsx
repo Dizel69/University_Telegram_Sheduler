@@ -31,16 +31,15 @@ export default function Calendar() {
   useEffect(() => { load() }, [year, month])
 
   function backendBase() {
-    // prefer direct localhost:8000 to avoid Vite proxy DNS issues when developing locally
-    const h = window.location.hostname
-    if (h === 'localhost' || h === '127.0.0.1') return 'http://127.0.0.1:8000'
-    return ''
+    // prefer VITE_HOST (set at build time) otherwise use the current page hostname
+  // Keep configuration driven by env vars or the runtime host; avoid hardcoding the local host name.
+    const host = import.meta.env.VITE_HOST || window.location.hostname
+    return `http://${host}:8000`
   }
 
   function parserBase() {
-    const h = window.location.hostname
-    if (h === 'localhost' || h === '127.0.0.1') return 'http://127.0.0.1:8090'
-    return 'http://localhost:8090'
+    const host = import.meta.env.VITE_HOST || window.location.hostname
+    return `http://${host}:8090`
   }
 
   async function load() {
@@ -237,7 +236,7 @@ export default function Calendar() {
           <div style={{marginTop:8,fontSize:13,color:'#374151'}}>Проверьте доступность бэкенда или временно отключите VPN.</div>
           <div style={{marginTop:8,display:'flex',gap:8}}>
             <button className="btn" onClick={() => load()}>Повторить</button>
-            <button className="btn" onClick={() => window.open('http://localhost:8000/calendar','_blank')}>Открыть /calendar</button>
+            <button className="btn" onClick={() => window.open(`${backendBase()}/calendar`,'_blank')}>Открыть /calendar</button>
           </div>
         </div>
       )}

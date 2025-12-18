@@ -54,7 +54,7 @@ POSTGRES_PASSWORD=postgres
 POSTGRES_DB=m15db
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/m15db
 REDIS_URL=redis://redis:6379/0
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://{HOST}:3000
 MANAGER_CHAT_ID=... (необязательно)
 ```
 
@@ -64,8 +64,8 @@ MANAGER_CHAT_ID=... (необязательно)
 docker-compose up --build
 ```
 
-3. Backend доступен на `http://localhost:8000` (Swagger UI — `http://localhost:8000/docs`).
-   Bot-service слушает `http://bot:8080` внутри сети (и `http://localhost:8081` локально, если проброшено).
+3. Backend доступен на `http://<HOST>:8000` (Swagger UI — `http://<HOST>:8000/docs`) — установите `HOST` в `.env` или используйте `FRONTEND_URL`/`DEPLOY` конфигурацию.
+  Bot-service слушает `http://bot:8080` внутри сети (и `http://127.0.0.1:8081` локально, если проброшено).
    Worker запускается и каждые 60 секунд проверяет напоминания.
 
 ---
