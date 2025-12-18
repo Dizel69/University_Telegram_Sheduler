@@ -34,8 +34,7 @@ THREAD_ID_ANNOUNCEMENTS = os.getenv("THREAD_ID_ANNOUNCEMENTS")
 TYPE_HASHTAG = {
     'schedule': '#Расписание',
     'homework': '#Домашнее_задание',
-    'announcement': '#Объявление',
-    'exam': '#Экзамен'
+    'announcement': '#Объявление'
 }
 
 app = FastAPI(title="M15 Scheduler Backend")
@@ -109,8 +108,6 @@ def _canonical_type(t: str) -> str:
         return 'schedule'
     if 'объяв' in n or 'announcement' in n:
         return 'announcement'
-    if 'экзам' in n or 'exam' in n:
-        return 'exam'
     return n
 
 
