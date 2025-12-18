@@ -55,7 +55,6 @@ POSTGRES_DB=m15db
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/m15db
 REDIS_URL=redis://redis:6379/0
 FRONTEND_URL=http://{HOST}:3000
-MANAGER_CHAT_ID=... (необязательно)
 ```
 
 2. Запустить:
