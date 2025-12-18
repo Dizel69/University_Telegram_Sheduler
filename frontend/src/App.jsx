@@ -6,7 +6,8 @@ import Calendar from './Calendar'
 import Login from './Login'
 
 export default function App() {
-  const [tab, setTab] = useState('create')
+  // Default to calendar for anonymous users. When admin logs in they can switch tabs.
+  const [tab, setTab] = useState('calendar')
   const [lastCreated, setLastCreated] = useState(null)
 
   // Auth helper component: visible button that prompts for admin token
@@ -55,8 +56,13 @@ export default function App() {
       <header className="topbar">
         <h1>University Scheduler — Admin</h1>
         <nav>
-          <button className={tab==='create'? 'tab active':'tab'} onClick={() => setTab('create')}>Создать</button>
-          <button className={tab==='list'? 'tab active':'tab'} onClick={() => setTab('list')}>События</button>
+          {/* Show admin tabs only when logged in */}
+          { !!localStorage.getItem('admin_token') ? (
+            <>
+              <button className={tab==='create'? 'tab active':'tab'} onClick={() => setTab('create')}>Создать</button>
+              <button className={tab==='list'? 'tab active':'tab'} onClick={() => setTab('list')}>События</button>
+            </>
+          ) : null }
           <button className={tab==='calendar'? 'tab active':'tab'} onClick={() => setTab('calendar')}>Календарь</button>
         </nav>
         <div style={{marginLeft:12, display:'flex', alignItems:'center', gap:8}}>

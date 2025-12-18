@@ -202,8 +202,10 @@ export default function Calendar() {
           <button className="btn" onClick={next}>▶</button>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {/* Редактирование и войти/выйти как админ */}
-          <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
+          {/* Редактирование доступно только админам */}
+          {adminToken ? (
+            <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
+          ) : null}
           <button className="btn" onClick={async () => {
             if (adminToken) {
               localStorage.removeItem('admin_token')

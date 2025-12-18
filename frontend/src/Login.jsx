@@ -28,11 +28,8 @@ export default function Login() {
   }, [])
 
   // if there's no token on first load, open the modal so the admin sees the login immediately
-  useEffect(() => {
-    if (!token) setShow(true)
-    // only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // NOTE: we do NOT auto-open the login modal on mount so anonymous users are not prompted.
+  // The modal can be opened by other components via `window.openAdminLogin()` or by UI controls.
 
   function submit() {
     if (!token) return alert('Введите токен')
