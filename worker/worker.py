@@ -21,7 +21,7 @@ def check_and_send():
                 date = ev.get("date")
                 title = ev.get("title") or "(без заголовка)"
                 body = ev.get("body") or ""
-                text = f"⏰ Напоминание: завтра ({date}) — {title}\\n{body}"
+                text = f"⏰ Напоминание: завтра ({date}) — {title}\n{body}"
                 payload = {
                     "chat_id": ev.get("chat_id"),
                     "thread_id": ev.get("thread_id"),
