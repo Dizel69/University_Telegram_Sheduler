@@ -19,9 +19,15 @@ def check_and_send():
             events = r.json()
             for ev in events:
                 date = ev.get("date")
-                title = ev.get("title") or "(без заголовка)"
+                # trim title so whitespace-only titles are treated as empty
+                title = (ev.get("title") or "").strip()
                 body = ev.get("body") or ""
-                text = f"⏰ Напоминание: завтра ({date}) — {title}\n{body}"
+                # compose message: include title only if present, include body if present
+                text = f"⏰ Напоминание: завтра ({date})"
+                if title:
+                    text += f" — {title}"
+                if body:
+                    text += f"\n{body}"
                 payload = {
                     "chat_id": ev.get("chat_id"),
                     "thread_id": ev.get("thread_id"),
