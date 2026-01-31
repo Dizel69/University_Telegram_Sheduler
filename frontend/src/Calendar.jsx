@@ -286,7 +286,7 @@ export default function Calendar() {
           return (
             <div key={idx} className="day" onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
               <div className="date-num">{dt.getUTCDate()}</div>
-              {evs.slice(0,3).map(ev => (
+              {evs.slice(0,5).map(ev => (
                 <div key={ev.id} className="cal-ev" style={{display:'flex',gap:8,alignItems:'center',padding:4,marginTop:6,background: eventColor(ev),borderRadius:6,color:'#fff'}}>
                   <div style={{fontSize:11,opacity:0.9}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
                   <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.title || ev.subject || ev.type}</div>
@@ -307,7 +307,7 @@ export default function Calendar() {
                   )}
                 </div>
               ))}
-              {evs.length > 3 && <div style={{fontSize:12,color:'#6b7280'}}>+{evs.length-3} ещё</div>}
+              {evs.length > 5 && <div style={{fontSize:12,color:'#6b7280'}}>+{evs.length-5} ещё</div>}
             </div>
           )
         })}
