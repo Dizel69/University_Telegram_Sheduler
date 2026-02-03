@@ -5,9 +5,14 @@ export default function EventForm({ onCreated }) {
   const [type, setType] = useState('schedule')
   const [subject, setSubject] = useState('')
   const [title, setTitle] = useState('')
+  const [room, setRoom] = useState('')
+  const [teacher, setTeacher] = useState('')
   const [message, setMessage] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [repeat, setRepeat] = useState('none')
+  const [repeatUntil, setRepeatUntil] = useState('')
   const [reminder, setReminder] = useState(24)
   const [status, setStatus] = useState('')
   const [saveOnly, setSaveOnly] = useState(false)
@@ -24,35 +29,94 @@ export default function EventForm({ onCreated }) {
       setStatus('Ошибка: если указано время, нужно указать дату')
       return
     }
+    if (repeat !== 'none' && !date) {
+      setStatus('Ошибка: для повтора нужно указать начальную дату')
+      return
+    }
+    if (repeat !== 'none' && !repeatUntil) {
+      setStatus('Ошибка: укажите дату окончания повтора')
+      return
+    }
 
     try {
-      const payload = {
-        type,
-        subject: subject || null,
-        title: title || null,
-        body: message,
-        reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
-      }
-  // keep type as canonical token (english) so backend/frontend stay consistent
-      if (date) payload.date = date
-      if (time) payload.time = time
+      // Handle repeat series
+      if (repeat === 'none') {
+        const payload = {
+          type,
+          subject: subject || null,
+          title: title || null,
+          body: message,
+          reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
+        }
+        // keep type as canonical token (english) so backend/frontend stay consistent
+        if (date) payload.date = date
+        if (time) payload.time = time
+        if (endTime) payload.end_time = endTime
+        if (room) payload.room = room
+        if (teacher) payload.teacher = teacher
 
-      let res
-      if (saveOnly) {
-        // Create event in DB as manual (backend will mark source='manual') but don't send
-        res = await axios.post('/events', payload)
-        setStatus('Сохранено в календаре (ручная запись) — id: ' + res.data.id)
-      } else {
-        res = await axios.post('/events/send', payload)
-        setStatus('Отправлено — id: ' + res.data.id)
+        let res
+        if (saveOnly) {
+          // Create event in DB as manual (backend will mark source='manual') but don't send
+          res = await axios.post('/events', payload)
+          setStatus('Сохранено в календаре (ручная запись) — id: ' + res.data.id)
+        } else {
+          res = await axios.post('/events/send', payload)
+          setStatus('Отправлено — id: ' + res.data.id)
+        }
+        setSubject('')
+        setTitle('')
+        setRoom('')
+        setTeacher('')
+        setMessage('')
+        setDate('')
+        setTime('')
+        setEndTime('')
+        setRepeat('none')
+        setRepeatUntil('')
+        setReminder(24)
+        if (onCreated) onCreated(res.data)
+        return
       }
+
+      // Repeat creation: create occurrences without sending immediately
+      const occurrences = []
+      const start = new Date(date)
+      const until = new Date(repeatUntil)
+      let cur = new Date(date)
+      let step = 1
+      if (repeat === 'daily') step = 1
+      if (repeat === 'weekly') step = 7
+      if (repeat === 'biweekly') step = 14
+      let guard = 0
+      while (cur <= until && guard < 500) {
+        occurrences.push(cur.toISOString().slice(0,10))
+        cur.setUTCDate(cur.getUTCDate() + step)
+        guard++
+      }
+
+      const seriesId = (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('s-' + Date.now() + '-' + Math.random().toString(36).slice(2,7)))
+      const created = []
+      for (const d of occurrences) {
+        const payload = { type, title: title || null, body: message || '', date: d, time: (type === 'homework' ? null : (time || null)), end_time: (type === 'homework' ? null : (endTime || null)), room: room || null, teacher: teacher || null, series_id: seriesId, reminder_offset_hours: 24 }
+        payload.source = 'manual'
+        const res = await axios.post('/events', payload)
+        created.push(res.data)
+      }
+      setStatus('Создано: ' + created.length + ' событий (серия)')
       setSubject('')
       setTitle('')
+      setRoom('')
+      setTeacher('')
       setMessage('')
       setDate('')
       setTime('')
+      setEndTime('')
+      setRepeat('none')
+      setRepeatUntil('')
       setReminder(24)
-      if (onCreated) onCreated(res.data)
+      if (onCreated && created.length) onCreated(created[0])
+
     } catch (err) {
       console.error(err)
       const serverData = err.response?.data
@@ -85,17 +149,48 @@ export default function EventForm({ onCreated }) {
         </div>
 
         <div>
+          <label className="label">Аудитория</label>
+          <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Например: М101" />
+        </div>
+
+        <div>
+          <label className="label">Преподаватель</label>
+          <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
+        </div>
+
+        <div>
           <label className="label">Дата</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
 
         {/* For homework type we don't show time */}
         {type !== 'homework' && (
-          <div>
-            <label className="label">Время</label>
-            <input type="time" value={time} onChange={e => setTime(e.target.value)} />
-          </div>
+          <>
+            <div>
+              <label className="label">Время начала</label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Время окончания</label>
+              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </>
         )}
+
+        <div>
+          <label className="label">Повтор</label>
+          <select value={repeat} onChange={e => setRepeat(e.target.value)}>
+            <option value="none">Не повторять</option>
+            <option value="daily">Каждый день</option>
+            <option value="weekly">Каждую неделю</option>
+            <option value="biweekly">Каждые 2 недели</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="label">Повтор до</label>
+          <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
+        </div>
 
         <div>
           <label className="label">Напоминание (ч)</label>
@@ -115,7 +210,7 @@ export default function EventForm({ onCreated }) {
 
       <div className="form-actions">
         <button className="btn btn-primary" type="submit">Отправить сейчас</button>
-        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setMessage(''); setDate(''); setTime(''); setReminder(24); setStatus('') }}>Сброс</button>
+        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setStatus('') }}>Сброс</button>
         <div className="status">{status}</div>
       </div>
     </form>

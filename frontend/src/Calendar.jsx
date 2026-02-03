@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
+import EditEventModal from './EditEventModal'
+import ErrorBoundary from './ErrorBoundary'
 
 function monthBounds(year, month) {
   // month: 0-11. return first and last date objects in UTC
@@ -17,6 +19,14 @@ export default function Calendar() {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
   const [events, setEvents] = useState({})
+
+  function formatTimeRange(t, end) {
+    if (!t && !end) return ''
+    const s = t ? (t.slice(0,5)) : ''
+    const e = end ? (end.slice(0,5)) : ''
+    if (s && e) return `${s} - ${e}`
+    return s || e
+  }
   const [undated, setUndated] = useState([])
   const [editing, setEditing] = useState(false)
   const [addDate, setAddDate] = useState(null) // 'YYYY-MM-DD' for add-event modal
@@ -27,6 +37,7 @@ export default function Calendar() {
   const [selected, setSelected] = useState(new Set())
   const [openDay, setOpenDay] = useState(null) // 'YYYY-MM-DD' or null
   const [transferEvent, setTransferEvent] = useState(null)
+  const [editEvent, setEditEvent] = useState(null)
   const [adminToken, setAdminToken] = useState(localStorage.getItem('admin_token'))
 
   useEffect(() => { load() }, [year, month])
@@ -193,7 +204,9 @@ export default function Calendar() {
     }
   }
 
+
   return (
+    <ErrorBoundary>
     <div className="card">
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div>
@@ -288,8 +301,11 @@ export default function Calendar() {
               <div className="date-num">{dt.getUTCDate()}</div>
               {evs.slice(0,5).map(ev => (
                 <div key={ev.id} className="cal-ev" style={{display:'flex',gap:8,alignItems:'center',padding:4,marginTop:6,background: eventColor(ev),borderRadius:6,color:'#fff'}}>
-                  <div style={{fontSize:11,opacity:0.9}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
-                  <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.title || ev.subject || ev.type}</div>
+                  <div style={{fontSize:11,opacity:0.9}}>{formatTimeRange(ev.time, ev.end_time)}</div>
+                  <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>
+                    <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.title || ev.subject || ev.type}</div>
+                    {ev.room ? <div style={{fontSize:11,opacity:0.9}}>{ev.room}</div> : null}
+                  </div>
                   {/* delete button on mini-card (visible in edit mode) */}
                   {editing && (
                     <button className="btn btn-sm" onClick={async (e) => {
@@ -332,11 +348,12 @@ export default function Calendar() {
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <div style={{background: eventColor(ev), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
-                      <div style={{fontWeight:700}}>{ev.title || ev.subject || ''}</div>
+                      <div style={{fontWeight:700}}>{ev.title || ev.subject || ''}{ev.room ? <span style={{marginLeft:8,fontSize:13,color:'#6b7280'}}>{ev.room}</span> : null}</div>
                     </div>
-                    <div style={{fontSize:12,color:'#6b7280'}}>{ev.time ? ev.time.slice(0,5) : ''}</div>
+                    <div style={{fontSize:12,color:'#6b7280'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
                   <div style={{marginTop:6}}>{ev.body}</div>
+                  {ev.teacher ? <div style={{marginTop:6,fontSize:13,color:'#374151'}}>Преподаватель: {ev.teacher}</div> : null}
                   <div style={{marginTop:8,display:'flex',gap:8}}>
                     {adminToken ? (
                       <button className="btn btn-sm" onClick={async () => {
@@ -345,6 +362,7 @@ export default function Calendar() {
                       }}>Отправить сейчас</button>
                     ) : null}
                     <button className="btn btn-sm" onClick={() => alert('Показать в календаре: ' + ev.id)}>Открыть</button>
+                    <button className="btn btn-sm" onClick={() => setEditEvent(ev)}>Редактировать</button>
                     <button className="btn btn-sm" onClick={() => setTransferEvent(ev)}>Перенести</button>
                     <button className="btn btn-sm" onClick={async () => {
                       if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
@@ -423,7 +441,11 @@ export default function Calendar() {
       {transferEvent && (
         <TransferModal ev={transferEvent} onClose={() => setTransferEvent(null)} onSaved={() => { setTransferEvent(null); load() }} />
       )}
+      {editEvent && (
+        <EditEventModal ev={editEvent} onClose={() => setEditEvent(null)} onSaved={() => { setEditEvent(null); load() }} />
+      )}
     </div>
+    </ErrorBoundary>
   )
 }
 
@@ -468,16 +490,20 @@ export default function Calendar() {
     const [body, setBody] = useState('')
     const [time, setTime] = useState('')
     const [endTime, setEndTime] = useState('')
+    const [room, setRoom] = useState('')
+    const [teacher, setTeacher] = useState('')
+    const [tab, setTab] = useState('main')
     const [repeat, setRepeat] = useState('none')
     const [repeatUntil, setRepeatUntil] = useState('')
     const [saving, setSaving] = useState(false)
 
-    useEffect(() => { setTitle(''); setBody(''); setTime(''); setRepeat('none'); setRepeatUntil('') }, [date])
+    useEffect(() => { setTitle(''); setBody(''); setTime(''); setRoom(''); setTeacher(''); setTab('main'); setRepeat('none'); setRepeatUntil('') }, [date])
 
     async function handleSave() {
       if (!date) return
       setSaving(true)
       try {
+        const seriesId = (repeat === 'none') ? null : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('s-' + Date.now() + '-' + Math.random().toString(36).slice(2,7)))
         const start = new Date(date)
         const occurrences = []
         if (repeat === 'none') occurrences.push(date)
@@ -559,7 +585,7 @@ export default function Calendar() {
         const created = []
         for (const d of occurrences) {
           // if homework, do not send time
-          const payload = { type, title: title || null, body: body || '', date: d, time: (type === 'homework' ? null : (time || null)), end_time: (type === 'homework' ? null : (endTime || null)), reminder_offset_hours: 24 }
+          const payload = { type, title: title || null, body: body || '', date: d, time: (type === 'homework' ? null : (time || null)), end_time: (type === 'homework' ? null : (endTime || null)), room: room || null, teacher: teacher || null, series_id: seriesId, reminder_offset_hours: 24 }
           // mark manual source and disable reminders on server side; include source for clarity
           payload.source = 'manual'
           const res = await fetch('/events', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
@@ -585,51 +611,69 @@ export default function Calendar() {
             <button className="btn" onClick={onClose}>Закрыть</button>
           </div>
           <div style={{marginTop:8}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <div>
-                <label className="label">Тип</label>
-                <select value={type} onChange={e => setType(e.target.value)}>
-                  <option value="schedule">Пара / Мероприятие</option>
-                  <option value="homework">Домашнее задание</option>
-                  <option value="transfer">Перенос</option>
-                  <option value="announcement">Объявление</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Короткий заголовок</label>
-                <input value={title} onChange={e => setTitle(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Дата (начало)</label>
-                <input type="date" value={date} onChange={e => {/* no-op: modal tied to date param */}} />
-              </div>
-              {/* For homework don't show time; otherwise allow start and end */}
-              {type !== 'homework' && (
-                <div>
-                  <label className="label">Время начала</label>
-                  <input type="time" value={time} onChange={e => setTime(e.target.value)} />
-                </div>
-              )}
-              {type !== 'homework' && (
-                <div>
-                  <label className="label">Время окончания</label>
-                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
-                </div>
-              )}
-              <div>
-                <label className="label">Повтор</label>
-                <select value={repeat} onChange={e => setRepeat(e.target.value)}>
-                  <option value="none">Не повторять</option>
-                  <option value="daily">Каждый день</option>
-                  <option value="weekly">Каждую неделю</option>
-                  <option value="biweekly">Каждые 2 недели</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Повтор до</label>
-                <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
-              </div>
+            <div style={{display:'flex',gap:8,marginBottom:8}}>
+              <button className={tab==='main' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('main')}>Основное</button>
+              <button className={tab==='teacher' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('teacher')}>Преподаватель</button>
             </div>
+            {tab === 'main' && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <div>
+                  <label className="label">Тип</label>
+                  <select value={type} onChange={e => setType(e.target.value)}>
+                    <option value="schedule">Пара / Мероприятие</option>
+                    <option value="homework">Домашнее задание</option>
+                    <option value="transfer">Перенос</option>
+                    <option value="announcement">Объявление</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Короткий заголовок</label>
+                  <input value={title} onChange={e => setTitle(e.target.value)} />
+                </div>
+                {type === 'schedule' && (
+                  <div>
+                    <label className="label">Аудитория</label>
+                    <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Например: М101" />
+                  </div>
+                )}
+                <div>
+                  <label className="label">Дата (начало)</label>
+                  <input type="date" value={date} onChange={e => {/* no-op: modal tied to date param */}} />
+                </div>
+                {/* For homework don't show time; otherwise allow start and end */}
+                {type !== 'homework' && (
+                  <div>
+                    <label className="label">Время начала</label>
+                    <input type="time" value={time} onChange={e => setTime(e.target.value)} />
+                  </div>
+                )}
+                {type !== 'homework' && (
+                  <div>
+                    <label className="label">Время окончания</label>
+                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                  </div>
+                )}
+                <div>
+                  <label className="label">Повтор</label>
+                  <select value={repeat} onChange={e => setRepeat(e.target.value)}>
+                    <option value="none">Не повторять</option>
+                    <option value="daily">Каждый день</option>
+                    <option value="weekly">Каждую неделю</option>
+                    <option value="biweekly">Каждые 2 недели</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Повтор до</label>
+                  <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
+                </div>
+              </div>
+            )}
+            {tab === 'teacher' && (
+              <div style={{marginTop:8}}>
+                <label className="label">Преподаватель</label>
+                <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
+              </div>
+            )}
 
             <label className="label">Подробности</label>
             <textarea value={body} onChange={e => setBody(e.target.value)} />

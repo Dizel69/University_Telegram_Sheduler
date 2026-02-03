@@ -171,6 +171,10 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
         subj_tag = '#' + created.subject.replace(' ', '_')
         parts.append(subj_tag)
     parts.append(created.body or '')
+    if getattr(created, 'room', None):
+        parts.append(f"Аудитория: {created.room}")
+    if getattr(created, 'teacher', None):
+        parts.append(f"Преподаватель: {created.teacher}")
     parts.append('')
     parts.append(f"Ссылка в календаре: {link}")
     text = '\n'.join([p for p in parts if p is not None and p != ''])
@@ -256,6 +260,9 @@ def public_events():
             'date': ev.date,
             'time': ev.time,
             'end_time': getattr(ev, 'end_time', None),
+            'room': getattr(ev, 'room', None),
+            'teacher': getattr(ev, 'teacher', None),
+            'series_id': getattr(ev, 'series_id', None),
             'chat_id': ev.chat_id,
             'topic_thread_id': ev.topic_thread_id,
             'sent_message_id': getattr(ev, 'sent_message_id', None),
@@ -338,6 +345,8 @@ def events_due_reminders():
             "body": ev.body,
             "date": ev.date.isoformat() if ev.date else None,
             "time": ev.time.isoformat() if ev.time else None,
+            "room": getattr(ev, 'room', None),
+            "teacher": getattr(ev, 'teacher', None),
             # return resolved chat/thread so worker can post into correct topic
             "chat_id": _resolve_chat_id(ev),
             "thread_id": _resolve_thread_id(ev)
@@ -369,6 +378,10 @@ def calendar_view(start: str | None = None, end: str | None = None):
             'body': ev.body,
             'date': ev.date.isoformat() if ev.date else None,
             'time': ev.time.isoformat() if ev.time else None,
+            'end_time': getattr(ev, 'end_time', None),
+            'room': getattr(ev, 'room', None),
+            'teacher': getattr(ev, 'teacher', None),
+            'series_id': getattr(ev, 'series_id', None),
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id
         }
@@ -482,25 +495,35 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
 
 
 class EventUpdate(BaseModel):
-    date: Optional[date] = None
-    time: Optional[time] = None
-    end_time: Optional[time] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
+    end_time: Optional[str] = None
     title: Optional[str] = None
     body: Optional[str] = None
     type: Optional[str] = None
+    room: Optional[str] = None
+    teacher: Optional[str] = None
 
 
 @app.put('/events/{event_id}')
-def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = Depends(require_admin)):
-    """Update event fields (used for transferring/moving events)."""
-    from .crud import update_event, get_event_by_id
+def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = Depends(require_admin), apply_to_series: bool = False):
+    """Update event fields (used for transferring/moving events).
+    If apply_to_series=True and the event belongs to a series, apply changes to all events in that series."""
+    from .crud import update_event, get_event_by_id, update_events_by_series
     ev = get_event_by_id(event_id)
     if not ev:
         raise HTTPException(status_code=404, detail='event not found')
-    ok = update_event(event_id, **{k:v for k,v in update.dict().items() if v is not None})
-    if not ok:
-        raise HTTPException(status_code=500, detail='failed to update')
-    return {'ok': True}
+    fields = {k:v for k,v in update.dict().items() if v is not None}
+    if apply_to_series and getattr(ev, 'series_id', None):
+        cnt = update_events_by_series(ev.series_id, **fields)
+        if cnt == 0:
+            raise HTTPException(status_code=404, detail='no events in series found')
+        return {'ok': True, 'updated': cnt}
+    else:
+        ok = update_event(event_id, **fields)
+        if not ok:
+            raise HTTPException(status_code=500, detail='failed to update')
+        return {'ok': True}
 
 @app.post("/events/{event_id}/send_now")
 async def send_now(event_id: int = Path(..., description="ID события"), admin_ok: bool = Depends(require_admin)):
@@ -519,6 +542,10 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
     if ev.subject:
         parts.append('#' + ev.subject.replace(' ', '_'))
     parts.append(ev.body or '')
+    if getattr(ev, 'room', None):
+        parts.append(f"Аудитория: {ev.room}")
+    if getattr(ev, 'teacher', None):
+        parts.append(f"Преподаватель: {ev.teacher}")
     parts.append('')
     parts.append(f"Ссылка в календаре: {link}")
     text = '\n'.join([p for p in parts if p is not None and p != ''])

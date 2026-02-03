@@ -21,9 +21,15 @@ def init_db() -> None:
             if dialect == 'postgresql':
                 # Postgres supports IF NOT EXISTS
                 conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS end_time time")
+                conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS room TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS teacher TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS series_id TEXT")
             else:
                 # SQLite / others: try to add column, ignore if fails
                 conn.execute("ALTER TABLE event ADD COLUMN end_time TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN room TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN teacher TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN series_id TEXT")
     except Exception:
         # non-fatal; if DB schema already has column or DB doesn't allow alter, ignore
         pass

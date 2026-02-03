@@ -37,7 +37,7 @@ textarea{min-height:120px}
 .error{color:#b91c1c}
 
 /* calendar styles */
-.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days */ grid-auto-rows:160px;align-items:start;width:100%}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:start;width:100%}
 .calendar-grid { row-gap: 0px !important; margin-top: 0px !important }
 .weekday{font-weight:600;padding:4px 6px 2px;background:#fff;border-radius:8px;text-align:center;align-self:start;height:28px}
 .weekday { margin-bottom: 0px !important }

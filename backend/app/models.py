@@ -16,6 +16,12 @@ class Event(SQLModel, table=True):
     date: Optional[dt.date] = Field(default=None)
     time: Optional[dt.time] = Field(default=None)
     end_time: Optional[dt.time] = Field(default=None)
+    # optional auditorium/room for schedule events
+    room: Optional[str] = Field(default=None)
+    # optional teacher/professor name
+    teacher: Optional[str] = Field(default=None)
+    # optional series id for repeating events (shared across repeated occurrences)
+    series_id: Optional[str] = Field(default=None)
 
     chat_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     topic_thread_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))

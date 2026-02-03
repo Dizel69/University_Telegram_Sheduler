@@ -118,6 +118,24 @@ def update_event(event_id: int, **fields) -> bool:
         return True
 
 
+def update_events_by_series(series_id: str, **fields) -> int:
+    """
+    Update all events that share the same series_id. Returns number updated.
+    """
+    with Session(engine) as session:
+        statement = select(Event).where(Event.series_id == series_id)
+        rows = session.exec(statement).all()
+        count = 0
+        for ev in rows:
+            for k, v in fields.items():
+                if hasattr(ev, k):
+                    setattr(ev, k, v)
+            session.add(ev)
+            count += 1
+        session.commit()
+        return count
+
+
 def delete_events_by_date(target_date: date_type) -> int:
     """
     Delete all events with Event.date == target_date. Returns number deleted.

@@ -22,10 +22,20 @@ def check_and_send():
                 # trim title so whitespace-only titles are treated as empty
                 title = (ev.get("title") or "").strip()
                 body = ev.get("body") or ""
-                # compose message: include title only if present, include body if present
+                room = ev.get("room") or None
+                teacher = ev.get("teacher") or None
+                # compose message: include title, room and teacher if present, include body if present
                 text = f"⏰ Напоминание: завтра ({date})"
                 if title:
                     text += f" — {title}"
+                    if room:
+                        text += f" ({room})"
+                else:
+                    if room:
+                        text += f" — Аудитория {room}"
+                if teacher:
+                    # show teacher on a separate line for clarity
+                    text += f"\nПреподаватель: {teacher}"
                 if body:
                     text += f"\n{body}"
                 payload = {
