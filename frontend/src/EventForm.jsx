@@ -21,7 +21,8 @@ export default function EventForm({ onCreated }) {
     e.preventDefault()
     setStatus('Отправка...')
     // Простая клиентская валидация
-    if (!message || !message.trim()) {
+    // Для schedule текст не обязателен, для остальных нужен
+    if (type !== 'schedule' && (!message || !message.trim())) {
       setStatus('Ошибка: Текст сообщения обязателен')
       return
     }
@@ -75,7 +76,8 @@ export default function EventForm({ onCreated }) {
         setRepeat('none')
         setRepeatUntil('')
         setReminder(24)
-        if (onCreated) onCreated(res.data)
+        // Для schedule не переходить на вкладку События
+        if (onCreated && type !== 'schedule') onCreated(res.data)
         return
       }
 
@@ -115,7 +117,8 @@ export default function EventForm({ onCreated }) {
       setRepeat('none')
       setRepeatUntil('')
       setReminder(24)
-      if (onCreated && created.length) onCreated(created[0])
+      // Для schedule не переходить на вкладку События
+      if (onCreated && created.length && type !== 'schedule') onCreated(created[0])
 
     } catch (err) {
       console.error(err)
@@ -198,15 +201,19 @@ export default function EventForm({ onCreated }) {
         </div>
       </div>
 
-      <div style={{marginTop:10}}>
-        <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
-          <input type="checkbox" checked={saveOnly} onChange={e => setSaveOnly(e.target.checked)} />
-          <span>Сохранить в календаре (без отправки) — скрыть во вкладке «События»</span>
-        </label>
-      </div>
+      {type !== 'schedule' && (
+        <>
+          <div style={{marginTop:10}}>
+            <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
+              <input type="checkbox" checked={saveOnly} onChange={e => setSaveOnly(e.target.checked)} />
+              <span>Сохранить в календаре (без отправки) — скрыть во вкладке «События»</span>
+            </label>
+          </div>
 
-      <label className="label">Сообщение</label>
-      <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Текст сообщения — можно использовать #хэштеги" />
+          <label className="label">Сообщение</label>
+          <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Текст сообщения — можно использовать #хэштеги" />
+        </>
+      )}
 
       <div className="form-actions">
         <button className="btn btn-primary" type="submit">Отправить сейчас</button>

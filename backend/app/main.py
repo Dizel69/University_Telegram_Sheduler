@@ -162,6 +162,16 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
     # Сохраняем в БД (sent_message_id ещё нет)
     created = add_event(ev)
 
+    # Для schedule событий не отправлять уведомления — пометить как отправленные
+    if created.type == 'schedule':
+        mark_reminder_sent(created.id)
+        # normalize returned type for frontend consistency
+        try:
+            created.type = _canonical_type(created.type)
+        except Exception:
+            pass
+        return created
+
     # Формируем текст сообщения и добавляем ссылку на запись в календаре
     link = f"{FRONTEND_URL}/calendar/m15/event/{created.id}"
     # Собираем текст в формате: #Тип \n #Предмет \nТело\n\nСсылка...
@@ -464,6 +474,7 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
     """
     Create an event in the database without sending it via bot.
     Used by the admin UI to add events manually.
+    For schedule type events, automatically mark reminder_sent=True (no notifications).
     """
     # Authorization temporarily disabled for local development
     from .models import Event
@@ -473,6 +484,9 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
     # mark events created via UI/manual calendar so they are excluded from reminders and Events list
     ev.source = 'manual'
     ev.reminder_sent = True
+    # For schedule events, do not send reminders
+    if ev.type == 'schedule':
+        ev.reminder_sent = True
     # Defensive normalization BEFORE saving: look at body/title and adjust type
     try:
         text_lower_pre = ((ev.body or '') + ' ' + (ev.title or '')).lower()
