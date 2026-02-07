@@ -14,6 +14,7 @@ class EventCreate(BaseModel):
     room: Optional[str] = None
     teacher: Optional[str] = None
     series_id: Optional[str] = None
+    lesson_type: Optional[str] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
     reminder_offset_hours: int = 24
@@ -44,6 +45,7 @@ class EventPublic(BaseModel):
     room: Optional[str] = None
     teacher: Optional[str] = None
     series_id: Optional[str] = None
+    lesson_type: Optional[str] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
     sent_message_id: Optional[int] = None

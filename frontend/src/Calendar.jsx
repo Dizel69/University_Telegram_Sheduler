@@ -27,14 +27,18 @@ export default function Calendar() {
     if (s && e) return `${s} - ${e}`
     return s || e
   }
+
+  function lessonIcon(lessonType) {
+    if (lessonType === 'lecture') return '🔊'
+    if (lessonType === 'practice') return '📓'
+    return ''
+  }
   const [undated, setUndated] = useState([])
   const [editing, setEditing] = useState(false)
   const [addDate, setAddDate] = useState(null) // 'YYYY-MM-DD' for add-event modal
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState(null)
-  const [importing, setImporting] = useState(false)
-  const [preview, setPreview] = useState([])
-  const [selected, setSelected] = useState(new Set())
+  // PDF import state removed
   const [openDay, setOpenDay] = useState(null) // 'YYYY-MM-DD' or null
   const [transferEvent, setTransferEvent] = useState(null)
   const [editEvent, setEditEvent] = useState(null)
@@ -49,10 +53,7 @@ export default function Calendar() {
     return `http://${host}:8000`
   }
 
-  function parserBase() {
-    const host = import.meta.env.VITE_HOST || window.location.hostname
-    return `http://${host}:8090`
-  }
+  // PDF parser removed — no external parser service used
 
   async function load() {
     setLoading(true)
@@ -95,56 +96,7 @@ export default function Calendar() {
     }
   }
 
-  async function handleFile(file) {
-    if (!file) return
-    setImporting(true)
-    setPreview([])
-    try {
-      const fd = new FormData()
-      fd.append('file', file, file.name)
-      // parser service is exposed on host:8090
-  const pbase = parserBase()
-  const res = await fetch(pbase + '/upload_pdf', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error('parser error: ' + res.status)
-      const data = await res.json()
-      setPreview(data.preview || [])
-      setSelected(new Set())
-    } catch (e) {
-      console.error(e)
-      alert('Ошибка парсинга PDF: ' + e.message)
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  function toggleSelect(idx) {
-    const s = new Set(selected)
-    if (s.has(idx)) s.delete(idx)
-    else s.add(idx)
-    setSelected(s)
-  }
-
-  async function importSelected() {
-    if (!preview.length) return
-    const items = []
-    for (const idx of Array.from(selected)) {
-      const it = preview[idx]
-      items.push({ page: it.page, raw: it.raw, type: it.type, start: it.start, end: it.end, date: it.date, images: it.images })
-    }
-    if (!items.length) { alert('Ничего не выбрано'); return }
-    try {
-  const resp = await fetch('/events/import', { method: 'POST', headers: { 'Content-Type':'application/json', 'x-admin-token': adminToken }, body: JSON.stringify(items) })
-      if (!resp.ok) throw new Error('import failed: ' + resp.status)
-      const j = await resp.json()
-      alert('Импортировано: ' + j.count)
-      setPreview([])
-      setSelected(new Set())
-      load()
-    } catch (e) {
-      console.error(e)
-      alert('Ошибка импорта: ' + e.message)
-    }
-  }
+  // PDF import handlers removed
 
   function prev() {
     const d = new Date(Date.UTC(year, month-1, 1))
@@ -296,16 +248,19 @@ export default function Calendar() {
           if (!dt) return <div key={idx} className="day empty"></div>
           const ds = dt.toISOString().slice(0,10)
           const evs = events[ds] || []
+          const todayIso = new Date().toISOString().slice(0,10)
           return (
-            <div key={idx} className="day" onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
+            <div key={idx} className={"day" + (ds === todayIso ? ' today' : '')} onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
               <div className="date-num">{dt.getUTCDate()}</div>
               {evs.slice(0,5).map(ev => (
-                <div key={ev.id} className="cal-ev" style={{display:'flex',gap:8,alignItems:'center',padding:4,marginTop:6,background: eventColor(ev),borderRadius:6,color:'#fff'}}>
-                  <div style={{fontSize:11,opacity:0.9}}>{formatTimeRange(ev.time, ev.end_time)}</div>
-                  <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:6}}>
-                    <div style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.title || ev.subject || ev.type}</div>
-                    {ev.room ? <div style={{fontSize:11,opacity:0.9}}>{ev.room}</div> : null}
+                <div key={ev.id} className="cal-ev" style={{display:'flex',flexDirection:'column',gap:4,padding:6,marginTop:6,background: eventColor(ev),borderRadius:6,color:'#fff',fontSize:12}}>
+                  <div style={{display:'flex',justifyContent:'flex-start',alignItems:'flex-start'}}>
+                    <div style={{fontSize:11,opacity:0.9,fontWeight:'bold'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
+                  <div style={{lineHeight:1.3,wordBreak:'break-word', whiteSpace:'normal'}}>
+                    {ev.type === 'schedule' && lessonIcon(ev.lesson_type)} {ev.title || ev.subject || ev.type}
+                  </div>
+                  {ev.room ? <div style={{fontSize:10,opacity:0.95,textAlign:'center',marginTop:6}}>{ev.room}</div> : null}
                   {/* delete button on mini-card (visible in edit mode) */}
                   {editing && (
                     <button className="btn btn-sm" onClick={async (e) => {
@@ -348,7 +303,10 @@ export default function Calendar() {
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <div style={{background: eventColor(ev), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
-                      <div style={{fontWeight:700}}>{ev.title || ev.subject || ''}{ev.room ? <span style={{marginLeft:8,fontSize:13,color:'#6b7280'}}>{ev.room}</span> : null}</div>
+                      <div style={{fontWeight:700}}>
+                        {ev.type === 'schedule' && lessonIcon(ev.lesson_type)} {ev.title || ev.subject || ''}
+                        {ev.room ? <span style={{marginLeft:8,fontSize:13,color:'#6b7280'}}>{ev.room}</span> : null}
+                      </div>
                     </div>
                     <div style={{fontSize:12,color:'#6b7280'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
@@ -404,36 +362,7 @@ export default function Calendar() {
             </div>
           </div>
         )}
-      <div style={{marginTop:12}}>
-        {adminToken ? (
-          <div style={{display:'flex',gap:8,alignItems:'center'}}>
-            <label className="btn">Импорт PDF<input type="file" accept=".pdf" style={{display:'none'}} onChange={e => handleFile(e.target.files[0])} /></label>
-            {importing && <span>Парсинг...</span>}
-            {preview.length > 0 && <button className="btn" onClick={importSelected}>Импортировать выбранные ({selected.size})</button>}
-          </div>
-        ) : (
-          <div style={{color:'#6b7280',fontSize:13}}>Войдите как староста, чтобы импортировать PDF</div>
-        )}
-      </div>
-
-      {preview.length > 0 && (
-        <div style={{marginTop:12}} className="card">
-          <h4>Предпросмотр парсинга ({preview.length})</h4>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:8}}>
-            {preview.map((p, idx) => (
-              <div key={idx} style={{border:'1px solid #eef2ff',padding:8,borderRadius:8}}>
-                <div style={{display:'flex',justifyContent:'space-between'}}>
-                  <div style={{fontSize:12,color:'#6b7280'}}>Стр. {p.page} • {p.type || '—'}</div>
-                  <input type="checkbox" checked={selected.has(idx)} onChange={() => toggleSelect(idx)} />
-                </div>
-                <div style={{fontWeight:700,marginTop:6}}>{p.raw.split('\n')[0]}</div>
-                <div style={{fontSize:13,marginTop:6,color:'#374151'}}>{p.raw}</div>
-                <div style={{fontSize:12,color:'#6b7280',marginTop:6}}>Дата: {p.date || '—'} Время: {p.start || '—'}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* PDF import UI removed */}
       {/* Add event modal (shown when editing and a date selected) */}
       {addDate && (
         <AddEventModal date={addDate} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />

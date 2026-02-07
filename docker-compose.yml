@@ -53,17 +53,7 @@ services:
     networks:
       - appnet
 
-  parser:
-    build: ./parser
-    env_file: .env
-    ports:
-      - "8090:8090"
-    volumes:
-      - ./parser:/app
-      - ./parser/icons:/app/icons
-      - ./parser/uploads:/tmp/parser_uploads
-    networks:
-      - appnet
+  # parser service removed
 
   frontend:
     build:

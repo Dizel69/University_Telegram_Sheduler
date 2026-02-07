@@ -16,6 +16,7 @@ export default function EventForm({ onCreated }) {
   const [reminder, setReminder] = useState(24)
   const [status, setStatus] = useState('')
   const [saveOnly, setSaveOnly] = useState(false)
+  const [lessonType, setLessonType] = useState('lecture')
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -55,6 +56,7 @@ export default function EventForm({ onCreated }) {
         if (endTime) payload.end_time = endTime
         if (room) payload.room = room
         if (teacher) payload.teacher = teacher
+        if (type === 'schedule') payload.lesson_type = lessonType
 
         let res
         if (saveOnly) {
@@ -76,6 +78,7 @@ export default function EventForm({ onCreated }) {
         setRepeat('none')
         setRepeatUntil('')
         setReminder(24)
+        setLessonType('lecture')
         // Для schedule не переходить на вкладку События
         if (onCreated && type !== 'schedule') onCreated(res.data)
         return
@@ -101,6 +104,7 @@ export default function EventForm({ onCreated }) {
       const created = []
       for (const d of occurrences) {
         const payload = { type, title: title || null, body: message || '', date: d, time: (type === 'homework' ? null : (time || null)), end_time: (type === 'homework' ? null : (endTime || null)), room: room || null, teacher: teacher || null, series_id: seriesId, reminder_offset_hours: 24 }
+        if (type === 'schedule') payload.lesson_type = lessonType
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
         created.push(res.data)
@@ -117,6 +121,7 @@ export default function EventForm({ onCreated }) {
       setRepeat('none')
       setRepeatUntil('')
       setReminder(24)
+      setLessonType('lecture')
       // Для schedule не переходить на вкладку События
       if (onCreated && created.length && type !== 'schedule') onCreated(created[0])
 
@@ -160,6 +165,42 @@ export default function EventForm({ onCreated }) {
           <label className="label">Преподаватель</label>
           <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
         </div>
+
+        {type === 'schedule' && (
+          <div>
+            <label className="label">Тип пары</label>
+            <div style={{display:'flex', gap:12, alignItems:'center'}}>
+              <button 
+                type="button"
+                onClick={() => setLessonType('lecture')}
+                style={{
+                  padding:'8px 16px',
+                  border: lessonType === 'lecture' ? '2px solid #2563eb' : '1px solid #ddd',
+                  borderRadius:'4px',
+                  backgroundColor: lessonType === 'lecture' ? '#dbeafe' : '#fff',
+                  cursor:'pointer',
+                  fontWeight: lessonType === 'lecture' ? 'bold' : 'normal'
+                }}
+              >
+                🔊 Лекция
+              </button>
+              <button 
+                type="button"
+                onClick={() => setLessonType('practice')}
+                style={{
+                  padding:'8px 16px',
+                  border: lessonType === 'practice' ? '2px solid #2563eb' : '1px solid #ddd',
+                  borderRadius:'4px',
+                  backgroundColor: lessonType === 'practice' ? '#dbeafe' : '#fff',
+                  cursor:'pointer',
+                  fontWeight: lessonType === 'practice' ? 'bold' : 'normal'
+                }}
+              >
+                📓 Практика
+              </button>
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="label">Дата</label>

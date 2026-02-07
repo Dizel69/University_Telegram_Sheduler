@@ -10,6 +10,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
   const [endTime, setEndTime] = useState(ev.end_time ? ev.end_time.slice(0,5) : '')
   const [room, setRoom] = useState(ev.room || '')
   const [teacher, setTeacher] = useState(ev.teacher || '')
+  const [lessonType, setLessonType] = useState(ev.lesson_type || 'lecture')
   const [applySeries, setApplySeries] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -30,6 +31,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
       }
       payload.room = room || null
       payload.teacher = teacher || null
+      if (type === 'schedule') payload.lesson_type = lessonType
 
       const q = applySeries ? '?apply_to_series=true' : ''
       const res = await axios.put(`/events/${ev.id}${q}`, payload)
@@ -77,6 +79,15 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
               <label className="label">Преподаватель</label>
               <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
             </div>
+            {type === 'schedule' && (
+              <div>
+                <label className="label">Тип пары</label>
+                <select value={lessonType} onChange={e => setLessonType(e.target.value)}>
+                  <option value="lecture">🔊 Лекция</option>
+                  <option value="practice">📓 Практика</option>
+                </select>
+              </div>
+            )}
             {type !== 'homework' && (
               <>
                 <div>

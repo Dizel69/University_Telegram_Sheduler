@@ -22,6 +22,8 @@ class Event(SQLModel, table=True):
     teacher: Optional[str] = Field(default=None)
     # optional series id for repeating events (shared across repeated occurrences)
     series_id: Optional[str] = Field(default=None)
+    # lesson type for schedule events: 'lecture' or 'practice'
+    lesson_type: Optional[str] = Field(default=None)
 
     chat_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     topic_thread_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))

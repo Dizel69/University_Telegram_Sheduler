@@ -273,6 +273,7 @@ def public_events():
             'room': getattr(ev, 'room', None),
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
+            'lesson_type': getattr(ev, 'lesson_type', None),
             'chat_id': ev.chat_id,
             'topic_thread_id': ev.topic_thread_id,
             'sent_message_id': getattr(ev, 'sent_message_id', None),
@@ -392,6 +393,7 @@ def calendar_view(start: str | None = None, end: str | None = None):
             'room': getattr(ev, 'room', None),
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
+            'lesson_type': getattr(ev, 'lesson_type', None),
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id
         }
@@ -407,66 +409,7 @@ def mark_reminder(event_id: int):
         raise HTTPException(status_code=404, detail="event not found")
     return {"ok": True}
 
-# Вспомогательная схема для импорта (локальная, можно держать прямо здесь)
-class ParsedItem(BaseModel):
-    page: int | None = None
-    raw: str
-    type: str | None = None
-    start: str | None = None   # "HH:MM"
-    end: str | None = None
-    date: str | None = None    # "DD.MM.YYYY" или "DD-MM-YYYY"
-    images: list | None = None
-
-@app.post("/events/import")
-def import_events(items: List[ParsedItem], admin_ok: bool = Depends(require_admin)):
-    """
-    Импортировать распарсенные элементы (из parser) в базу.
-    По умолчанию сохраняет source='dekanat' и НЕ отправляет сообщения ботом.
-    Возвращает список созданных id.
-    """
-    created_ids = []
-    from .crud import add_event  # локальный импорт чтобы избежать циклов
-
-    for it in items:
-        # Преобразуем строковую дату в ISO date (попытка поддержать DD.MM.YYYY)
-        ev_date = None
-        try:
-            if it.date:
-                # пробуем несколько форматов
-                for fmt in ("%d.%m.%Y", "%d-%m-%Y", "%d.%m.%y", "%d-%m-%y"):
-                    try:
-                        ev_date = datetime.strptime(it.date, fmt).date()
-                        break
-                    except Exception:
-                        continue
-        except Exception:
-            ev_date = None
-
-        body_text = it.raw
-        title = None
-        # Попробуем выделить краткий заголовок — первые 60 символов или до точки
-        if it.raw:
-            title = it.raw.split('\n')[0][:60]
-
-        # Собираем Event (sqlmodel) объект
-        from .models import Event
-        ev = Event(
-            type = it.type or "schedule",
-            subject = None,
-            title = title,
-            body = body_text,
-            date = ev_date,
-            time = None,
-            chat_id = None,  # не указываем — будут использовать default или ручное назначение в админке
-            topic_thread_id = None,
-            reminder_offset_hours = 24,
-            reminder_sent = False,
-            source = "dekanat"
-        )
-        created = add_event(ev)
-        created_ids.append(created.id)
-
-    return {"created": created_ids, "count": len(created_ids)}
+# PDF import endpoint removed — parser/imports unsupported
 
 
 @app.post("/events")

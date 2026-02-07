@@ -44,13 +44,16 @@ textarea{min-height:120px}
 .day{min-height:120px;background:#fff;border-radius:8px;padding:6px;border:1px solid #eef2ff;display:flex;flex-direction:column;justify-content:flex-start;overflow:auto}
 .day.empty{background:transparent;border:none}
 .date-num{font-weight:700;margin-bottom:6px}
-.cal-ev{background:linear-gradient(90deg,#f8fafc,#ffffff);padding:6px;border-radius:6px;margin-bottom:4px;font-size:13px;display:flex;align-items:center;gap:6px;overflow:visible;word-break:break-word}
+.cal-ev{background:linear-gradient(90deg,#f8fafc,#ffffff);padding:6px;border-radius:6px;margin-bottom:4px;font-size:13px;display:flex;flex-direction:column;align-items:stretch;gap:6px;overflow:visible;word-break:break-word}
 .cal-ev > div { overflow:visible; text-overflow:unset; white-space:normal }
 
-/* Override inline styles from Calendar.jsx mini-card to allow wrapping */
-.day .cal-ev { padding:6px !important; margin-top:4px !important; display:flex !important; gap:6px !important; align-items:center !important }
+.day .cal-ev { padding:6px !important; margin-top:4px !important; display:flex !important; flex-direction:column !important; gap:6px !important; align-items:stretch !important }
 .day .cal-ev > div { white-space:normal !important; overflow:visible !important; text-overflow:unset !important }
 .day .cal-ev > div:nth-child(2) { flex:1 !important }
+
+/* highlight today's cell */
+.day.today{box-shadow:0 8px 24px rgba(59,130,246,0.06);border-color:rgba(59,130,246,0.12)}
+.day.today .date-num{color:white;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-weight:700;margin-bottom:6px}
 .cal-ev-type{font-size:11px;color:var(--muted)}
 .cal-ev-title{font-weight:600}
 
