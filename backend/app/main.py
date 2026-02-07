@@ -378,7 +378,7 @@ def calendar_view(start: str | None = None, end: str | None = None):
             'body': ev.body,
             'date': ev.date.isoformat() if ev.date else None,
             'time': ev.time.isoformat() if ev.time else None,
-            'end_time': getattr(ev, 'end_time', None),
+            'end_time': ev.end_time.isoformat() if getattr(ev, 'end_time', None) else None,
             'room': getattr(ev, 'room', None),
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
