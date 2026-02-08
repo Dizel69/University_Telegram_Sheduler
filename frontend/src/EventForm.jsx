@@ -156,15 +156,19 @@ export default function EventForm({ onCreated }) {
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Краткий заголовок (опционально)" />
         </div>
 
-        <div>
-          <label className="label">Аудитория</label>
-          <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Например: М101" />
-        </div>
+        {type !== 'homework' && (
+          <div>
+            <label className="label">Аудитория</label>
+            <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Например: М101" />
+          </div>
+        )}
 
-        <div>
-          <label className="label">Преподаватель</label>
-          <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
-        </div>
+        {type !== 'homework' && (
+          <div>
+            <label className="label">Преподаватель</label>
+            <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
+          </div>
+        )}
 
         {type === 'schedule' && (
           <div>
@@ -221,20 +225,24 @@ export default function EventForm({ onCreated }) {
           </>
         )}
 
-        <div>
-          <label className="label">Повтор</label>
-          <select value={repeat} onChange={e => setRepeat(e.target.value)}>
-            <option value="none">Не повторять</option>
-            <option value="daily">Каждый день</option>
-            <option value="weekly">Каждую неделю</option>
-            <option value="biweekly">Каждые 2 недели</option>
-          </select>
-        </div>
+        {type !== 'homework' && (
+          <div>
+            <label className="label">Повтор</label>
+            <select value={repeat} onChange={e => setRepeat(e.target.value)}>
+              <option value="none">Не повторять</option>
+              <option value="daily">Каждый день</option>
+              <option value="weekly">Каждую неделю</option>
+              <option value="biweekly">Каждые 2 недели</option>
+            </select>
+          </div>
+        )}
 
-        <div>
-          <label className="label">Повтор до</label>
-          <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
-        </div>
+        {type !== 'homework' && (
+          <div>
+            <label className="label">Повтор до</label>
+            <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
+          </div>
+        )}
 
         <div>
           <label className="label">Напоминание (ч)</label>
