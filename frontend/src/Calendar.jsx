@@ -542,7 +542,9 @@ export default function Calendar() {
           <div style={{marginTop:8}}>
             <div style={{display:'flex',gap:8,marginBottom:8}}>
               <button className={tab==='main' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('main')}>Основное</button>
-              <button className={tab==='teacher' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('teacher')}>Преподаватель</button>
+              {type !== 'homework' && (
+                <button className={tab==='teacher' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('teacher')}>Преподаватель</button>
+              )}
             </div>
             {tab === 'main' && (
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -578,26 +580,24 @@ export default function Calendar() {
                 )}
                 {type !== 'homework' && (
                   <div>
-                    <label className="label">Время окончания</label>
-                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                    <label className="label">Повтор</label>
+                    <select value={repeat} onChange={e => setRepeat(e.target.value)}>
+                      <option value="none">Не повторять</option>
+                      <option value="daily">Каждый день</option>
+                      <option value="weekly">Каждую неделю</option>
+                      <option value="biweekly">Каждые 2 недели</option>
+                    </select>
                   </div>
                 )}
-                <div>
-                  <label className="label">Повтор</label>
-                  <select value={repeat} onChange={e => setRepeat(e.target.value)}>
-                    <option value="none">Не повторять</option>
-                    <option value="daily">Каждый день</option>
-                    <option value="weekly">Каждую неделю</option>
-                    <option value="biweekly">Каждые 2 недели</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Повтор до</label>
-                  <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
-                </div>
+                {type !== 'homework' && (
+                  <div>
+                    <label className="label">Повтор до</label>
+                    <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
+                  </div>
+                )}
               </div>
             )}
-            {tab === 'teacher' && (
+            {tab === 'teacher' && type !== 'homework' && (
               <div style={{marginTop:8}}>
                 <label className="label">Преподаватель</label>
                 <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
