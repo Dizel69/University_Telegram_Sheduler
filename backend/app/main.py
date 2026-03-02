@@ -366,10 +366,10 @@ def events_due_reminders():
 
 
 @app.get('/calendar')
-def calendar_view(start: str | None = None, end: str | None = None):
+def calendar_view(start: str | None = None, end: str | None = None, type: str | None = None):
     """
-    Return public events optionally filtered by ISO date range (YYYY-MM-DD).
-    Used by public calendar UI.
+    Return public events optionally filtered by date range (YYYY-MM-DD) and/or
+    canonical `type` (e.g. `homework`). Used by public calendar UI.
     """
     from .crud import get_public_events
     all_ev = get_public_events(limit=1000)
@@ -380,10 +380,16 @@ def calendar_view(start: str | None = None, end: str | None = None):
             return False
         return True
 
-    filtered = [
-        {
+    filtered = []
+    for ev in all_ev:
+        if not in_range(ev):
+            continue
+        can = _canonical_type(ev.type)
+        if type and can != type:
+            continue
+        filtered.append({
             'id': ev.id,
-            'type': _canonical_type(ev.type),
+            'type': can,
             'subject': ev.subject,
             'title': ev.title,
             'body': ev.body,
@@ -396,9 +402,7 @@ def calendar_view(start: str | None = None, end: str | None = None):
             'lesson_type': getattr(ev, 'lesson_type', None),
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id
-        }
-        for ev in all_ev if in_range(ev)
-    ]
+        })
     return filtered
 
 

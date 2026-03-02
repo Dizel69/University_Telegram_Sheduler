@@ -17,6 +17,7 @@ export default function EventForm({ onCreated }) {
   const [status, setStatus] = useState('')
   const [saveOnly, setSaveOnly] = useState(false)
   const [lessonType, setLessonType] = useState('lecture')
+  const semester = localStorage.getItem('semester') || ''
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -167,6 +168,18 @@ export default function EventForm({ onCreated }) {
           <div>
             <label className="label">Преподаватель</label>
             <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
+          </div>
+        )}
+
+        {/* show semester control when creating homework */}
+        {type === 'homework' && (
+          <div style={{gridColumn:'1/-1', textAlign:'right', fontSize:12, opacity:0.6}}>
+            {semester ? (
+              <>Семестр: <b>{semester}</b>{' '}</>
+            ) : (
+              <>Семестр не настроен.{' '}</>
+            )}
+            <a href="#semester" style={{fontSize:12}}>{semester ? 'изменить' : 'настроить'}</a>
           </div>
         )}
 

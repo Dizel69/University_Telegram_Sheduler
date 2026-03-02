@@ -4,6 +4,8 @@ import EventForm from './EventForm'
 import EventsList from './EventsList'
 import Calendar from './Calendar'
 import Login from './Login'
+import Semester from './Semester'
+import HomeworkList from './HomeworkList'
 
 export default function App() {
   // Default to calendar for anonymous users. When admin logs in they can switch tabs.
@@ -51,6 +53,33 @@ export default function App() {
     )
   }
 
+  // state for optional hidden semester settings (accessible via hash)
+  const [currentSemester, setCurrentSemester] = useState(localStorage.getItem('semester') || '')
+
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key === 'semester') setCurrentSemester(e.newValue || '')
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  // remove visible indicator to keep semest setting stealthy
+
+  // handle hidden semester navigation through URL hash
+  useEffect(() => {
+    const h = window.location.hash.replace(/^#/, '')
+    if (h === 'semester') setTab('semester')
+  }, [])
+  useEffect(() => {
+    // keep hash in sync for bookmarking
+    if (tab === 'semester') {
+      window.location.hash = 'semester'
+    } else if (window.location.hash === '#semester') {
+      window.location.hash = ''
+    }
+  }, [tab])
+
   return (
     <div className="container">
       <header className="topbar">
@@ -64,6 +93,7 @@ export default function App() {
             </>
           ) : null }
           <button className={tab==='calendar'? 'tab active':'tab'} onClick={() => setTab('calendar')}>Календарь</button>
+          <button className={tab==='homework'? 'tab active':'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
         </nav>
         <div style={{marginLeft:12, display:'flex', alignItems:'center', gap:8}}>
           {/* Prominent auth helper button (single control) */}
@@ -75,6 +105,8 @@ export default function App() {
         {tab === 'create' && <EventForm onCreated={d => { setLastCreated(d); setTab('list') }} />}
         {tab === 'list' && <EventsList highlightId={lastCreated?.id} />}
         {tab === 'calendar' && <Calendar />}
+        {tab === 'homework' && <HomeworkList />}
+        {tab === 'semester' && <Semester /> /* still reachable via hash or manual setTab */}
       </main>
       {/* Mount Login modal handler (modal will only render when triggered) */}
       <Login />
