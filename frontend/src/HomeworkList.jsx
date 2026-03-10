@@ -75,14 +75,14 @@ export default function HomeworkList() {
         <div key={date} className="homework-day">
           <hr className="homework-divider" />
           <div className="homework-date">{formatDate(date)}</div>
-          <ul className="homework-list">
+          <div className="homework-list">
             {events[date].map(ev => (
-              <li key={ev.id} className="homework-item">
-                <strong>{ev.title || ev.subject || '<без названия>'}</strong>
-                {ev.body && `: ${ev.body}`}
-              </li>
+              <div key={ev.id} className="homework-item-card">
+                <div className="homework-subject">{ev.title || ev.subject || '<без названия>'}</div>
+                <div className="homework-body">{ev.body}</div>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       ))}
     </div>

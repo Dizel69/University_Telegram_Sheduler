@@ -43,6 +43,7 @@ export default function Calendar() {
   const [transferEvent, setTransferEvent] = useState(null)
   const [editEvent, setEditEvent] = useState(null)
   const [adminToken, setAdminToken] = useState(localStorage.getItem('admin_token'))
+  const [showHomework, setShowHomework] = useState(true)
 
   useEffect(() => { load() }, [year, month])
 
@@ -197,6 +198,12 @@ export default function Calendar() {
               alert('Неверный admin token')
             }
           }}>{adminToken ? 'Выйти' : 'Войти'}</button>
+          <label className="homework-toggle">
+            <input type="checkbox" checked={showHomework} onChange={() => setShowHomework(!showHomework)} />
+            <span className="toggle-slider"></span>
+            <span className="toggle-emoji">{showHomework ? '📓' : '❌'}</span>
+            <span className="toggle-label">{showHomework ? 'Выключить отображение Д/З' : 'Включить отображение Д/З'}</span>
+          </label>
           {editing && adminToken ? (
             <button className="btn btn-danger" onClick={deleteEventsForMonth}>Удалить все события за месяц</button>
           ) : null}
@@ -247,7 +254,7 @@ export default function Calendar() {
         {days.map((dt, idx) => {
           if (!dt) return <div key={idx} className="day empty"></div>
           const ds = dt.toISOString().slice(0,10)
-          const evs = events[ds] || []
+          const evs = (events[ds] || []).filter(ev => showHomework || ev.type !== 'homework')
           const todayIso = new Date().toISOString().slice(0,10)
           return (
             <div key={idx} className={"day" + (ds === todayIso ? ' today' : '')} onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
@@ -298,7 +305,7 @@ export default function Calendar() {
             </div>
             <div style={{marginTop:8}}>
               {(events[openDay] || []).length === 0 && <div>Событий нет.</div>}
-              {(events[openDay] || []).map(ev => (
+              {(events[openDay] || []).filter(ev => showHomework || ev.type !== 'homework').map(ev => (
                 <div key={ev.id} style={{padding:8,borderBottom:'1px solid #eef2ff'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -348,7 +355,7 @@ export default function Calendar() {
           <div className="card" style={{marginTop:12}}>
             <h4>События без даты ({undated.length})</h4>
             <div style={{display:'grid',gap:8}}>
-              {undated.map(ev => (
+              {undated.filter(ev => showHomework || ev.type !== 'homework').map(ev => (
                 <div key={ev.id} style={{padding:8,border:'1px solid #eef2ff',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700}}>{ev.title || ev.subject || ev.type}</div>

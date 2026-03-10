@@ -76,11 +76,66 @@ textarea{min-height:120px}
   text-align: center;
   font-weight: bold;
   margin-bottom: 10px;
+  font-size: 1.2em;
+  text-transform: capitalize;
 }
 .homework-list {
   list-style: none;
   padding: 0;
 }
-.homework-item {
-  margin-bottom: 8px;
+.homework-item-card {
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.homework-subject {
+  text-align: center;
+  color: #7c3aed;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+.homework-body {
+  /* обычный текст */
+}
+
+/* homework toggle */
+.homework-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.homework-toggle input[type="checkbox"] {
+  display: none;
+}
+.toggle-slider {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  background-color: #a78bfa;
+  border-radius: 20px;
+  transition: background-color 0.3s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+.homework-toggle input[type="checkbox"]:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+.toggle-emoji {
+  font-size: 16px;
+}
+.toggle-label {
+  font-size: 14px;
+  color: var(--muted);
 }
