@@ -6,8 +6,23 @@ function backendBase() {
   return `http://${host}:8000`
 }
 
+function formatDate(dateStr) {
+  if (!dateStr || dateStr === 'Без даты') return dateStr
+  const date = new Date(dateStr)
+  const options = { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' }
+  const formatted = date.toLocaleDateString('ru-RU', options)
+  // "1 апреля 2026 г., среда" -> "1 апреля 2026, Среда"
+  const parts = formatted.split(', ')
+  if (parts.length === 2) {
+    const datePart = parts[0].replace(' г.', '')
+    const weekdayPart = parts[1].charAt(0).toUpperCase() + parts[1].slice(1)
+    return `${datePart}, ${weekdayPart}`
+  }
+  return formatted
+}
+
 export default function HomeworkList() {
-  const [events, setEvents] = useState([])
+  const [events, setEvents] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -31,7 +46,14 @@ export default function HomeworkList() {
         if (!b.date) return -1
         return a.date.localeCompare(b.date)
       })
-      setEvents(hw)
+      // Group by date
+      const grouped = {}
+      for (const ev of hw) {
+        const date = ev.date || 'Без даты'
+        if (!grouped[date]) grouped[date] = []
+        grouped[date].push(ev)
+      }
+      setEvents(grouped)
     } catch (e) {
       console.error(e)
       setError(e.response?.data?.detail || e.message || String(e))
@@ -45,15 +67,24 @@ export default function HomeworkList() {
       <h2>Домашние задания</h2>
       {loading && <div>Загрузка...</div>}
       {error && <div className="error">Ошибка: {error}</div>}
-      <ul>
-        {events.map(ev => (
-          <li key={ev.id}>
-            {ev.date && <span>{ev.date} — </span>}
-            {ev.title || ev.subject || '<без названия>'}
-            {ev.body && `: ${ev.body}`}
-          </li>
-        ))}
-      </ul>
+      {Object.keys(events).sort((a,b) => {
+        if (a === 'Без даты') return 1
+        if (b === 'Без даты') return -1
+        return a.localeCompare(b)
+      }).map(date => (
+        <div key={date} className="homework-day">
+          <hr className="homework-divider" />
+          <div className="homework-date">{formatDate(date)}</div>
+          <ul className="homework-list">
+            {events[date].map(ev => (
+              <li key={ev.id} className="homework-item">
+                <strong>{ev.title || ev.subject || '<без названия>'}</strong>
+                {ev.body && `: ${ev.body}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   )
 }

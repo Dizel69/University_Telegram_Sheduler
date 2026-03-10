@@ -64,3 +64,23 @@ textarea{min-height:120px}
 
 /* responsive tweaks */
 @media(max-width:640px){.container{padding:12px}.form-grid{grid-template-columns:1fr}}
+
+/* homework list styles */
+.homework-divider {
+  border: none;
+  height: 2px;
+  background-color: #a78bfa;
+  margin: 20px 0;
+}
+.homework-date {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.homework-list {
+  list-style: none;
+  padding: 0;
+}
+.homework-item {
+  margin-bottom: 8px;
+}
