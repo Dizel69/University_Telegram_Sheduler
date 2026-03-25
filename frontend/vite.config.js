@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Proxy /api to the backend service inside docker-compose network
+// Прокси /api к backend-сервису внутри docker-compose сети
 export default defineConfig({
   plugins: [react()],
   server: {

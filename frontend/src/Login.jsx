@@ -33,7 +33,7 @@ export default function Login() {
 
   function submit() {
     if (!token) return alert('Введите токен')
-    // saved by effect
+    // сохраняется эффектом
     setShow(false)
   }
 
@@ -50,13 +50,13 @@ export default function Login() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>Вход администратора</h3>
             <div style={{marginTop:8}}>
-              <input placeholder="Admin token" value={token} onChange={e => setToken(e.target.value)} style={{width:'100%'}} />
+              <input placeholder="Токен администратора" value={token} onChange={e => setToken(e.target.value)} style={{width:'100%'}} />
             </div>
             <div className="modal-actions" style={{marginTop:12}}>
               <button className="btn" onClick={submit}>Войти</button>
               <button className="btn" onClick={() => setShow(false)}>Отмена</button>
             </div>
-            <div style={{marginTop:8,fontSize:12,color:'#6b7280'}}>Токен хранится локально в браузере.</div>
+            <div style={{marginTop:8,fontSize:12,color:'#6b7280'}}Нокеп хранится локально в браузере.</div>
           </div>
         </div>
       )}

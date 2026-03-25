@@ -8,11 +8,11 @@ import Semester from './Semester'
 import HomeworkList from './HomeworkList'
 
 export default function App() {
-  // Default to calendar for anonymous users. When admin logs in they can switch tabs.
+  // По умолчанию показываем календарь анонимным пользователям. Когда админ входит, может переключать вкладки.
   const [tab, setTab] = useState('calendar')
   const [lastCreated, setLastCreated] = useState(null)
 
-  // Auth helper component: visible button that prompts for admin token
+  // Компонент кнопки авторизации: видимая кнопка, которая просит токен администратора
   function AuthButton() {
     const [isAdmin, setIsAdmin] = useState(!!localStorage.getItem('admin_token'))
 
@@ -25,12 +25,12 @@ export default function App() {
     }, [])
 
     function doPromptLogin() {
-      const t = window.prompt('Введите admin token:')
+      const t = window.prompt('Введите admin токен:')
       if (!t) return
       localStorage.setItem('admin_token', t)
       axios.defaults.headers.common['x-admin-token'] = t
       setIsAdmin(true)
-      // notify other components
+      // Уведомляем другие компоненты
       window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: t }))
     }
 
@@ -43,7 +43,7 @@ export default function App() {
 
     if (isAdmin) return (
       <div style={{display:'flex',alignItems:'center',gap:8}}>
-        <span style={{fontSize:12,opacity:0.8}}>Admin</span>
+        <span style={{fontSize:12,opacity:0.8}}>Администратор</span>
         <button className="btn" onClick={doLogout}>Выйти</button>
       </div>
     )
@@ -53,7 +53,7 @@ export default function App() {
     )
   }
 
-  // state for optional hidden semester settings (accessible via hash)
+  // состояние для скрытых параметров семестра (доступно через хеш)
   const [currentSemester, setCurrentSemester] = useState(localStorage.getItem('semester') || '')
 
   useEffect(() => {
@@ -64,15 +64,15 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
-  // remove visible indicator to keep semest setting stealthy
+  // скрытый индикатор для скрытности параметра семестра
 
-  // handle hidden semester navigation through URL hash
+  // обработка скрытой навигации по семестру через URL хеш
   useEffect(() => {
     const h = window.location.hash.replace(/^#/, '')
     if (h === 'semester') setTab('semester')
   }, [])
   useEffect(() => {
-    // keep hash in sync for bookmarking
+    // синхронизируем хеш для закладок
     if (tab === 'semester') {
       window.location.hash = 'semester'
     } else if (window.location.hash === '#semester') {
@@ -83,9 +83,9 @@ export default function App() {
   return (
     <div className="container">
       <header className="topbar">
-        <h1>University Scheduler — Admin</h1>
+        <h1>Планировщик Университета — Администратор</h1>
         <nav>
-          {/* Show admin tabs only when logged in */}
+          {/* Показываем админ вкладки только если вошли */}
           { !!localStorage.getItem('admin_token') ? (
             <>
               <button className={tab==='create'? 'tab active':'tab'} onClick={() => setTab('create')}>Создать</button>
@@ -96,7 +96,7 @@ export default function App() {
           <button className={tab==='homework'? 'tab active':'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
         </nav>
         <div style={{marginLeft:12, display:'flex', alignItems:'center', gap:8}}>
-          {/* Prominent auth helper button (single control) */}
+          {/* Видимая кнопка авторизации (единственный элемент управления) */}
           <AuthButton />
         </div>
       </header>

@@ -2,12 +2,12 @@ FROM node:20
 
 WORKDIR /app
 
-# Install dependencies first (uses package-lock if present)
+# Установка зависимостей (использует package-lock, если присутствует)
 COPY package.json package-lock.json* ./
-# use npm install to avoid lockfile mismatch during iterative development builds
+# Использование npm install для избежания неполадок с lockfile при итеративных build
 RUN npm install --no-audit --no-fund
 
-# Copy app sources
+# Копирование исходных файлов приложения
 COPY . .
 
 EXPOSE 5173

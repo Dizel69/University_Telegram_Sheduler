@@ -11,7 +11,8 @@ scheduler = BlockingScheduler()
 
 @scheduler.scheduled_job('interval', seconds=POLL_INTERVAL)
 def check_and_send():
-    print(datetime.utcnow().isoformat(), "Worker: checking reminders")
+    """Проверяет и отправляет напоминания о предстоящих событиях."""
+    print(datetime.utcnow().isoformat(), "Worker: проверка напоминаний")
     try:
         with httpx.Client() as client:
             r = client.get(f"{BACKEND_URL}/events/due_reminders", timeout=10.0)
@@ -19,12 +20,12 @@ def check_and_send():
             events = r.json()
             for ev in events:
                 date = ev.get("date")
-                # trim title so whitespace-only titles are treated as empty
+                # Обрезаем заголовок (пробелы считаются пустыми)
                 title = (ev.get("title") or "").strip()
                 body = ev.get("body") or ""
                 room = ev.get("room") or None
                 teacher = ev.get("teacher") or None
-                # compose message: include title, room and teacher if present, include body if present
+                # Составляем текст сообщения: включаем заголовок, аудиторию, преподавателя если есть, текст если есть
                 text = f"⏰ Напоминание: завтра ({date})"
                 if title:
                     text += f" — {title}"
@@ -34,7 +35,7 @@ def check_and_send():
                     if room:
                         text += f" — Аудитория {room}"
                 if teacher:
-                    # show teacher on a separate line for clarity
+                    # Показываем преподавателя на отдельной строке
                     text += f"\nПреподаватель: {teacher}"
                 if body:
                     text += f"\n{body}"
@@ -46,12 +47,12 @@ def check_and_send():
                 try:
                     resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
                     resp.raise_for_status()
-                    # Отмечаем как отправленное
+                    # Помечаем как отправленное
                     client.post(f"{BACKEND_URL}/events/{ev.get('id')}/mark_reminder_sent", timeout=5.0)
                 except Exception as e:
                     print("❌ Worker: ошибка отправки напоминания для события", ev.get("id"), e)
     except Exception as e:
-        print("⚠️ Worker check failed:", e)
+        print("⚠️ Проверка Worker не удалась:", e)
 
 if __name__ == '__main__':
     print("✅ Worker запущен, опрашивает каждые", POLL_INTERVAL, "секунд")

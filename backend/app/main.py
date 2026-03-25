@@ -13,20 +13,20 @@ from datetime import datetime, date, time
 from pydantic import BaseModel
 
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
-# Host IP or name for services when deployed (example: 185.28.85.183)
+# IP или имя хоста для сервисов при развёртывании (пример: 185.28.85.183)
 HOST = os.getenv("HOST")
-# FRONTEND_URL can be provided explicitly; if not, and HOST is set, build URL from HOST:PORT
+# FRONTEND_URL может быть задан явно; если нет и HOST установлен, собираем URL из HOST:PORT
 FRONTEND_URL = os.getenv("FRONTEND_URL") or (f"http://{HOST}:3000" if HOST else "http://127.0.0.1:3000")
 DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID", None)
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
-# Optional per-type chat overrides (set these in your .env if you want messages routed
-# to different chats depending on type)
+# Опциональные переопределения чатов по типам событий
+# (установи в .env если хочешь маршрутизировать сообщения в разные чаты)
 CHAT_ID_SCHEDULE = os.getenv("CHAT_ID_SCHEDULE")
 CHAT_ID_HOMEWORK = os.getenv("CHAT_ID_HOMEWORK")
 CHAT_ID_ANNOUNCEMENTS = os.getenv("CHAT_ID_ANNOUNCEMENTS")
 
-# Optional per-type thread/topic overrides (message_thread_id in Telegram)
+# Опциональные переопределения потоков/тем по типам (message_thread_id в Telegram)
 THREAD_ID_SCHEDULE = os.getenv("THREAD_ID_SCHEDULE")
 THREAD_ID_HOMEWORK = os.getenv("THREAD_ID_HOMEWORK")
 THREAD_ID_ANNOUNCEMENTS = os.getenv("THREAD_ID_ANNOUNCEMENTS")
@@ -37,11 +37,11 @@ TYPE_HASHTAG = {
     'announcement': '#Объявление'
 }
 
-app = FastAPI(title="M15 Scheduler Backend")
+app = FastAPI(title="Планировщик университета - Бэкенд")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # в prod замени на список фронтендов
+    allow_origins=["*"],  # В production замени на список разрешённых фронтендов
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,7 +55,8 @@ def startup():
 
 def _resolve_chat_id(ev_obj):
     """
-    Resolve chat_id for an event object: prefer explicit event.chat_id, then per-type env vars, then DEFAULT_CHAT_ID.
+    Определяет chat_id для события: предпочитаем явный event.chat_id,
+    затем переменные среди по типам, затем DEFAULT_CHAT_ID.
     """
     if getattr(ev_obj, "chat_id", None):
         return ev_obj.chat_id
@@ -78,8 +79,8 @@ def _resolve_chat_id(ev_obj):
 
 def _resolve_thread_id(ev_obj):
     """
-    Resolve topic/thread id (message_thread_id) for an event: prefer explicit event.topic_thread_id,
-    then per-type THREAD_ID_* env vars, else None.
+    Определяет тему/поток (message_thread_id) для события:
+    предпочитаем явный event.topic_thread_id, затем переменные среды по типам, иначе None.
     """
     if getattr(ev_obj, "topic_thread_id", None):
         return ev_obj.topic_thread_id
@@ -96,7 +97,9 @@ def _resolve_thread_id(ev_obj):
 
 
 def _canonical_type(t: str) -> str:
-    """Return a canonical English token for known types regardless of incoming language/variants."""
+    """
+    Возвращает каноничный английский токен для известных типов.
+    """
     if not t:
         return t
     n = str(t).lower().strip()
@@ -113,30 +116,30 @@ def _canonical_type(t: str) -> str:
 
 def require_admin(x_admin_token: str | None = Header(None)):
     """
-    Require a valid X-ADMIN-TOKEN header that matches ADMIN_TOKEN from env.
-    If ADMIN_TOKEN is not configured, admin actions are disabled.
+    Требует валидный X-ADMIN-TOKEN в заголовке, соответствующий ADMIN_TOKEN из переменных среды.
+    Если ADMIN_TOKEN не настроен, админ-функции отключены.
     """
     if not ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Admin actions are disabled on this instance")
+        raise HTTPException(status_code=403, detail="Администраторские действия выключены для этого экземпляра")
     if x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid admin token")
+        raise HTTPException(status_code=401, detail="Неверный токен администратора")
     return True
 
 
 @app.get('/admin/validate')
 def admin_validate(admin_ok: bool = Depends(require_admin)):
-    """Lightweight endpoint to validate admin token from the frontend during login."""
+    """Лёгкий эндпоинт для проверки админ-токена при входе с фронтенда."""
     return {"ok": True}
 
 
 @app.post("/events/send", response_model=EventPublic)
 async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
-    Сохранить событие и сразу отправить сообщение через bot-service.
-    Возвращает объект события (с sent_message_id если удачно).
+    Сохраняет событие и сразу отправляет его сообщение через bot-service.
+    Возвращает объект события (с sent_message_id если успешно).
     """
     # NOTE: Authorization temporarily disabled for local development
-    # If you want to re-enable, restore the ADMIN_TOKEN check here.
+    # Не включаем ADMIN_TOKEN проверку тут
 
     # Подготовка модели
     ev = Event(**event_in.dict())
@@ -159,13 +162,13 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
             except:
                 ev.chat_id = None
 
-    # Сохраняем в БД (sent_message_id ещё нет)
+    # Подготовка события в базе данных (sent_message_id ещё не установлен)
     created = add_event(ev)
 
     # Для schedule событий не отправлять уведомления — пометить как отправленные
     if created.type == 'schedule':
         mark_reminder_sent(created.id)
-        # normalize returned type for frontend consistency
+        # Нормализуем возвращаемый тип для согласованности фронтенда
         try:
             created.type = _canonical_type(created.type)
         except Exception:
@@ -193,33 +196,33 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
     target_chat = _resolve_chat_id(created)
     target_thread = _resolve_thread_id(created)
 
-    # Отправляем на bot-service — debug: логируем outgoing payload и ответ
+    # Отправляем на bot-service — логируем исходящий payload и ответ
     payload = {
         "chat_id": target_chat,
         "thread_id": target_thread,
         "text": text
     }
-    print("DEBUG: outgoing to bot-service:", payload)
+    print("DEBUG: исходящий запрос к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
-            # Log response for debugging
+            # Логирование ответа для дотрансляции
             try:
                 resp_text = resp.text
             except Exception:
                 resp_text = '<unable to read response body>'
-            print("DEBUG: bot-service response:", resp.status_code, resp_text)
+            print("DEBUG: ответ bot-service:", resp.status_code, resp_text)
 
             try:
                 data = resp.json()
             except Exception:
                 data = {}
-            print('DEBUG: parsed bot response data:', data)
+            print('DEBUG: разобранные данные ответа:', data)
 
-            # If we didn't get a message_id back, and we attempted to send to a thread, retry without thread_id
+            # Если не получили message_id и пытались отправить в потоке, повторяем без thread_id
             message_id = data.get('message_id')
             if not message_id and target_thread is not None:
-                print('DEBUG: no message_id received; retrying without thread_id')
+                print('DEBUG: не получен message_id; повтор без thread_id')
                 payload2 = {"chat_id": target_chat, "text": text}
                 try:
                     resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=10.0)
@@ -236,15 +239,15 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
                     if message_id:
                         set_sent_message(created.id, int(message_id))
                 except Exception as e:
-                    print('Warning: retry without thread_id failed:', e)
+                    print('Предупреждение: повтор без thread_id не удался:', e)
             else:
                 if message_id:
                     set_sent_message(created.id, int(message_id))
         except Exception as e:
-            # не падаем — запись создана, но отправка не удалась
-            print("Warning: error sending to bot-service:", e)
+            # Не падаем — запись создана, но отправка не удалась
+            print("Предупреждение: ошибка при отправке на bot-service:", e)
 
-    # normalize returned type for frontend consistency
+    # Нормализуем возвращаемый тип для согласованности фронтенда
     try:
         created.type = _canonical_type(created.type)
     except Exception:
@@ -258,7 +261,7 @@ def public_events():
     Публичный список событий (для календаря).
     """
     rows = get_public_events()
-    # normalize types to canonical tokens for frontend consistency
+    # Нормализуем типы в каноничные токены для непрерывности фронтенда
     out = []
     for ev in rows:
         out.append({
@@ -291,7 +294,7 @@ def delete_events_day(date: str, admin_ok: bool = Depends(require_admin)):
     try:
         d = datetime.strptime(date, '%Y-%m-%d').date()
     except Exception:
-        raise HTTPException(status_code=400, detail='invalid date format')
+        raise HTTPException(status_code=400, detail='неверный формат даты')
     cnt = delete_events_by_date(d)
     return {'deleted': cnt}
 
@@ -308,7 +311,7 @@ def delete_events_month(year: int, month: int, admin_ok: bool = Depends(require_
         if m < 1 or m > 12:
             raise ValueError()
     except Exception:
-        raise HTTPException(status_code=400, detail='invalid year/month')
+        raise HTTPException(status_code=400, detail='неверные год/месяц')
     first = date(y, m, 1)
     last_day = _calendar.monthrange(y, m)[1]
     last = date(y, m, last_day)
@@ -325,19 +328,19 @@ def resolve_chat(event_id: int):
     from .crud import get_event_by_id
     ev = get_event_by_id(event_id)
     if not ev:
-        raise HTTPException(status_code=404, detail="event not found")
+        raise HTTPException(status_code=404, detail="событие не найдено")
 
-    # return both resolved chat_id and thread_id for UI convenience
+    # Возвращаем как разрешённый chat_id так и thread_id для удобства UI
     return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": _canonical_type(ev.type)}
 
 
 @app.delete("/events/{event_id}")
 def delete_event_endpoint(event_id: int, admin_ok: bool = Depends(require_admin)):
     from .crud import delete_event
-    # Authorization disabled for local development
+    # Авторизация отключена для локальной разработки
     ok = delete_event(event_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="event not found")
+        raise HTTPException(status_code=404, detail="событие не найдено")
     return {"ok": True}
 
 
@@ -368,8 +371,8 @@ def events_due_reminders():
 @app.get('/calendar')
 def calendar_view(start: str | None = None, end: str | None = None, type: str | None = None):
     """
-    Return public events optionally filtered by date range (YYYY-MM-DD) and/or
-    canonical `type` (e.g. `homework`). Used by public calendar UI.
+    Возвращает публичные события, опционально отфильтрованные по диапазону дат (YYYY-MM-DD) и/или
+    каноническому `type` (например `homework`). Используется UI публичного календаря.
     """
     from .crud import get_public_events
     all_ev = get_public_events(limit=1000)
@@ -410,28 +413,30 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
 def mark_reminder(event_id: int):
     ok = mark_reminder_sent(event_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="event not found")
+        raise HTTPException(status_code=404, detail="событие не найдено")
     return {"ok": True}
 
-# PDF import endpoint removed — parser/imports unsupported
+# На настоящий момент PDF импорт неподдерживается
 
 
 @app.post("/events")
 def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
-    Create an event in the database without sending it via bot.
-    Used by the admin UI to add events manually.
-    For schedule type events, automatically mark reminder_sent=True (no notifications).
+    Новое событие в базе данных без отправки через бот.
+    Нар админа для ручного добавления событий.
+    Для schedule-events автомат.
+    reminder_sent=True (без уведомлений).
     """
-    # Authorization temporarily disabled for local development
+    # Авторизация временно отключена для локальной разработки
     from .models import Event
     from .crud import add_event
 
     ev = Event(**event_in.dict())
-    # mark events created via UI/manual calendar so they are excluded from reminders and Events list
+    # Помечаем события, созданные через нтерфейс/ручной календарь
+    # (чтобы они были исключены из уведомлений и списка событий)
     ev.source = 'manual'
     ev.reminder_sent = True
-    # For schedule events, do not send reminders
+    # Для schedule: не отправлять уведомления
     if ev.type == 'schedule':
         ev.reminder_sent = True
     # Defensive normalization BEFORE saving: look at body/title and adjust type
@@ -456,34 +461,37 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
 
 
 class EventUpdate(BaseModel):
-    date: Optional[str] = None
-    time: Optional[str] = None
-    end_time: Optional[str] = None
-    title: Optional[str] = None
-    body: Optional[str] = None
-    type: Optional[str] = None
-    room: Optional[str] = None
-    teacher: Optional[str] = None
+    """Модель обновления события."""
+    date: Optional[str] = None      # Новая дата
+    time: Optional[str] = None      # Новое время начала
+    end_time: Optional[str] = None  # Новое время окончания
+    title: Optional[str] = None     # Новый заголовок
+    body: Optional[str] = None      # Новые детали
+    type: Optional[str] = None      # Новый тип
+    room: Optional[str] = None      # Новая аудитория
+    teacher: Optional[str] = None   # Новый преподаватель
 
 
 @app.put('/events/{event_id}')
 def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = Depends(require_admin), apply_to_series: bool = False):
-    """Update event fields (used for transferring/moving events).
-    If apply_to_series=True and the event belongs to a series, apply changes to all events in that series."""
+    """
+    Обновляем поля события (используется рля переноса/перемещения событий).
+    Если apply_to_series=True и событие часть серии, применяем изменения к всем событиям в серии.
+    """
     from .crud import update_event, get_event_by_id, update_events_by_series
     ev = get_event_by_id(event_id)
     if not ev:
-        raise HTTPException(status_code=404, detail='event not found')
+        raise HTTPException(status_code=404, detail='событие не найдено')
     fields = {k:v for k,v in update.dict().items() if v is not None}
     if apply_to_series and getattr(ev, 'series_id', None):
         cnt = update_events_by_series(ev.series_id, **fields)
         if cnt == 0:
-            raise HTTPException(status_code=404, detail='no events in series found')
+            raise HTTPException(status_code=404, detail='событий в серии не найдено')
         return {'ok': True, 'updated': cnt}
     else:
         ok = update_event(event_id, **fields)
         if not ok:
-            raise HTTPException(status_code=500, detail='failed to update')
+            raise HTTPException(status_code=500, detail='не удалось обновить')
         return {'ok': True}
 
 @app.post("/events/{event_id}/send_now")
@@ -494,7 +502,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
     from .crud import get_event_by_id, set_sent_message
     ev = get_event_by_id(event_id)
     if not ev:
-        raise HTTPException(status_code=404, detail="event not found")
+        raise HTTPException(status_code=404, detail="событие не найдено")
 
     # Формируем текст (как при создании)
     link = f"{FRONTEND_URL}/calendar/m15/event/{ev.id}"
@@ -514,42 +522,42 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
     # auth for send_now
     # Authorization disabled for local development
 
-    # determine chat_id and thread (prefer event explicit fields, then per-type env, then DEFAULT_CHAT_ID)
+    # Определяем chat_id и thread (предпочитаем явные поля события, затем переменные по типам, затем DEFAULT_CHAT_ID)
     chat_id = _resolve_chat_id(ev)
     thread_id = _resolve_thread_id(ev)
     if not chat_id:
-        raise HTTPException(status_code=400, detail="No chat_id set for this event and DEFAULT_CHAT_ID not configured")
+        raise HTTPException(status_code=400, detail="Не установлен chat_id для этого события и не настроен DEFAULT_CHAT_ID")
 
     # Отправляем в bot-service
     # Отправляем в bot-service — debug outgoing payload and response
     payload = {"chat_id": chat_id, "thread_id": thread_id, "text": text}
-    print("DEBUG: send_now outgoing to bot-service:", payload)
+    print("DEBUG: send_now исходящий к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=15.0)
             try:
                 resp_text = resp.text
             except Exception:
-                resp_text = '<unable to read response body>'
-            print("DEBUG: send_now bot-service response:", resp.status_code, resp_text)
+                resp_text = '<невозможно прочитать тело ответа>'
+            print("DEBUG: send_now ответ bot-service:", resp.status_code, resp_text)
 
             try:
                 data = resp.json()
             except Exception:
                 data = {}
-            print('DEBUG: parsed bot response data (send_now):', data)
+            print('DEBUG: send_now разобранные данные ответа:', data)
 
             message_id = data.get('message_id')
             if not message_id and thread_id is not None:
-                print('DEBUG: send_now no message_id received; retrying without thread_id')
+                print('DEBUG: send_now не получен message_id; повтор без thread_id')
                 payload2 = {"chat_id": chat_id, "text": text}
                 try:
                     resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=15.0)
                     try:
                         resp2_text = resp2.text
                     except Exception:
-                        resp2_text = '<unable to read response body>'
-                    print('DEBUG: send_now bot-service response (retry):', resp2.status_code, resp2_text)
+                        resp2_text = '<невозможно прочитать тело ответа>'
+                    print('DEBUG: send_now ответ bot-service (повтор):', resp2.status_code, resp2_text)
                     try:
                         data2 = resp2.json()
                     except Exception:

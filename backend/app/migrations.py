@@ -34,10 +34,10 @@ def main():
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
-            # ensure table exists
+            # обеспечиваем, что таблица существует
             cur.execute("SELECT to_regclass('public.event')")
             if not cur.fetchone()[0]:
-                print('Table public.event not found — nothing to do')
+                print('Таблица public.event не найдена — ничего не делаем')
                 return
 
             changed = False
@@ -46,9 +46,9 @@ def main():
                     if ensure_bigint(cur, 'event', col):
                         changed = True
                 except Exception as e:
-                    print(f'Error checking/changing {col}:', e)
+                    print(f'Ошибка проверки/изменения {col}:', e)
             if not changed:
-                print('No changes required — all target columns are bigint')
+                print('Изменения не требуются — все целевые столбцы уже bigint')
     finally:
         conn.close()
 

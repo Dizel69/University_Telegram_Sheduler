@@ -11,13 +11,16 @@ LECTURE_WORDS = ['лекц', 'лекция', 'лек']
 SEMINAR_WORDS = ['семинар', 'сем']
 
 def extract_images_from_page(page):
+    """Извлекает изображения со страницы."""
     saved = []
     return saved  # упрощено для начала, потом добавим извлечение
 
 def simple_normalize_text(text: str) -> str:
+    """Нормализует текст (удаляет переносы строк, множественные пробелы)."""
     return ' '.join(text.replace('\r', ' ').split())
 
 def guess_type_from_text(text: str) -> str:
+    """Угадывает тип события по тексту (лекция, семинар, практика)."""
     low = text.lower()
     for w in LECTURE_WORDS:
         if w in low:
@@ -30,12 +33,14 @@ def guess_type_from_text(text: str) -> str:
     return "unknown"
 
 def extract_times(text: str):
+    """Извлекает время начала и окончания из текста."""
     m = TIME_RE.search(text)
     if m:
         return m.group(1).replace('.', ':'), m.group(2).replace('.', ':')
     return None, None
 
 def extract_date(text: str):
+    """Извлекает дату из текста."""
     m = DATE_RE.search(text)
     if m:
         return m.group(1)

@@ -10,9 +10,9 @@ import tempfile
 import uuid
 import shutil
 
-app = FastAPI(title="M15 PDF Parser")
+app = FastAPI(title="Парсер PDF М15")
 
-# Allow CORS from local dev frontend (and others) so browser uploads work
+# Разрешаем CORS с фронтенда локальной разработки (и других) для загрузки из браузера
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,8 +26,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.post("/upload_pdf")
 async def upload_pdf(file: UploadFile = File(...)):
+    """Загружает и парсит PDF файл, возвращает предпросмотр событий."""
     if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF allowed")
+        raise HTTPException(status_code=400, detail="Допускаются только PDF файлы")
 
     tmp_name = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}.pdf")
     with open(tmp_name, "wb") as f:
@@ -60,6 +61,6 @@ async def upload_pdf(file: UploadFile = File(...)):
                         "images": images
                     })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"error parsing pdf: {e}")
+        raise HTTPException(status_code=500, detail=f"ошибка при парсинге pdf: {e}")
 
     return JSONResponse({"preview": previews, "icons_dir": ICON_DIR})

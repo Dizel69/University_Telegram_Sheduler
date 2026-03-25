@@ -55,7 +55,7 @@ def get_due_reminders(now: datetime | None = None) -> List[Event]:
 
 def mark_reminder_sent(event_id: int) -> bool:
     """
-    Помечает remind_sent = True для заданного event_id.
+    Помечает reminder_sent = True для заданного event_id.
     """
     with Session(engine) as session:
         ev = session.get(Event, event_id)
@@ -104,7 +104,7 @@ def delete_event(event_id: int) -> bool:
 
 def update_event(event_id: int, **fields) -> bool:
     """
-    Update given fields on an Event. Returns True if event found and updated.
+    Обновляет поля события. Возвращает True если событие найдено и обновлено.
     """
     with Session(engine) as session:
         ev = session.get(Event, event_id)
@@ -120,7 +120,7 @@ def update_event(event_id: int, **fields) -> bool:
 
 def update_events_by_series(series_id: str, **fields) -> int:
     """
-    Update all events that share the same series_id. Returns number updated.
+    Обновляет все события с одинаковым series_id. Возвращает количество обновлённых.
     """
     with Session(engine) as session:
         statement = select(Event).where(Event.series_id == series_id)
@@ -138,7 +138,7 @@ def update_events_by_series(series_id: str, **fields) -> int:
 
 def delete_events_by_date(target_date: date_type) -> int:
     """
-    Delete all events with Event.date == target_date. Returns number deleted.
+    Удаляет все события на определённую дату. Возвращает количество удалённых.
     """
     with Session(engine) as session:
         statement = select(Event).where(Event.date == target_date)
@@ -153,7 +153,7 @@ def delete_events_by_date(target_date: date_type) -> int:
 
 def delete_events_in_range(start_date: date_type, end_date: date_type) -> int:
     """
-    Delete events where start_date <= Event.date <= end_date. Returns number deleted.
+    Удаляет события в диапазоне дат. Возвращает количество удалённых.
     """
     with Session(engine) as session:
         statement = select(Event).where(Event.date >= start_date, Event.date <= end_date)

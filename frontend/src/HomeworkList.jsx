@@ -34,10 +34,10 @@ export default function HomeworkList() {
     try {
       const res = await axios.get(backendBase() + '/calendar?type=homework')
       let hw = res.data
-      // if backend didn't support ?type parameter (older version) it may return all events
+      // если backend не поддерживает параметр ?type (старая версия), вернёт все события
       if (!Array.isArray(hw)) hw = []
       if (hw.length === 0) {
-        // try fetching everything and filtering client-side as a fallback
+        // пытаемся получить всё и фильтруем на клиенте как fallback
         const all = await axios.get(backendBase() + '/calendar')
         hw = (all.data || []).filter(ev => ev.type === 'homework')
       }
@@ -46,7 +46,7 @@ export default function HomeworkList() {
         if (!b.date) return -1
         return a.date.localeCompare(b.date)
       })
-      // Group by date
+      // Группируем по датам
       const grouped = {}
       for (const ev of hw) {
         const date = ev.date || 'Без даты'

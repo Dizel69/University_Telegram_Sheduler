@@ -61,7 +61,7 @@ export default function EventForm({ onCreated }) {
 
         let res
         if (saveOnly) {
-          // Create event in DB as manual (backend will mark source='manual') but don't send
+          // Сохраняем событие в БД не отправляя (бэкенд пометит source='manual')
           res = await axios.post('/events', payload)
           setStatus('Сохранено в календаре (ручная запись) — id: ' + res.data.id)
         } else {

@@ -11,8 +11,8 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('ErrorBoundary caught:', error, info)
-    // Optionally send to backend logging endpoint
+    console.error('ErrorBoundary поймал ошибку:', error, info)
+    // Опционально отправить на backend для логирования ошибок
   }
 
   render() {
@@ -21,7 +21,7 @@ export default class ErrorBoundary extends React.Component {
         <div className="card" style={{borderLeft: '4px solid #ef4444', padding: 12, background: '#fff8f8'}}>
           <div style={{fontWeight:700,color:'#b91c1c'}}>Ошибка в интерфейсе</div>
           <div style={{marginTop:6,color:'#374151',fontSize:13}}>{String(this.state.error)}</div>
-          <div style={{marginTop:8,fontSize:13,color:'#374151'}}>Откройте консоль (F12) и пришлите логи или разрешите мне отправить их на сервер.</div>
+          <div style={{marginTop:8,fontSize:13,color:'#374151'}}>Откройте консоль (F12) и проверьте логи ошибок.</div>
         </div>
       )
     }

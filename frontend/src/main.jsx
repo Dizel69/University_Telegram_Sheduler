@@ -4,13 +4,13 @@ import axios from 'axios'
 import App from './App'
 import './styles.css'
 
-// attach admin token from localStorage to axios default header
+// Присоединяем токен администратора из localStorage к стандартному заголовку axios
 const token = localStorage.getItem('admin_token')
 if (token) {
   axios.defaults.headers.common['x-admin-token'] = token
 }
 
-// watch storage changes (login/logout in other tabs)
+// Наблюдаем за изменениями хранилища (вход/выход в других вкладках)
 window.addEventListener('storage', (e) => {
   if (e.key === 'admin_token') {
     const t = e.newValue

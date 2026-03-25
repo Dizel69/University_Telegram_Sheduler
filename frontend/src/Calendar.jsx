@@ -38,7 +38,7 @@ export default function Calendar() {
   const [addDate, setAddDate] = useState(null) // 'YYYY-MM-DD' for add-event modal
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState(null)
-  // PDF import state removed
+  // Состояние PDF импорта удалено
   const [openDay, setOpenDay] = useState(null) // 'YYYY-MM-DD' or null
   const [transferEvent, setTransferEvent] = useState(null)
   const [editEvent, setEditEvent] = useState(null)
@@ -48,8 +48,8 @@ export default function Calendar() {
   useEffect(() => { load() }, [year, month])
 
   function backendBase() {
-    // prefer VITE_HOST (set at build time) otherwise use the current page hostname
-  // Keep configuration driven by env vars or the runtime host; avoid hardcoding the local host name.
+    // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
+    // Храним конфиг в переменных окружения или runtime host; избегаем hardcoding локального hostname
     const host = import.meta.env.VITE_HOST || window.location.hostname
     return `http://${host}:8000`
   }
@@ -97,7 +97,7 @@ export default function Calendar() {
     }
   }
 
-  // PDF import handlers removed
+  // Обработки PDF импорта удалены
 
   function prev() {
     const d = new Date(Date.UTC(year, month-1, 1))
@@ -164,7 +164,7 @@ export default function Calendar() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <div>
           <button className="btn" onClick={prev}>◀</button>
-          <button className="btn" onClick={goToday}>Today</button>
+          <button className="btn" onClick={goToday}>Сегодня</button>
           <button className="btn" onClick={next}>▶</button>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -369,7 +369,7 @@ export default function Calendar() {
             </div>
           </div>
         )}
-      {/* PDF import UI removed */}
+      {/* UI PDF импорта удален */}
       {/* Add event modal (shown when editing and a date selected) */}
       {addDate && (
         <AddEventModal date={addDate} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />
