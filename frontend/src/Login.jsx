@@ -56,7 +56,7 @@ export default function Login() {
               <button className="btn" onClick={submit}>Войти</button>
               <button className="btn" onClick={() => setShow(false)}>Отмена</button>
             </div>
-            <div style={{marginTop:8,fontSize:12,color:'#6b7280'}}Нокеп хранится локально в браузере.</div>
+            <div style={{marginTop:8,fontSize:12,color:'#6b7280'}}>Токен хранится локально в браузере.</div>
           </div>
         </div>
       )}
