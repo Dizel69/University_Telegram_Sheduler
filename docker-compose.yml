@@ -24,6 +24,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file: .env
     ports:
       - "8000:8000"
@@ -35,6 +36,7 @@ services:
   # Telegram Bot сервис
   bot:
     build: ./bot
+    restart: unless-stopped
     env_file: .env
     ports:
       - "8081:8081"
@@ -48,6 +50,7 @@ services:
   # Worker для отправки напоминаний
   worker:
     build: ./worker
+    restart: unless-stopped
     env_file: .env
     depends_on:
       - backend
@@ -64,6 +67,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:5173"
     depends_on:

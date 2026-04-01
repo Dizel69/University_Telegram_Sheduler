@@ -1,3 +1,5 @@
 httpx==0.24.1
 APScheduler==3.10.1
 python-dotenv==1.0.1
+# pkg_resources для APScheduler 3.x: slim без setuptools; 82+ без pkg_resources; 81+ — предупреждение — держим <81
+setuptools>=69.0,<81
