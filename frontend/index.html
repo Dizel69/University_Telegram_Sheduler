@@ -5,9 +5,109 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Планировщик Университета Telegram — Администратор</title>
+    <style>
+      /* Пока не подгрузился JS/React — без белого экрана */
+      html {
+        height: 100%;
+        background: #0c1220;
+      }
+      body {
+        margin: 0;
+        min-height: 100%;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      #root {
+        min-height: 100vh;
+      }
+      .app-boot {
+        position: relative;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        color: #e2e8f0;
+      }
+      .app-boot-bg {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 120% 80% at 50% -30%, rgba(34, 158, 217, 0.45), transparent 55%),
+          radial-gradient(ellipse 60% 40% at 100% 100%, rgba(59, 130, 246, 0.2), transparent 50%),
+          linear-gradient(160deg, #0a0f1a 0%, #111b2e 35%, #152238 70%, #0c1220 100%);
+      }
+      .app-boot-bg::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.35;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%23ffffff' fill-opacity='0.06' d='M0 0h1v1H0V0zm12 0h1v1h-1V0z'/%3E%3C/svg%3E");
+        background-size: 24px 24px;
+      }
+      .app-boot-content {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.25rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      .app-boot-logo {
+        width: 72px;
+        height: 72px;
+        filter: drop-shadow(0 8px 24px rgba(34, 158, 217, 0.35));
+        animation: app-boot-float 3s ease-in-out infinite;
+      }
+      @keyframes app-boot-float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-6px);
+        }
+      }
+      .app-boot-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255, 255, 255, 0.12);
+        border-top-color: #229ed9;
+        border-radius: 50%;
+        animation: app-boot-spin 0.85s linear infinite;
+      }
+      @keyframes app-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .app-boot-label {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: rgba(226, 232, 240, 0.85);
+      }
+      .app-boot-sub {
+        margin: -0.5rem 0 0;
+        font-size: 0.8rem;
+        color: rgba(148, 163, 184, 0.9);
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-boot" role="status" aria-live="polite">
+        <div class="app-boot-bg" aria-hidden="true"></div>
+        <div class="app-boot-content">
+          <img class="app-boot-logo" src="/favicon.svg" alt="" width="72" height="72" decoding="async" />
+          <div class="app-boot-spinner" aria-hidden="true"></div>
+          <p class="app-boot-label">Загрузка планировщика</p>
+          <p class="app-boot-sub">Расписание и напоминания в Telegram</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
