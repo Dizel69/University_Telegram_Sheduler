@@ -30,8 +30,8 @@ export default function App() {
       localStorage.setItem('admin_token', t)
       axios.defaults.headers.common['x-admin-token'] = t
       setIsAdmin(true)
-      // Уведомляем другие компоненты
       window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: t }))
+      window.dispatchEvent(new CustomEvent('admin-token-changed'))
     }
 
     function doLogout() {
@@ -39,6 +39,7 @@ export default function App() {
       delete axios.defaults.headers.common['x-admin-token']
       setIsAdmin(false)
       window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
+      window.dispatchEvent(new CustomEvent('admin-token-changed'))
     }
 
     if (isAdmin) return (

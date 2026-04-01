@@ -47,6 +47,20 @@ export default function Calendar() {
 
   useEffect(() => { load() }, [year, month])
 
+  useEffect(() => {
+    function syncAdminToken() {
+      const t = localStorage.getItem('admin_token')
+      setAdminToken(t)
+      if (!t) setEditing(false)
+    }
+    window.addEventListener('storage', syncAdminToken)
+    window.addEventListener('admin-token-changed', syncAdminToken)
+    return () => {
+      window.removeEventListener('storage', syncAdminToken)
+      window.removeEventListener('admin-token-changed', syncAdminToken)
+    }
+  }, [])
+
   function backendBase() {
     // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
     // Храним конфиг в переменных окружения или runtime host; избегаем hardcoding локального hostname
@@ -172,32 +186,6 @@ export default function Calendar() {
           {adminToken ? (
             <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
           ) : null}
-          <button className="btn" onClick={async () => {
-            if (adminToken) {
-              localStorage.removeItem('admin_token')
-              // notify other components
-              window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
-              setAdminToken(null)
-              setEditing(false)
-              alert('Выход выполнен')
-              return
-            }
-            const token = window.prompt('Введите admin token')
-            if (!token) return
-            try {
-              const resp = await fetch(backendBase() + '/admin/validate', { method: 'GET', headers: { 'x-admin-token': token } })
-              if (!resp.ok) throw new Error('invalid')
-              localStorage.setItem('admin_token', token)
-              // notify other components
-              window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: token }))
-              setAdminToken(token)
-              setEditing(true)
-              alert('Вход выполнен')
-            } catch (e) {
-              console.error(e)
-              alert('Неверный admin token')
-            }
-          }}>{adminToken ? 'Выйти' : 'Войти'}</button>
           <label className="homework-toggle">
             <input type="checkbox" checked={showHomework} onChange={() => setShowHomework(!showHomework)} />
             <span className="toggle-slider"></span>
