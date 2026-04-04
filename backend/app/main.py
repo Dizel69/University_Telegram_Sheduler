@@ -34,7 +34,7 @@ THREAD_ID_ANNOUNCEMENTS = os.getenv("THREAD_ID_ANNOUNCEMENTS")
 TYPE_HASHTAG = {
     'schedule': '#Расписание',
     'homework': '#Домашнее_задание',
-    'announcement': '#Объявление'
+    'announcement': '#Объявление',
 }
 
 app = FastAPI(title="Планировщик университета - Бэкенд")
@@ -61,7 +61,7 @@ def _resolve_chat_id(ev_obj):
     if getattr(ev_obj, "chat_id", None):
         return ev_obj.chat_id
     try:
-        if ev_obj.type == 'schedule' and CHAT_ID_SCHEDULE:
+        if ev_obj.type in ('schedule', 'exam_control') and CHAT_ID_SCHEDULE:
             return int(CHAT_ID_SCHEDULE)
         if ev_obj.type == 'homework' and CHAT_ID_HOMEWORK:
             return int(CHAT_ID_HOMEWORK)
@@ -85,7 +85,7 @@ def _resolve_thread_id(ev_obj):
     if getattr(ev_obj, "topic_thread_id", None):
         return ev_obj.topic_thread_id
     try:
-        if ev_obj.type == 'schedule' and THREAD_ID_SCHEDULE:
+        if ev_obj.type in ('schedule', 'exam_control') and THREAD_ID_SCHEDULE:
             return int(THREAD_ID_SCHEDULE)
         if ev_obj.type == 'homework' and THREAD_ID_HOMEWORK:
             return int(THREAD_ID_HOMEWORK)
@@ -107,11 +107,61 @@ def _canonical_type(t: str) -> str:
         return 'transfer'
     if 'домаш' in n or 'homework' in n:
         return 'homework'
+    if (
+        'exam_control' in n
+        or 'контрольн' in n
+        or 'экзамен' in n
+    ):
+        return 'exam_control'
     if 'распис' in n or 'schedule' in n:
         return 'schedule'
     if 'объяв' in n or 'announcement' in n:
         return 'announcement'
     return n
+
+
+def _build_telegram_message_text(ev) -> str:
+    """
+    Текст поста в Telegram. Для exam_control — формат с хэштегами по выбору вида;
+    для остальных типов — прежняя схема + ссылка.
+    """
+    link = f"{FRONTEND_URL}/calendar/m15/event/{getattr(ev, 'id', 0)}"
+    canon = _canonical_type(getattr(ev, "type", "") or "")
+
+    if canon == "exam_control":
+        lines = []
+        lt = getattr(ev, "lesson_type", None)
+        lines.append("#Экзамен" if lt == "exam" else "#Контрольная_работа")
+        subj = getattr(ev, "subject", None)
+        if subj and str(subj).strip():
+            lines.append("#" + str(subj).strip().replace(" ", "_"))
+        room = getattr(ev, "room", None)
+        if room and str(room).strip():
+            lines.append("Аудитория")
+            lines.append(str(room).strip())
+        teacher = getattr(ev, "teacher", None)
+        if teacher and str(teacher).strip():
+            lines.append("преподаватель")
+            lines.append(str(teacher).strip())
+        body = (getattr(ev, "body", None) or "").strip()
+        if body:
+            lines.append(body)
+        lines.append("")
+        lines.append(f"Ссылка в календаре: {link}")
+        return "\n".join(lines)
+
+    parts = []
+    parts.append(TYPE_HASHTAG.get(canon, ""))
+    if getattr(ev, "subject", None):
+        parts.append("#" + str(ev.subject).replace(" ", "_"))
+    parts.append(getattr(ev, "body", None) or "")
+    if getattr(ev, "room", None):
+        parts.append(f"Аудитория: {ev.room}")
+    if getattr(ev, "teacher", None):
+        parts.append(f"Преподаватель: {ev.teacher}")
+    parts.append("")
+    parts.append(f"Ссылка в календаре: {link}")
+    return "\n".join([p for p in parts if p is not None and p != ""])
 
 
 def require_admin(x_admin_token: str | None = Header(None)):
@@ -175,22 +225,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
             pass
         return created
 
-    # Формируем текст сообщения и добавляем ссылку на запись в календаре
-    link = f"{FRONTEND_URL}/calendar/m15/event/{created.id}"
-    # Собираем текст в формате: #Тип \n #Предмет \nТело\n\nСсылка...
-    parts = []
-    parts.append(TYPE_HASHTAG.get(created.type, ''))
-    if created.subject:
-        subj_tag = '#' + created.subject.replace(' ', '_')
-        parts.append(subj_tag)
-    parts.append(created.body or '')
-    if getattr(created, 'room', None):
-        parts.append(f"Аудитория: {created.room}")
-    if getattr(created, 'teacher', None):
-        parts.append(f"Преподаватель: {created.teacher}")
-    parts.append('')
-    parts.append(f"Ссылка в календаре: {link}")
-    text = '\n'.join([p for p in parts if p is not None and p != ''])
+    text = _build_telegram_message_text(created)
 
     # Resolve chat and thread ids for sending
     target_chat = _resolve_chat_id(created)
@@ -280,7 +315,8 @@ def public_events():
             'chat_id': ev.chat_id,
             'topic_thread_id': ev.topic_thread_id,
             'sent_message_id': getattr(ev, 'sent_message_id', None),
-            'source': ev.source
+            'source': ev.source,
+            'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
         })
     return out
 
@@ -355,12 +391,15 @@ def events_due_reminders():
     for ev in due:
         result.append({
             "id": ev.id,
+            "type": _canonical_type(ev.type),
             "title": ev.title,
+            "subject": getattr(ev, "subject", None),
             "body": ev.body,
             "date": ev.date.isoformat() if ev.date else None,
             "time": ev.time.isoformat() if ev.time else None,
             "room": getattr(ev, 'room', None),
             "teacher": getattr(ev, 'teacher', None),
+            "lesson_type": getattr(ev, "lesson_type", None),
             # return resolved chat/thread so worker can post into correct topic
             "chat_id": _resolve_chat_id(ev),
             "thread_id": _resolve_thread_id(ev)
@@ -404,7 +443,8 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
             'chat_id': ev.chat_id,
-            'thread_id': ev.topic_thread_id
+            'thread_id': ev.topic_thread_id,
+            'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
         })
     return filtered
 
@@ -423,9 +463,8 @@ def mark_reminder(event_id: int):
 def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
     Новое событие в базе данных без отправки через бот.
-    Нар админа для ручного добавления событий.
-    Для schedule-events автомат.
-    reminder_sent=True (без уведомлений).
+    Ручные записи: source=manual (скрыты во вкладке «События»).
+    Расписание — без напоминаний; домашка и контрольные/экзамены — с напоминаниями по reminder_offset_hours.
     """
     # Авторизация временно отключена для локальной разработки
     from .models import Event
@@ -435,10 +474,8 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
     # Помечаем события, созданные через нтерфейс/ручной календарь
     # (чтобы они были исключены из уведомлений и списка событий)
     ev.source = 'manual'
+    # Расписание — без напоминаний; ДЗ и контрольные/экзамены — worker может напомнить
     ev.reminder_sent = True
-    # Для schedule: не отправлять уведомления
-    if ev.type == 'schedule':
-        ev.reminder_sent = True
     # Defensive normalization BEFORE saving: look at body/title and adjust type
     try:
         text_lower_pre = ((ev.body or '') + ' ' + (ev.title or '')).lower()
@@ -451,6 +488,11 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
                 pass
     except Exception:
         pass
+
+    if ev.type == 'schedule':
+        ev.reminder_sent = True
+    elif ev.type in ('homework', 'exam_control'):
+        ev.reminder_sent = False
 
     created = add_event(ev)
     try:
@@ -468,8 +510,11 @@ class EventUpdate(BaseModel):
     title: Optional[str] = None     # Новый заголовок
     body: Optional[str] = None      # Новые детали
     type: Optional[str] = None      # Новый тип
+    subject: Optional[str] = None   # Предмет
     room: Optional[str] = None      # Новая аудитория
     teacher: Optional[str] = None   # Новый преподаватель
+    lesson_type: Optional[str] = None  # exam / control для exam_control; lecture / practice для schedule
+    reminder_offset_hours: Optional[int] = None
 
 
 @app.put('/events/{event_id}')
@@ -504,20 +549,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
     if not ev:
         raise HTTPException(status_code=404, detail="событие не найдено")
 
-    # Формируем текст (как при создании)
-    link = f"{FRONTEND_URL}/calendar/m15/event/{ev.id}"
-    parts = []
-    parts.append(TYPE_HASHTAG.get(ev.type, ''))
-    if ev.subject:
-        parts.append('#' + ev.subject.replace(' ', '_'))
-    parts.append(ev.body or '')
-    if getattr(ev, 'room', None):
-        parts.append(f"Аудитория: {ev.room}")
-    if getattr(ev, 'teacher', None):
-        parts.append(f"Преподаватель: {ev.teacher}")
-    parts.append('')
-    parts.append(f"Ссылка в календаре: {link}")
-    text = '\n'.join([p for p in parts if p is not None and p != ''])
+    text = _build_telegram_message_text(ev)
 
     # auth for send_now
     # Authorization disabled for local development

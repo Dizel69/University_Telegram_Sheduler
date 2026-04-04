@@ -5,7 +5,7 @@ from datetime import date as date_type, time as time_type
 
 class EventCreate(BaseModel):
     """Схема для создания события."""
-    type: str          # Тип события (schedule, homework, announcement, transfer)
+    type: str          # Тип события (schedule, homework, exam_control, announcement, transfer)
     subject: Optional[str] = None  # Предмет
     title: Optional[str] = None    # Заголовок
     body: str          # Основной текст
@@ -34,6 +34,12 @@ class EventCreate(BaseModel):
             return None
         return v
 
+    @validator('end_time', pre=True)
+    def _empty_end_time_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
 
 class EventPublic(BaseModel):
     """Схема для публичного представления события."""
@@ -53,6 +59,7 @@ class EventPublic(BaseModel):
     topic_thread_id: Optional[int] = None
     sent_message_id: Optional[int] = None
     source: Optional[str] = None
+    reminder_offset_hours: int = 24
 
     class Config:
         orm_mode = True

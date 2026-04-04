@@ -9,6 +9,29 @@ POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "60"))
 
 scheduler = BlockingScheduler()
 
+
+def _format_exam_control_reminder(ev: dict, date) -> str:
+    """Тот же шаблон, что и при отправке события в Telegram (контрольная / экзамен)."""
+    lines = [f"⏰ Напоминание ({date})", ""]
+    lt = ev.get("lesson_type")
+    lines.append("#Экзамен" if lt == "exam" else "#Контрольная_работа")
+    subj = ev.get("subject")
+    if subj and str(subj).strip():
+        lines.append("#" + str(subj).strip().replace(" ", "_"))
+    room = ev.get("room")
+    if room and str(room).strip():
+        lines.append("Аудитория")
+        lines.append(str(room).strip())
+    teacher = ev.get("teacher")
+    if teacher and str(teacher).strip():
+        lines.append("преподаватель")
+        lines.append(str(teacher).strip())
+    body = (ev.get("body") or "").strip()
+    if body:
+        lines.append(body)
+    return "\n".join(lines)
+
+
 @scheduler.scheduled_job('interval', seconds=POLL_INTERVAL)
 def check_and_send():
     """Проверяет и отправляет напоминания о предстоящих событиях."""
@@ -20,25 +43,26 @@ def check_and_send():
             events = r.json()
             for ev in events:
                 date = ev.get("date")
-                # Обрезаем заголовок (пробелы считаются пустыми)
-                title = (ev.get("title") or "").strip()
-                body = ev.get("body") or ""
-                room = ev.get("room") or None
-                teacher = ev.get("teacher") or None
-                # Составляем текст сообщения: включаем заголовок, аудиторию, преподавателя если есть, текст если есть
-                text = f"⏰ Напоминание: завтра ({date})"
-                if title:
-                    text += f" — {title}"
-                    if room:
-                        text += f" ({room})"
+                ev_type = (ev.get("type") or "").lower()
+                if ev_type == "exam_control":
+                    text = _format_exam_control_reminder(ev, date)
                 else:
-                    if room:
-                        text += f" — Аудитория {room}"
-                if teacher:
-                    # Показываем преподавателя на отдельной строке
-                    text += f"\nПреподаватель: {teacher}"
-                if body:
-                    text += f"\n{body}"
+                    title = (ev.get("title") or "").strip()
+                    body = ev.get("body") or ""
+                    room = ev.get("room") or None
+                    teacher = ev.get("teacher") or None
+                    text = f"⏰ Напоминание: завтра ({date})"
+                    if title:
+                        text += f" — {title}"
+                        if room:
+                            text += f" ({room})"
+                    else:
+                        if room:
+                            text += f" — Аудитория {room}"
+                    if teacher:
+                        text += f"\nПреподаватель: {teacher}"
+                    if body:
+                        text += f"\n{body}"
                 payload = {
                     "chat_id": ev.get("chat_id"),
                     "thread_id": ev.get("thread_id"),

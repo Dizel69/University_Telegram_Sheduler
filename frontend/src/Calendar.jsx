@@ -3,6 +3,71 @@ import axios from 'axios'
 import EditEventModal from './EditEventModal'
 import ErrorBoundary from './ErrorBoundary'
 
+/** Порядок в ячейке дня: контрольная/экзамен выше домашки. */
+function calendarTypeOrder(t) {
+  if (t === 'exam_control') return 0
+  if (t === 'homework') return 1
+  return 2
+}
+
+function TransferModal({ ev, onClose, onSaved }) {
+  const [targetDate, setTargetDate] = useState(ev.date || '')
+  const [targetTime, setTargetTime] = useState(ev.time ? ev.time.slice(0, 5) : '')
+  const [targetEnd, setTargetEnd] = useState(ev.end_time ? ev.end_time.slice(0, 5) : '')
+  const [saving, setSaving] = useState(false)
+
+  async function doTransfer() {
+    setSaving(true)
+    try {
+      const payload = { date: targetDate }
+      payload.time = targetTime || null
+      payload.end_time = targetEnd || null
+      const token = localStorage.getItem('admin_token')
+      const headers = token ? { 'x-admin-token': token } : {}
+      await axios.put(`/events/${ev.id}`, payload, { headers })
+      alert('Перенесено')
+      if (onSaved) onSaved()
+    } catch (e) {
+      console.error(e)
+      alert('Ошибка переноса: ' + (e.response?.data?.detail || e.message))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 360, maxWidth: 560 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3>Перенести событие</h3>
+          <button className="btn" onClick={onClose}>Закрыть</button>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontWeight: 700 }}>{ev.title || ev.subject || ev.type}</div>
+          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              <label className="label">Новая дата</label>
+              <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Новое время (начало)</label>
+              <input type="time" value={targetTime} onChange={e => setTargetTime(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Новое время (конец)</label>
+              <input type="time" value={targetEnd} onChange={e => setTargetEnd(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={doTransfer} disabled={saving}>{saving ? 'Переношу...' : 'Перенести'}</button>
+            <button className="btn" onClick={onClose}>Отмена</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function monthBounds(year, month) {
   // month: 0-11. return first and last date objects in UTC
   const first = new Date(Date.UTC(year, month, 1))
@@ -32,6 +97,12 @@ export default function Calendar() {
     if (lessonType === 'lecture') return '🔊'
     if (lessonType === 'practice') return '📓'
     return ''
+  }
+
+  function examKindIcon(lessonType) {
+    if (lessonType === 'exam') return '🎓'
+    if (lessonType === 'control') return '📝'
+    return '📝'
   }
   const [undated, setUndated] = useState([])
   const [editing, setEditing] = useState(false)
@@ -87,11 +158,12 @@ export default function Calendar() {
         if (!map[ev.date]) map[ev.date] = []
         map[ev.date].push(ev)
       }
-      // sort events per day: homeworks always on top, then by time (nulls last)
+      // sort: контрольная/экзамен → домашка → остальное; внутри группы — по времени
       for (const k of Object.keys(map)) {
         map[k].sort((a,b) => {
-          if (a.type === 'homework' && b.type !== 'homework') return -1
-          if (b.type === 'homework' && a.type !== 'homework') return 1
+          const oa = calendarTypeOrder(a.type)
+          const ob = calendarTypeOrder(b.type)
+          if (oa !== ob) return oa - ob
           const ta = a.time || ''
           const tb = b.time || ''
           if (!ta && !tb) return 0
@@ -206,6 +278,10 @@ export default function Calendar() {
           <span style={{fontSize:13,color:'#374151'}}>Перенос</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:12,height:12,background:'#f97316',borderRadius:3,display:'inline-block'}}></span>
+          <span style={{fontSize:13,color:'#374151'}}>Контрольная / экзамен</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#a78bfa',borderRadius:3,display:'inline-block'}}></span>
           <span style={{fontSize:13,color:'#374151'}}>Домашняя работа</span>
         </div>
@@ -253,7 +329,10 @@ export default function Calendar() {
                     <div style={{fontSize:11,opacity:0.9,fontWeight:'bold'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
                   <div style={{lineHeight:1.3,wordBreak:'break-word', whiteSpace:'normal'}}>
-                    {ev.type === 'schedule' && lessonIcon(ev.lesson_type)} {ev.title || ev.subject || ev.type}
+                    {ev.type === 'schedule' ? lessonIcon(ev.lesson_type) : null}
+                    {ev.type === 'exam_control' ? examKindIcon(ev.lesson_type) : null}
+                    {(ev.type === 'schedule' || ev.type === 'exam_control') ? ' ' : ''}
+                    {ev.title || ev.subject || ev.type}
                   </div>
                   {ev.room ? <div style={{fontSize:10,opacity:0.95,textAlign:'center',marginTop:6}}>{ev.room}</div> : null}
                   {/* delete button on mini-card (visible in edit mode) */}
@@ -299,7 +378,10 @@ export default function Calendar() {
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <div style={{background: eventColor(ev), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
                       <div style={{fontWeight:700}}>
-                        {ev.type === 'schedule' && lessonIcon(ev.lesson_type)} {ev.title || ev.subject || ''}
+                        {ev.type === 'schedule' ? lessonIcon(ev.lesson_type) : null}
+                        {ev.type === 'exam_control' ? examKindIcon(ev.lesson_type) : null}
+                        {(ev.type === 'schedule' || ev.type === 'exam_control') ? ' ' : ''}
+                        {ev.title || ev.subject || ''}
                         {ev.room ? <span style={{marginLeft:8,fontSize:13,color:'#6b7280'}}>{ev.room}</span> : null}
                       </div>
                     </div>
@@ -360,13 +442,13 @@ export default function Calendar() {
       {/* UI PDF импорта удален */}
       {/* Add event modal (shown when editing and a date selected) */}
       {addDate && (
-        <AddEventModal date={addDate} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />
+        <AddEventModal date={addDate} adminToken={adminToken} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />
       )}
       {transferEvent && (
         <TransferModal ev={transferEvent} onClose={() => setTransferEvent(null)} onSaved={() => { setTransferEvent(null); load() }} />
       )}
       {editEvent && (
-        <EditEventModal ev={editEvent} onClose={() => setEditEvent(null)} onSaved={() => { setEditEvent(null); load() }} />
+        <EditEventModal key={editEvent.id} ev={editEvent} onClose={() => setEditEvent(null)} onSaved={() => { setEditEvent(null); load() }} />
       )}
     </div>
     </ErrorBoundary>
@@ -378,6 +460,7 @@ export default function Calendar() {
     if (!t) return '#6b7280'
     const n = String(t).toLowerCase().trim()
     if (n.includes('schedule') || n.includes('расписание')) return '#60a5fa'
+    if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return '#f97316'
     if (n.includes('homework') || n.includes('домаш') || n.includes('домашнее_задание') || n.includes('домашняя_работа')) return '#a78bfa'
     if (n.includes('transfer') || n.includes('перенос')) return '#ef4444'
     if (n.includes('announcement') || n.includes('объявлен')) return '#34d399'
@@ -403,32 +486,49 @@ export default function Calendar() {
     const n = String(t).toLowerCase().trim()
     if (n.includes('transfer') || n.includes('перенос')) return 'Перенос'
     if (n.includes('homework') || n.startsWith('home') || n.includes('домаш')) return 'Домашняя работа'
+    if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return 'Контрольная / экзамен'
     if (n.includes('schedule') || n.includes('расписание')) return 'Расписание'
     if (n.includes('announcement') || n.includes('объявлен')) return 'Объявление'
     return t
   }
 
-  function AddEventModal({ date, onClose, onSaved }) {
+  function AddEventModal({ date, adminToken, onClose, onSaved }) {
     const [type, setType] = useState('schedule')
+    const [subject, setSubject] = useState('')
     const [title, setTitle] = useState('')
     const [body, setBody] = useState('')
     const [time, setTime] = useState('')
     const [endTime, setEndTime] = useState('')
     const [room, setRoom] = useState('')
     const [teacher, setTeacher] = useState('')
+    const [examKind, setExamKind] = useState('control')
     const [tab, setTab] = useState('main')
     const [repeat, setRepeat] = useState('none')
     const [repeatUntil, setRepeatUntil] = useState('')
+    const [reminderHours, setReminderHours] = useState(24)
     const [saving, setSaving] = useState(false)
 
-    useEffect(() => { setTitle(''); setBody(''); setTime(''); setRoom(''); setTeacher(''); setTab('main'); setRepeat('none'); setRepeatUntil('') }, [date])
+    useEffect(() => {
+      setType('schedule')
+      setSubject('')
+      setTitle('')
+      setBody('')
+      setTime('')
+      setEndTime('')
+      setRoom('')
+      setTeacher('')
+      setExamKind('control')
+      setTab('main')
+      setRepeat('none')
+      setRepeatUntil('')
+      setReminderHours(24)
+    }, [date])
 
     async function handleSave() {
       if (!date) return
       setSaving(true)
       try {
-        const seriesId = (repeat === 'none') ? null : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('s-' + Date.now() + '-' + Math.random().toString(36).slice(2,7)))
-        const start = new Date(date)
+        const seriesId = (repeat === 'none') ? null : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('s-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)))
         const occurrences = []
         if (repeat === 'none') occurrences.push(date)
         else {
@@ -439,89 +539,45 @@ export default function Calendar() {
           if (repeat === 'daily') step = 1
           if (repeat === 'weekly') step = 7
           if (repeat === 'biweekly') step = 14
-          // push dates until <= until (safety max 500)
           let guard = 0
           while (cur <= until && guard < 500) {
-            occurrences.push(cur.toISOString().slice(0,10))
+            occurrences.push(cur.toISOString().slice(0, 10))
             cur.setUTCDate(cur.getUTCDate() + step)
             guard++
           }
-
-          function TransferModal({ ev, onClose, onSaved }) {
-            const [targetDate, setTargetDate] = useState(ev.date || '')
-            const [targetTime, setTargetTime] = useState(ev.time ? ev.time.slice(0,5) : '')
-            const [targetEnd, setTargetEnd] = useState(ev.end_time ? ev.end_time.slice(0,5) : '')
-            const [saving, setSaving] = useState(false)
-
-            async function doTransfer() {
-              setSaving(true)
-              try {
-                const payload = { date: targetDate }
-                if (targetTime) payload.time = targetTime
-                else payload.time = null
-                if (targetEnd) payload.end_time = targetEnd
-                const res = await fetch(`/events/${ev.id}`, { method: 'PUT', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
-                if (!res.ok) throw new Error('transfer failed: ' + res.status)
-                alert('Перенесено')
-                if (onSaved) onSaved()
-              } catch (e) {
-                console.error(e)
-                alert('Ошибка переноса: ' + e.message)
-              } finally {
-                setSaving(false)
-              }
-            }
-
-            return (
-              <div className="modal-overlay" onClick={onClose}>
-                <div className="modal" onClick={e => e.stopPropagation()} style={{minWidth:360,maxWidth:560}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <h3>Перенести событие</h3>
-                    <button className="btn" onClick={onClose}>Закрыть</button>
-                  </div>
-                  <div style={{marginTop:8}}>
-                    <div style={{fontWeight:700}}>{ev.title || ev.subject || ev.type}</div>
-                    <div style={{marginTop:8,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                      <div>
-                        <label className="label">Новая дата</label>
-                        <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="label">Новое время (начало)</label>
-                        <input type="time" value={targetTime} onChange={e => setTargetTime(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="label">Новое время (конец)</label>
-                        <input type="time" value={targetEnd} onChange={e => setTargetEnd(e.target.value)} />
-                      </div>
-                    </div>
-                    <div style={{marginTop:8,display:'flex',gap:8}}>
-                      <button className="btn btn-primary" onClick={doTransfer} disabled={saving}>{saving ? 'Переношу...' : 'Перенести'}</button>
-                      <button className="btn" onClick={onClose}>Отмена</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          }
         }
 
+        const headers = { 'Content-Type': 'application/json' }
+        if (adminToken) headers['x-admin-token'] = adminToken
+
         const created = []
+        const rem = (type === 'homework' || type === 'exam_control')
+          ? (Number.isFinite(Number(reminderHours)) ? Number(reminderHours) : 24)
+          : 24
+
         for (const d of occurrences) {
-          // if homework, do not send time
-          const payload = { type, title: title || null, body: body || '', date: d, time: (type === 'homework' ? null : (time || null)), end_time: (type === 'homework' ? null : (endTime || null)), room: room || null, teacher: teacher || null, series_id: seriesId, reminder_offset_hours: 24 }
-          // mark manual source and disable reminders on server side; include source for clarity
-          payload.source = 'manual'
-          const res = await fetch('/events', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
-          if (!res.ok) throw new Error('save failed: ' + res.status)
-          const j = await res.json()
-          created.push(j)
+          const payload = {
+            type,
+            subject: type === 'exam_control' ? (subject.trim() || null) : null,
+            title: title || null,
+            body: body || '',
+            date: d,
+            time: type === 'homework' ? null : (time || null),
+            end_time: type === 'homework' ? null : (endTime || null),
+            room: (type === 'schedule' || type === 'exam_control') ? (room || null) : null,
+            teacher: type === 'homework' ? null : (teacher || null),
+            series_id: seriesId,
+            reminder_offset_hours: rem,
+          }
+          if (type === 'exam_control') payload.lesson_type = examKind
+          await axios.post('/events', payload, { headers })
+          created.push(1)
         }
         alert('Создано: ' + created.length)
         if (onSaved) onSaved()
       } catch (e) {
         console.error(e)
-        alert('Ошибка создания: ' + e.message)
+        alert('Ошибка создания: ' + (e.response?.data?.detail || e.message))
       } finally {
         setSaving(false)
       }
@@ -529,34 +585,50 @@ export default function Calendar() {
 
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal" onClick={e => e.stopPropagation()} style={{minWidth:360,maxWidth:680}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 360, maxWidth: 680 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3>Добавить событие на {date}</h3>
             <button className="btn" onClick={onClose}>Закрыть</button>
           </div>
-          <div style={{marginTop:8}}>
-            <div style={{display:'flex',gap:8,marginBottom:8}}>
-              <button className={tab==='main' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('main')}>Основное</button>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button className={tab === 'main' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('main')}>Основное</button>
               {type !== 'homework' && (
-                <button className={tab==='teacher' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('teacher')}>Преподаватель</button>
+                <button className={tab === 'teacher' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('teacher')}>Преподаватель</button>
               )}
             </div>
             {tab === 'main' && (
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div>
                   <label className="label">Тип</label>
                   <select value={type} onChange={e => setType(e.target.value)}>
                     <option value="schedule">Пара / Мероприятие</option>
+                    <option value="exam_control">Контрольная / экзамен</option>
                     <option value="homework">Домашнее задание</option>
                     <option value="transfer">Перенос</option>
                     <option value="announcement">Объявление</option>
                   </select>
                 </div>
+                {type === 'exam_control' && (
+                  <div>
+                    <label className="label">Предмет</label>
+                    <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математический анализ" />
+                  </div>
+                )}
                 <div>
                   <label className="label">Короткий заголовок</label>
                   <input value={title} onChange={e => setTitle(e.target.value)} />
                 </div>
-                {type === 'schedule' && (
+                {type === 'exam_control' && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label className="label">Вид</label>
+                    <select value={examKind} onChange={e => setExamKind(e.target.value)}>
+                      <option value="control">Контрольная 📝</option>
+                      <option value="exam">Экзамен 🎓</option>
+                    </select>
+                  </div>
+                )}
+                {(type === 'schedule' || type === 'exam_control') && (
                   <div>
                     <label className="label">Аудитория</label>
                     <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Например: М101" />
@@ -564,13 +636,18 @@ export default function Calendar() {
                 )}
                 <div>
                   <label className="label">Дата (начало)</label>
-                  <input type="date" value={date} onChange={e => {/* no-op: modal tied to date param */}} />
+                  <input type="date" value={date} readOnly />
                 </div>
-                {/* For homework don't show time; otherwise allow start and end */}
                 {type !== 'homework' && (
                   <div>
                     <label className="label">Время начала</label>
                     <input type="time" value={time} onChange={e => setTime(e.target.value)} />
+                  </div>
+                )}
+                {type !== 'homework' && (
+                  <div>
+                    <label className="label">Время окончания</label>
+                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
                   </div>
                 )}
                 {type !== 'homework' && (
@@ -590,20 +667,26 @@ export default function Calendar() {
                     <input type="date" value={repeatUntil} onChange={e => setRepeatUntil(e.target.value)} />
                   </div>
                 )}
+                {(type === 'homework' || type === 'exam_control') && (
+                  <div>
+                    <label className="label">Напоминание (ч)</label>
+                    <input type="number" min="0" value={reminderHours} onChange={e => setReminderHours(Number(e.target.value))} />
+                  </div>
+                )}
               </div>
             )}
             {tab === 'teacher' && type !== 'homework' && (
-              <div style={{marginTop:8}}>
-                <label className="label">Преподаватель</label>
-                <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
+              <div style={{ marginTop: 8 }}>
+                <label className="label">Преподаватель (фамилия)</label>
+                <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Например: Иванов" />
               </div>
             )}
 
             <label className="label">Подробности</label>
             <textarea value={body} onChange={e => setBody(e.target.value)} />
 
-            <div style={{marginTop:8,display:'flex',gap:8,alignItems:'center'}}>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving? 'Сохраняю...':'Сохранить'}</button>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Сохраняю...' : 'Сохранить'}</button>
               <button className="btn" onClick={onClose}>Отмена</button>
             </div>
           </div>

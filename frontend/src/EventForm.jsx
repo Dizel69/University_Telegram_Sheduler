@@ -17,6 +17,7 @@ export default function EventForm({ onCreated }) {
   const [status, setStatus] = useState('')
   const [saveOnly, setSaveOnly] = useState(false)
   const [lessonType, setLessonType] = useState('lecture')
+  const [examKind, setExamKind] = useState('control')
   const semester = localStorage.getItem('semester') || ''
 
   async function handleSubmit(e) {
@@ -80,6 +81,7 @@ export default function EventForm({ onCreated }) {
         setRepeatUntil('')
         setReminder(24)
         setLessonType('lecture')
+        setExamKind('control')
         // Для schedule не переходить на вкладку События
         if (onCreated && type !== 'schedule') onCreated(res.data)
         return
@@ -104,8 +106,21 @@ export default function EventForm({ onCreated }) {
       const seriesId = (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('s-' + Date.now() + '-' + Math.random().toString(36).slice(2,7)))
       const created = []
       for (const d of occurrences) {
-        const payload = { type, title: title || null, body: message || '', date: d, time: (type === 'homework' ? null : (time || null)), end_time: (type === 'homework' ? null : (endTime || null)), room: room || null, teacher: teacher || null, series_id: seriesId, reminder_offset_hours: 24 }
+        const payload = {
+          type,
+          subject: subject || null,
+          title: title || null,
+          body: message || '',
+          date: d,
+          time: (type === 'homework' ? null : (time || null)),
+          end_time: (type === 'homework' ? null : (endTime || null)),
+          room: room || null,
+          teacher: teacher || null,
+          series_id: seriesId,
+          reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
+        }
         if (type === 'schedule') payload.lesson_type = lessonType
+        if (type === 'exam_control') payload.lesson_type = examKind
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
         created.push(res.data)
@@ -123,6 +138,7 @@ export default function EventForm({ onCreated }) {
       setRepeatUntil('')
       setReminder(24)
       setLessonType('lecture')
+      setExamKind('control')
       // Для schedule не переходить на вкладку События
       if (onCreated && created.length && type !== 'schedule') onCreated(created[0])
 
@@ -141,6 +157,7 @@ export default function EventForm({ onCreated }) {
           <label className="label">Тип</label>
           <select value={type} onChange={e => setType(e.target.value)}>
             <option value="schedule">Пара / Мероприятие</option>
+            <option value="exam_control">Контрольная / экзамен</option>
             <option value="transfer">Перенос</option>
             <option value="homework">Домашнее задание</option>
             <option value="announcement">Объявление</option>
@@ -219,6 +236,42 @@ export default function EventForm({ onCreated }) {
           </div>
         )}
 
+        {type === 'exam_control' && (
+          <div>
+            <label className="label">Вид</label>
+            <div style={{display:'flex', gap:12, alignItems:'center'}}>
+              <button
+                type="button"
+                onClick={() => setExamKind('control')}
+                style={{
+                  padding:'8px 16px',
+                  border: examKind === 'control' ? '2px solid #ea580c' : '1px solid #ddd',
+                  borderRadius:'4px',
+                  backgroundColor: examKind === 'control' ? '#ffedd5' : '#fff',
+                  cursor:'pointer',
+                  fontWeight: examKind === 'control' ? 'bold' : 'normal'
+                }}
+              >
+                📝 Контрольная
+              </button>
+              <button
+                type="button"
+                onClick={() => setExamKind('exam')}
+                style={{
+                  padding:'8px 16px',
+                  border: examKind === 'exam' ? '2px solid #ea580c' : '1px solid #ddd',
+                  borderRadius:'4px',
+                  backgroundColor: examKind === 'exam' ? '#ffedd5' : '#fff',
+                  cursor:'pointer',
+                  fontWeight: examKind === 'exam' ? 'bold' : 'normal'
+                }}
+              >
+                🎓 Экзамен
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="label">Дата</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -279,7 +332,7 @@ export default function EventForm({ onCreated }) {
 
       <div className="form-actions">
         <button className="btn btn-primary" type="submit">Отправить сейчас</button>
-        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setStatus('') }}>Сброс</button>
+        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setStatus('') }}>Сброс</button>
         <div className="status">{status}</div>
       </div>
     </form>

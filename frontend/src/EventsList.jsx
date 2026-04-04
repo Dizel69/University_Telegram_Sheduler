@@ -26,6 +26,7 @@ export default function EventsList({ highlightId }) {
     if (!t) return '#6b7280'
     const n = String(t).toLowerCase()
     if (n === 'schedule' || n === 'расписание') return '#60a5fa'
+    if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return '#f97316'
     if (n.includes('homework') || n.includes('дом')) return '#a78bfa'
     if (n.includes('transfer') || n.includes('перенос')) return '#ef4444'
     if (n.includes('announcement') || n.includes('объявлен')) return '#34d399'
@@ -46,6 +47,7 @@ export default function EventsList({ highlightId }) {
     const n = String(t).toLowerCase()
     if (n.includes('transfer') || n.includes('перенос')) return 'Перенос'
     if (n.includes('homework') || n.includes('дом')) return 'Домашняя работа'
+    if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return 'Контрольная / экзамен'
     if (n === 'schedule' || n === 'расписание') return 'Расписание'
     if (n.includes('announcement') || n.includes('объявлен')) return 'Объявление'
     return t
