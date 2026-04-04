@@ -20,12 +20,10 @@ def _format_exam_control_reminder(ev: dict, date) -> str:
         lines.append("#" + str(subj).strip().replace(" ", "_"))
     room = ev.get("room")
     if room and str(room).strip():
-        lines.append("Аудитория")
-        lines.append(str(room).strip())
+        lines.append(f"Аудитория: {str(room).strip()}")
     teacher = ev.get("teacher")
     if teacher and str(teacher).strip():
-        lines.append("преподаватель")
-        lines.append(str(teacher).strip())
+        lines.append(f"Преподаватель: {str(teacher).strip()}")
     body = (ev.get("body") or "").strip()
     if body:
         lines.append(body)

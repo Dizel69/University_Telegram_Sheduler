@@ -137,12 +137,10 @@ def _build_telegram_message_text(ev) -> str:
             lines.append("#" + str(subj).strip().replace(" ", "_"))
         room = getattr(ev, "room", None)
         if room and str(room).strip():
-            lines.append("Аудитория")
-            lines.append(str(room).strip())
+            lines.append(f"Аудитория: {str(room).strip()}")
         teacher = getattr(ev, "teacher", None)
         if teacher and str(teacher).strip():
-            lines.append("преподаватель")
-            lines.append(str(teacher).strip())
+            lines.append(f"Преподаватель: {str(teacher).strip()}")
         body = (getattr(ev, "body", None) or "").strip()
         if body:
             lines.append(body)
