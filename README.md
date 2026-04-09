@@ -1,103 +1,144 @@
-# M15 Telegram Scheduler — skeleton проекта (MVP)
+# University Telegram Scheduler (M15)
 
-Ниже — минимальный skeleton микросервисного проекта, который я только что подготовил. В репозитории будут следующие сервисы:
+Микросервисный проект для ведения **календаря событий** (расписание/домашка/объявления/экзамены) и **отправки сообщений/напоминаний в Telegram**.
 
-* `backend` — FastAPI (CRUD событий, public calendar, endpoint для получения напоминаний)
-* `bot` — сервис, принимающий HTTP-запросы от backend и отправляющий сообщения в Telegram
-* `worker` — простой scheduler (APScheduler), который по таймеру запрашивает у backend события, требующие отправки напоминаний, и вызывает bot
-* `frontend` — React‑приложение, показывающее:
-  * публичный календарь с событиями,
-  * (для админов) панель создания/списка событий,
-  * доступную без авторизации вкладку «Домашка», где выводятся только события типа `homework`.
-  
-  Настройка текущего семестра сохраняется в `localStorage` и доступна через скрытую страницу `#semester`.
-* `postgres`, `redis` — инфраструктура (docker-compose)
+## Что в репозитории
 
----
+- **`backend`**: FastAPI API + БД событий (SQLModel), формирует текст сообщений и дергает bot-service.
+- **`bot`**: FastAPI сервис-обёртка над Telegram Bot API (отправка сообщений, создание тем/топиков).
+- **`worker`**: APScheduler-воркер, периодически опрашивает backend на “пора напоминать” и отправляет напоминания через bot-service.
+- **`frontend`**: React + Vite UI (публичный календарь и админ-панель).
+- **`postgres`**: база данных (через `docker-compose.yml`).
+- **`redis`**: сейчас поднимается в `docker-compose.yml`, но в коде core-флоу не завязан на Redis.
 
-## Структура (файлы, которые я положил в skeleton)
+> В репозитории также есть папка `parser` (FastAPI + pdfplumber для парсинга PDF), **но в текущем `docker-compose.yml` она не подключена**.
 
-```
-m15-telegram-skeleton/
-├─ backend/
-│  ├─ app/
-│  │  ├─ main.py
-│  │  ├─ models.py
-│  │  ├─ schemas.py
-│  │  ├─ crud.py
-│  │  └─ database.py
-│  ├─ Dockerfile
-│  └─ requirements.txt
-├─ bot/
-│  ├─ app.py
-│  ├─ Dockerfile
-│  └─ requirements.txt
-├─ worker/
-│  ├─ worker.py
-│  ├─ Dockerfile
-│  └─ requirements.txt
-├─ frontend/
-│  └─ README.md (заглушка, инструкция для React + FullCalendar)
-├─ docker-compose.yml
-└─ README.md
-```
+## Быстрый старт (Docker)
 
----
+### Предусловия
 
-> **Важно:** это skeleton — минимально рабочая основа. Я использовал подход с HTTP-вызовом backend -> bot для отправки сообщений (так проще для микросервисной архитектуры и отладки в контейнерах). Worker использует APScheduler и периодически обращается к backend, чтобы найти события с напоминаниями.
+- Docker + Docker Compose
+- Токен Telegram-бота (через `@BotFather`)
+- (Опционально) `chat_id` нужного чата/супергруппы и `message_thread_id` темы (если используете форумные темы)
 
----
+### 1) Создай `.env` в корне
 
-## Как запустить (локально, dev)
-
-1. Создать `.env` в корне с переменными:
+Минимально необходимое:
 
 ```env
-BOT_TOKEN=токен_вашего_бота
+# Telegram
+BOT_TOKEN=123456:ABCDEF...
+
+# Backend auth (для админских действий с фронта)
+ADMIN_TOKEN=change-me
+
+# Database (backend читает DATABASE_URL)
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=m15db
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/m15db
-REDIS_URL=redis://redis:6379/0
-FRONTEND_URL=http://{HOST}:3000
+
+# URLs для связи сервисов (можно оставить дефолты)
+BACKEND_URL=http://backend:8000
+BOT_SERVICE_URL=http://bot:8081
+
+# Для ссылок в Telegram на карточку события в UI
+# Если FRONTEND_URL не задан, backend попробует собрать его из HOST:3000
+HOST=127.0.0.1
+FRONTEND_URL=http://127.0.0.1:3000
+
+# Дефолтный чат для отправки, если у события не задан chat_id
+DEFAULT_CHAT_ID=-1001234567890
+
+# Опционально: маршрутизация по типам событий (переопределяет DEFAULT_CHAT_ID)
+CHAT_ID_SCHEDULE=-1001234567890
+CHAT_ID_HOMEWORK=-1001234567890
+CHAT_ID_ANNOUNCEMENTS=-1001234567890
+
+# Опционально: темы/топики по типам (message_thread_id)
+THREAD_ID_SCHEDULE=1
+THREAD_ID_HOMEWORK=2
+THREAD_ID_ANNOUNCEMENTS=3
+
+# Worker
+WORKER_POLL_INTERVAL=60
 ```
 
-2. Запустить:
+### 2) Запусти сервисы
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-3. Backend доступен на `http://<HOST>:8000` (Swagger UI — `http://<HOST>:8000/docs`) — установите `HOST` в `.env` или используйте `FRONTEND_URL`/`DEPLOY` конфигурацию.
-  Bot-service слушает `http://bot:8080` внутри сети (и `http://127.0.0.1:8081` локально, если проброшено).
-   Worker запускается и каждые 60 секунд проверяет напоминания.
+### 3) Полезные адреса
 
----
+- **Frontend (UI)**: `http://localhost:3000` (внутри контейнера Vite на `5173`, наружу проброшено на `3000`)
+- **Backend API**: `http://localhost:8000`
+  - Swagger: `http://localhost:8000/docs`
+- **Bot-service API**: `http://localhost:8081`
 
-## Ключевые файлы — кратко
+## Как это работает (в двух словах)
 
-### backend/app/main.py
+- **Создание/отправка поста**: frontend вызывает backend (админские эндпоинты требуют `X-ADMIN-TOKEN`), backend сохраняет событие и отправляет текст в `bot` (HTTP), `bot` шлёт сообщение в Telegram.
+- **Напоминания**: `worker` раз в `WORKER_POLL_INTERVAL` секунд вызывает `GET /events/due_reminders`, для каждого события отправляет напоминание через `bot`, затем помечает событие как `reminder_sent=true`.
+- **Маршрутизация**: chat/thread выбираются так:
+  - если у события указаны `chat_id` / `topic_thread_id` — они приоритетны;
+  - иначе используются переменные окружения `CHAT_ID_*` / `THREAD_ID_*`;
+  - иначе fallback на `DEFAULT_CHAT_ID`.
 
-* Роуты:
+## Типы событий
 
-  * `POST /events/send` — создать событие и сразу отправить сообщение через bot-service; возвращает объект события с `sent=true` и `sent_message_id`.
-  * `GET /events` — список событий (публичный, для календаря)
-  * `GET /events/due_reminders` — внутренний endpoint для worker: возвращает события, у которых `reminder_sent=false` и `date - reminder_offset <= now + tolerance`.
+Backend нормализует типы в каноничные токены:
 
-### backend/app/models.py
+- **`schedule`** — расписание (в текущей логике при создании через `/events/send` напоминания не шлются)
+- **`homework`** — домашнее задание (обычно с напоминаниями)
+- **`exam_control`** — контрольная/экзамен (формат сообщения/напоминания чуть другой, поддерживает `lesson_type=exam|control`)
+- **`announcement`** — объявление
+- **`transfer`** — перенос/перемещение (может выставляться автоматически, если в тексте есть “перенос/перенес…”)
 
-* SQLAlchemy-модели: `Subject`, `Topic`, `Event`, `Admin`.
-* Поля события: `id, type, subject_id, title, body, date, time, created_at, sent, sent_message_id, chat_id, topic_thread_id, reminder_offset, reminder_sent, source`
+## Backend API (основное)
 
-### bot/app.py
+Адрес: `http://localhost:8000`
 
-* FastAPI-приложение с endpoint `POST /send`:
+- **`GET /events`**: публичный список событий (для UI).
+- **`GET /calendar?start=YYYY-MM-DD&end=YYYY-MM-DD&type=homework`**: календарная выдача с фильтрами.
+- **`POST /events/send`**: создать событие и попытаться сразу отправить пост в Telegram (через bot-service). Требует `X-ADMIN-TOKEN`.
+- **`POST /events`**: создать событие **без отправки** (помечается `source=manual`). Требует `X-ADMIN-TOKEN`.
+- **`PUT /events/{event_id}?apply_to_series=false`**: обновить событие (и опционально всю серию).
+- **`DELETE /events/{event_id}`**, **`DELETE /events/day?date=YYYY-MM-DD`**, **`DELETE /events/month?year=YYYY&month=M`**: удаление.
+- **`GET /events/due_reminders`**: список “пора напоминать” (использует worker).
+- **`POST /events/{event_id}/mark_reminder_sent`**: пометить напоминание отправленным (использует worker).
+- **`POST /events/{event_id}/send_now`**: принудительно отправить уже существующее событие в Telegram. Требует `X-ADMIN-TOKEN`.
+- **`GET /admin/validate`**: проверка админ-токена (для UI логина).
 
-  * Debug: принимает `chat_id, thread_id, text` и вызывает `bot.send_message(chat_id=..., message_thread_id=..., text=...)`.
-  * Возвращает `message_id`.
+## Bot-service API
 
-### worker/worker.py
+Адрес: `http://localhost:8081`
 
-* APScheduler job, выполняющий запрос к `GET /events/due_reminders` и для каждого результата вызывает `POST bot/send` с подготовленным текстом напоминания.
+- **`POST /send`**: отправить сообщение (`chat_id`, `thread_id` опционально, `text`).
+- **`POST /create_topic`**: создать тему в супергруппе (бот должен быть админом с правом управления темами).
 
----
+## Frontend
+
+- Vite dev-сервер запускается внутри контейнера и доступен снаружи на `:3000`.
+- В dev-режиме настроен прокси на backend для путей `/api` и `/events`.
+
+## CI/CD (GitHub Actions)
+
+В `.github/workflows/ci-cd.yml` настроен простой деплой:
+
+- на пуш в `main` код копируется на сервер по SCP,
+- затем по SSH выполняется `docker compose down` и `docker compose up --build -d`.
+
+Ожидаемые секреты репозитория:
+
+- `DEPLOY_HOST`
+- `DEPLOY_USER`
+- `DEPLOY_KEY`
+- `DEPLOY_PATH`
+
+## Troubleshooting (частые проблемы)
+
+- **Бот не отправляет в тему**: проверь `thread_id` (message_thread_id) и что чат — супергруппа с включёнными темами.
+- **401/403 с фронта**: проверь `ADMIN_TOKEN` и заголовок `X-ADMIN-TOKEN`.
+- **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (или `HOST`, чтобы backend собрал `http://{HOST}:3000`).
