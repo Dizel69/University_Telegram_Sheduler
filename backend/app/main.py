@@ -1,5 +1,5 @@
 import os
-import time
+import time as _time
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
@@ -60,14 +60,14 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/metrics":
             return await call_next(request)
 
-        start = time.perf_counter()
+        start = _time.perf_counter()
         status_code = "500"
         try:
             response = await call_next(request)
             status_code = str(getattr(response, "status_code", 200))
             return response
         finally:
-            elapsed = time.perf_counter() - start
+            elapsed = _time.perf_counter() - start
             path = request.url.path
             method = request.method
             HTTP_REQUESTS_TOTAL.labels(method=method, path=path, status_code=status_code).inc()
