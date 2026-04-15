@@ -30,6 +30,12 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/metrics > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     networks:
       - appnet
 
@@ -88,6 +94,10 @@ services:
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
+    depends_on:
+      - backend
+      - cadvisor
+      - node-exporter
     networks:
       - appnet
 

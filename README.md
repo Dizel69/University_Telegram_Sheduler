@@ -75,7 +75,22 @@ docker compose up --build
 - **Frontend (UI)**: `http://localhost:3000` (внутри контейнера Vite на `5173`, наружу проброшено на `3000`)
 - **Backend API**: `http://localhost:8000`
   - Swagger: `http://localhost:8000/docs`
+- **Backend метрики (Prometheus format)**: `http://localhost:8000/metrics`
 - **Bot-service API**: `http://localhost:8081`
+- **Prometheus**: `http://localhost:9090`
+- **Grafana**: `http://localhost:3001` (по умолчанию `admin` / `admin`)
+
+## Мониторинг (Prometheus + Grafana)
+
+### Проверить, что backend отдаёт метрики
+
+```bash
+curl -s http://localhost:8000/metrics | head
+```
+
+### Проверить, что Prometheus видит backend (target UP)
+
+Открой Prometheus → `Status` → `Targets` и убедись, что job `backend` в состоянии **UP**.
 
 ## Как это работает (в двух словах)
 

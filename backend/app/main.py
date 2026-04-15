@@ -1,7 +1,10 @@
 import os
+import time
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from app.database import init_db
 from app.schemas import EventCreate, EventPublic
 from app.models import Event
@@ -11,6 +14,7 @@ from typing import List, Optional
 import calendar as _calendar
 from datetime import datetime, date, time
 from pydantic import BaseModel
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 # IP или имя хоста для сервисов при развёртывании (пример: 185.28.85.183)
@@ -39,6 +43,39 @@ TYPE_HASHTAG = {
 
 app = FastAPI(title="Планировщик университета - Бэкенд")
 
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests",
+    ["method", "path", "status_code"],
+)
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "path"],
+)
+
+
+class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        start = time.perf_counter()
+        status_code = "500"
+        try:
+            response = await call_next(request)
+            status_code = str(getattr(response, "status_code", 200))
+            return response
+        finally:
+            elapsed = time.perf_counter() - start
+            path = request.url.path
+            method = request.method
+            HTTP_REQUESTS_TOTAL.labels(method=method, path=path, status_code=status_code).inc()
+            HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=path).observe(elapsed)
+
+
+app.add_middleware(PrometheusMetricsMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # В production замени на список разрешённых фронтендов
@@ -51,6 +88,11 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_db()
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 def _resolve_chat_id(ev_obj):
