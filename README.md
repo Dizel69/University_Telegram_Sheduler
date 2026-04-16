@@ -157,3 +157,42 @@ Backend нормализует типы в каноничные токены:
 - **Бот не отправляет в тему**: проверь `thread_id` (message_thread_id) и что чат — супергруппа с включёнными темами.
 - **401/403 с фронта**: проверь `ADMIN_TOKEN` и заголовок `X-ADMIN-TOKEN`.
 - **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (или `HOST`, чтобы backend собрал `http://{HOST}:3000`).
+
+## Схема взаимодействия контейнеров
+
+```mermaid
+flowchart LR
+    U[Пользователь / Браузер]
+    TG[Telegram API]
+
+    FE[frontend\n:3000->5173]
+    BE[backend\n:8000]
+    BOT[bot\n:8081]
+    WRK[worker]
+    PG[(postgres)]
+    RD[(redis)]
+
+    PR[prometheus\n:9090]
+    GF[grafana\n:3001->3000]
+    CAD[cadvisor\n:8082->8080]
+    NE[node-exporter\n:9100]
+
+    U -->|HTTP(S): UI, действия пользователя\n(логин, расписание, запросы)| FE
+    FE -->|REST/JSON: запросы API\n(пользователи, расписание, настройки)| BE
+
+    TG -->|Webhook/updates: сообщения, команды,\ncallback_query| BOT
+    BOT -->|HTTP API (JSON): чтение/запись данных,\nсинхронизация состояния бота| BE
+    BOT -->|sendMessage/editMessage и др.\n(Bot API JSON)| TG
+
+    WRK -->|REST/JSON: получение задач,\nсобытий и данных расписания| BE
+    WRK -->|Redis commands: очереди/кэши,\nключи задач и таймеров| RD
+    WRK -->|HTTP к bot-сервису: триггер отправки\nуведомлений/напоминаний| BOT
+
+    BE -->|SQL (INSERT/SELECT/UPDATE):\nпользователи, расписание, состояния| PG
+    BE -->|Redis commands: кэш,\nвременные данные, rate-limit| RD
+
+    PR -->|scrape /metrics: метрики приложения\n(HTTP latency, ошибки, бизнес-метрики)| BE
+    PR -->|scrape /metrics: метрики контейнеров\n(CPU/RAM/FS/network)| CAD
+    PR -->|scrape /metrics: метрики хоста\n(load, mem, disk, net)| NE
+    GF -->|PromQL queries: чтение временных рядов\nдля панелей и алертов| PR
+```
