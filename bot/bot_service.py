@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import socket
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import aiohttp
@@ -15,6 +16,42 @@ if not BOT_TOKEN:
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 app = FastAPI(title="Сервис бота М15")
+_session: aiohttp.ClientSession | None = None
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    # В нашей сети IPv4 до Telegram не работает, поэтому фиксируем IPv6.
+    # Это важно: иначе клиент может выбирать IPv4 и ловить ConnectTimeout.
+    global _session
+    timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
+    connector = aiohttp.TCPConnector(
+        family=socket.AF_INET6,
+        ttl_dns_cache=300,
+        use_dns_cache=True,
+    )
+    _session = aiohttp.ClientSession(timeout=timeout, connector=connector)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    global _session
+    if _session is not None:
+        await _session.close()
+        _session = None
+
+
+def _get_session() -> aiohttp.ClientSession:
+    if _session is None:
+        # На случай, если startup не отработал (например, при тестах).
+        timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
+        connector = aiohttp.TCPConnector(
+            family=socket.AF_INET6,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+        )
+        return aiohttp.ClientSession(timeout=timeout, connector=connector)
+    return _session
 
 
 class SendRequest(BaseModel):
@@ -40,21 +77,19 @@ async def send_message(req: SendRequest):
             payload["message_thread_id"] = req.thread_id
 
         url = f"{API_BASE}/sendMessage"
-
-        timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=payload) as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    logger.warning(
-                        "Telegram send non-200: status=%s body=%s",
-                        resp.status,
-                        text,
-                    )
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Telegram HTTP {resp.status}: {text}",
-                    )
+        session = _get_session()
+        async with session.post(url, json=payload) as resp:
+            text = await resp.text()
+            if resp.status != 200:
+                logger.warning(
+                    "Telegram send non-200: status=%s body=%s",
+                    resp.status,
+                    text,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Telegram HTTP {resp.status}: {text}",
+                )
 
         try:
             body = json.loads(text)
@@ -76,9 +111,12 @@ async def send_message(req: SendRequest):
         message_id = msg.get("message_id")
         logger.info("Telegram send OK: message_id=%s chat_id=%s", message_id, req.chat_id)
         return {"ok": True, "message_id": message_id}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Unexpected send failure")
-        raise HTTPException(status_code=500, detail=f"Unexpected bot-service error: {e}")
+        # Не логируем URL (там BOT_TOKEN), поэтому только тип/текст исключения.
+        logger.exception("Unexpected send failure: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Unexpected bot-service error")
 
 
 @app.post("/create_topic")
@@ -92,21 +130,19 @@ async def create_topic(req: CreateTopicRequest):
 
         payload = {"chat_id": req.chat_id, "name": req.name}
         url = f"{API_BASE}/createForumTopic"
-
-        timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=payload) as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    logger.warning(
-                        "Telegram create_topic non-200: status=%s body=%s",
-                        resp.status,
-                        text,
-                    )
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Telegram HTTP {resp.status}: {text}",
-                    )
+        session = _get_session()
+        async with session.post(url, json=payload) as resp:
+            text = await resp.text()
+            if resp.status != 200:
+                logger.warning(
+                    "Telegram create_topic non-200: status=%s body=%s",
+                    resp.status,
+                    text,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Telegram HTTP {resp.status}: {text}",
+                )
 
         try:
             body = json.loads(text)
@@ -128,9 +164,11 @@ async def create_topic(req: CreateTopicRequest):
         thread_id = result_obj.get("message_thread_id")
         logger.info("Create topic result message_thread_id: %s", thread_id)
         return {"ok": True, "message_thread_id": thread_id}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Unexpected create_topic failure")
-        raise HTTPException(status_code=500, detail=f"Unexpected bot-service error: {e}")
+        logger.exception("Unexpected create_topic failure: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Unexpected bot-service error")
 
 
 @app.get("/")
