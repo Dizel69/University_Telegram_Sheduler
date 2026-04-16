@@ -35,22 +35,35 @@ async def _telegram_call(method: str, payload: dict) -> dict:
     url = f"{API_BASE}/{method}"
     payload_json = json.dumps(payload, ensure_ascii=False)
 
-    # Пробуем маршруты по порядку: IPv6 -> IPv4 -> системный DNS
-    resolve_variants = [
-        f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
-        f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
-        None,
+    # Пробуем маршруты по порядку: IPv6 -> IPv4 -> системный DNS.
+    # Для первых двух явно фиксируем стек (-6/-4), чтобы curl не "перепрыгивал".
+    route_variants = [
+        {
+            "name": "ipv6-resolve",
+            "family_flag": "-6",
+            "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
+        },
+        {
+            "name": "ipv4-resolve",
+            "family_flag": "-4",
+            "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
+        },
+        {
+            "name": "system-dns",
+            "family_flag": None,
+            "resolve": None,
+        },
     ]
 
     last_error = "unknown error"
-    for resolve in resolve_variants:
+    for route in route_variants:
         cmd = [
             "curl",
             "-sS",
             "--connect-timeout",
-            "15",
+            "8",
             "--max-time",
-            "120",
+            "25",
             "-X",
             "POST",
             url,
@@ -59,13 +72,18 @@ async def _telegram_call(method: str, payload: dict) -> dict:
             "-d",
             payload_json,
         ]
-        if resolve is not None:
-            cmd.extend(["--resolve", resolve])
+        if route["family_flag"] is not None:
+            cmd.append(route["family_flag"])
+        if route["resolve"] is not None:
+            cmd.extend(["--resolve", route["resolve"]])
 
+        logger.info("Telegram curl try route=%s", route["name"])
         result = await _run_curl(cmd)
         if result.returncode != 0:
-            route = resolve or "system-dns"
-            last_error = f"route={route} rc={result.returncode} err={result.stderr.strip()}"
+            last_error = (
+                f"route={route['name']} rc={result.returncode} "
+                f"err={result.stderr.strip()}"
+            )
             logger.warning("Telegram curl failed: %s", last_error)
             continue
 
@@ -75,6 +93,7 @@ async def _telegram_call(method: str, payload: dict) -> dict:
             logger.warning("Telegram returned non-JSON: %s", result.stdout[:200])
             raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
 
+        logger.info("Telegram curl success route=%s", route["name"])
         return body
 
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
