@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from telegram import Bot
 from telegram.error import TelegramError, TimedOut
+from telegram.request import AiohttpRequest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
@@ -12,7 +13,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN хранится в переменных окружения")
 
-bot = Bot(token=BOT_TOKEN)
+# Используем AiohttpRequest вместо HTTPX по умолчанию,
+# так как в некоторых сетях HTTPX даёт систематические ConnectTimeout.
+request = AiohttpRequest(
+    connect_timeout=15,
+    read_timeout=90,
+)
+
+bot = Bot(token=BOT_TOKEN, request=request)
 app = FastAPI(title="Сервис бота М15")
 
 
