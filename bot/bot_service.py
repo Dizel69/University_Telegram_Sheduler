@@ -1,10 +1,9 @@
-import asyncio
 import json
 import logging
 import os
-import subprocess
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import aiohttp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
@@ -36,51 +35,29 @@ async def send_message(req: SendRequest):
     """Отправляет сообщение в Telegram и возвращает ID сообщения."""
     try:
         logger.info("POST /send payload: %s", req.dict())
-        payload: dict[str, object] = {
-            "chat_id": req.chat_id,
-            "text": req.text,
-        }
+        payload: dict[str, object] = {"chat_id": req.chat_id, "text": req.text}
         if req.thread_id is not None:
             payload["message_thread_id"] = req.thread_id
 
         url = f"{API_BASE}/sendMessage"
-        data = json.dumps(payload)
 
-        cmd = [
-            "curl",
-            "-sS",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            data,
-        ]
-
-        loop = asyncio.get_running_loop()
-        result: subprocess.CompletedProcess[str] = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                cmd,
-                text=True,
-                capture_output=True,
-            ),
-        )
-
-        if result.returncode != 0:
-            logger.warning(
-                "curl sendMessage failed: rc=%s stderr=%s",
-                result.returncode,
-                result.stderr,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Telegram send curl failed: {result.stderr.strip()}",
-            )
+        timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload) as resp:
+                text = await resp.text()
+                if resp.status != 200:
+                    logger.warning(
+                        "Telegram send non-200: status=%s body=%s",
+                        resp.status,
+                        text,
+                    )
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Telegram HTTP {resp.status}: {text}",
+                    )
 
         try:
-            body = json.loads(result.stdout)
+            body = json.loads(text)
         except json.JSONDecodeError as e:
             logger.warning("Telegram send invalid JSON: %s", e)
             raise HTTPException(
@@ -113,48 +90,26 @@ async def create_topic(req: CreateTopicRequest):
     try:
         logger.info("POST /create_topic payload: %s", req.dict())
 
-        payload = {
-            "chat_id": req.chat_id,
-            "name": req.name,
-        }
+        payload = {"chat_id": req.chat_id, "name": req.name}
         url = f"{API_BASE}/createForumTopic"
-        data = json.dumps(payload)
 
-        cmd = [
-            "curl",
-            "-sS",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            data,
-        ]
-
-        loop = asyncio.get_running_loop()
-        result: subprocess.CompletedProcess[str] = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                cmd,
-                text=True,
-                capture_output=True,
-            ),
-        )
-
-        if result.returncode != 0:
-            logger.warning(
-                "curl createForumTopic failed: rc=%s stderr=%s",
-                result.returncode,
-                result.stderr,
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Telegram create_topic curl failed: {result.stderr.strip()}",
-            )
+        timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload) as resp:
+                text = await resp.text()
+                if resp.status != 200:
+                    logger.warning(
+                        "Telegram create_topic non-200: status=%s body=%s",
+                        resp.status,
+                        text,
+                    )
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Telegram HTTP {resp.status}: {text}",
+                    )
 
         try:
-            body = json.loads(result.stdout)
+            body = json.loads(text)
         except json.JSONDecodeError as e:
             logger.warning("Telegram create_topic invalid JSON: %s", e)
             raise HTTPException(
