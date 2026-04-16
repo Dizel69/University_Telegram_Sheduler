@@ -39,10 +39,10 @@ async def send_message(req: SendRequest):
             chat_id=req.chat_id,
             text=req.text,
             message_thread_id=req.thread_id,
-            connect_timeout=10,
-            read_timeout=40,
-            write_timeout=40,
-            pool_timeout=10,
+            connect_timeout=15,
+            read_timeout=90,
+            write_timeout=90,
+            pool_timeout=15,
         )
         logger.info(
             "Telegram send OK: message_id=%s chat_id=%s",
