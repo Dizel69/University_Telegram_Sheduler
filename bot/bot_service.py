@@ -42,59 +42,71 @@ async def _telegram_call(method: str, payload: dict) -> dict:
             "name": "ipv6-resolve",
             "family_flag": "-6",
             "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
+            "connect_timeout": "4",
+            "max_time": "12",
         },
         {
             "name": "ipv4-resolve",
             "family_flag": "-4",
             "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
+            "connect_timeout": "15",
+            "max_time": "40",
         },
         {
             "name": "system-dns",
             "family_flag": None,
             "resolve": None,
+            "connect_timeout": "8",
+            "max_time": "25",
         },
     ]
 
     last_error = "unknown error"
-    for route in route_variants:
-        cmd = [
-            "curl",
-            "-sS",
-            "--connect-timeout",
-            "8",
-            "--max-time",
-            "25",
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            payload_json,
-        ]
-        if route["family_flag"] is not None:
-            cmd.append(route["family_flag"])
-        if route["resolve"] is not None:
-            cmd.extend(["--resolve", route["resolve"]])
+    max_rounds = 3
+    for round_idx in range(1, max_rounds + 1):
+        for route in route_variants:
+            cmd = [
+                "curl",
+                "-sS",
+                "--connect-timeout",
+                route["connect_timeout"],
+                "--max-time",
+                route["max_time"],
+                "-X",
+                "POST",
+                url,
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                payload_json,
+            ]
+            if route["family_flag"] is not None:
+                cmd.append(route["family_flag"])
+            if route["resolve"] is not None:
+                cmd.extend(["--resolve", route["resolve"]])
 
-        logger.info("Telegram curl try route=%s", route["name"])
-        result = await _run_curl(cmd)
-        if result.returncode != 0:
-            last_error = (
-                f"route={route['name']} rc={result.returncode} "
-                f"err={result.stderr.strip()}"
-            )
-            logger.warning("Telegram curl failed: %s", last_error)
-            continue
+            logger.info("Telegram curl try round=%s route=%s", round_idx, route["name"])
+            result = await _run_curl(cmd)
+            if result.returncode != 0:
+                last_error = (
+                    f"round={round_idx} route={route['name']} rc={result.returncode} "
+                    f"err={result.stderr.strip()}"
+                )
+                logger.warning("Telegram curl failed: %s", last_error)
+                continue
 
-        try:
-            body = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            logger.warning("Telegram returned non-JSON: %s", result.stdout[:200])
-            raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
+            try:
+                body = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                logger.warning("Telegram returned non-JSON: %s", result.stdout[:200])
+                raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
 
-        logger.info("Telegram curl success route=%s", route["name"])
-        return body
+            logger.info("Telegram curl success round=%s route=%s", round_idx, route["name"])
+            return body
+
+        # Пауза между раундами — даём сети "подышать"
+        if round_idx < max_rounds:
+            await asyncio.sleep(round_idx)
 
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
