@@ -1,9 +1,10 @@
+import asyncio
+import json
 import logging
 import os
+import subprocess
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from telegram import Bot
-from telegram.error import TelegramError, TimedOut
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
@@ -12,7 +13,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN хранится в переменных окружения")
 
-bot = Bot(token=BOT_TOKEN)
+API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
 app = FastAPI(title="Сервис бота М15")
 
 
@@ -34,28 +36,69 @@ async def send_message(req: SendRequest):
     """Отправляет сообщение в Telegram и возвращает ID сообщения."""
     try:
         logger.info("POST /send payload: %s", req.dict())
-        # Отправляем и возвращаем message_id
-        msg = await bot.send_message(
-            chat_id=req.chat_id,
-            text=req.text,
-            message_thread_id=req.thread_id,
-            connect_timeout=15,
-            read_timeout=90,
-            write_timeout=90,
-            pool_timeout=15,
+        payload: dict[str, object] = {
+            "chat_id": req.chat_id,
+            "text": req.text,
+        }
+        if req.thread_id is not None:
+            payload["message_thread_id"] = req.thread_id
+
+        url = f"{API_BASE}/sendMessage"
+        data = json.dumps(payload)
+
+        cmd = [
+            "curl",
+            "-sS",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            data,
+        ]
+
+        loop = asyncio.get_running_loop()
+        result: subprocess.CompletedProcess[str] = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                cmd,
+                text=True,
+                capture_output=True,
+            ),
         )
-        logger.info(
-            "Telegram send OK: message_id=%s chat_id=%s",
-            msg.message_id,
-            msg.chat.id,
-        )
-        return {"ok": True, "message_id": msg.message_id}
-    except TimedOut as e:
-        logger.warning("Telegram timeout: %s", e)
-        raise HTTPException(status_code=504, detail="Telegram timeout")
-    except TelegramError as e:
-        logger.warning("Telegram API error: %s", e)
-        raise HTTPException(status_code=502, detail=f"Telegram API error: {e}")
+
+        if result.returncode != 0:
+            logger.warning(
+                "curl sendMessage failed: rc=%s stderr=%s",
+                result.returncode,
+                result.stderr,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Telegram send curl failed: {result.stderr.strip()}",
+            )
+
+        try:
+            body = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logger.warning("Telegram send invalid JSON: %s", e)
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram returned invalid JSON",
+            )
+
+        if not body.get("ok"):
+            logger.warning("Telegram API error payload: %s", body)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Telegram API error: {body}",
+            )
+
+        msg = body.get("result") or {}
+        message_id = msg.get("message_id")
+        logger.info("Telegram send OK: message_id=%s chat_id=%s", message_id, req.chat_id)
+        return {"ok": True, "message_id": message_id}
     except Exception as e:
         logger.exception("Unexpected send failure")
         raise HTTPException(status_code=500, detail=f"Unexpected bot-service error: {e}")
@@ -69,14 +112,67 @@ async def create_topic(req: CreateTopicRequest):
     """
     try:
         logger.info("POST /create_topic payload: %s", req.dict())
-        res = await bot.create_forum_topic(chat_id=req.chat_id, name=req.name)
-        # Telegram возвращает Message с message_thread_id для созданной темы
-        thread_id = getattr(res, "message_thread_id", None)
+
+        payload = {
+            "chat_id": req.chat_id,
+            "name": req.name,
+        }
+        url = f"{API_BASE}/createForumTopic"
+        data = json.dumps(payload)
+
+        cmd = [
+            "curl",
+            "-sS",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            data,
+        ]
+
+        loop = asyncio.get_running_loop()
+        result: subprocess.CompletedProcess[str] = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                cmd,
+                text=True,
+                capture_output=True,
+            ),
+        )
+
+        if result.returncode != 0:
+            logger.warning(
+                "curl createForumTopic failed: rc=%s stderr=%s",
+                result.returncode,
+                result.stderr,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Telegram create_topic curl failed: {result.stderr.strip()}",
+            )
+
+        try:
+            body = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logger.warning("Telegram create_topic invalid JSON: %s", e)
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram returned invalid JSON",
+            )
+
+        if not body.get("ok"):
+            logger.warning("Telegram API error payload (create_topic): %s", body)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Telegram API error: {body}",
+            )
+
+        result_obj = body.get("result") or {}
+        thread_id = result_obj.get("message_thread_id")
         logger.info("Create topic result message_thread_id: %s", thread_id)
         return {"ok": True, "message_thread_id": thread_id}
-    except TelegramError as e:
-        logger.warning("Create topic Telegram API error: %s", e)
-        raise HTTPException(status_code=502, detail=f"Telegram API error: {e}")
     except Exception as e:
         logger.exception("Unexpected create_topic failure")
         raise HTTPException(status_code=500, detail=f"Unexpected bot-service error: {e}")
