@@ -26,6 +26,10 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      BOT_SERVICE_URL: http://host.docker.internal:8081
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:
@@ -44,22 +48,19 @@ services:
     build: ./bot
     restart: unless-stopped
     env_file: .env
-    extra_hosts:
-      - "api.telegram.org:2001:67c:4e8:f004::9"
-    ports:
-      - "127.0.0.1:8081:8081"
-    depends_on:
-      - backend
+    network_mode: host
     volumes:
       - ./bot:/app
-    networks:
-      - appnet
 
   # Worker для отправки напоминаний
   worker:
     build: ./worker
     restart: unless-stopped
     env_file: .env
+    environment:
+      BOT_SERVICE_URL: http://host.docker.internal:8081
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - backend
       - bot
