@@ -1,7 +1,9 @@
+import asyncio
 import json
 import logging
 import os
 import socket
+from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import aiohttp
@@ -19,13 +21,65 @@ app = FastAPI(title="Сервис бота М15")
 _session: aiohttp.ClientSession | None = None
 
 
+TELEGRAM_HOST = "api.telegram.org"
+# IPv6 адрес, который у тебя гарантированно работает (проверено curl)
+TELEGRAM_IPV6 = os.getenv("TELEGRAM_API_IPV6", "2001:67c:4e8:f004::9")
+
+
+class _StaticResolver(aiohttp.abc.AbstractResolver):
+    def __init__(self, mapping: dict[str, str]):
+        self._mapping = mapping
+
+    async def resolve(
+        self,
+        host: str,
+        port: int = 0,
+        family: int = socket.AF_INET,
+    ) -> list[dict[str, Any]]:
+        if host in self._mapping:
+            ip = self._mapping[host]
+            return [
+                {
+                    "hostname": host,
+                    "host": ip,
+                    "port": port,
+                    "family": socket.AF_INET6,
+                    "proto": 0,
+                    "flags": 0,
+                }
+            ]
+        # fallback на системный резолвер
+        infos = await asyncio.get_running_loop().getaddrinfo(
+            host, port, family=family, type=socket.SOCK_STREAM
+        )
+        out: list[dict[str, Any]] = []
+        for fam, _type, proto, _canon, sockaddr in infos:
+            addr = sockaddr[0]
+            out.append(
+                {
+                    "hostname": host,
+                    "host": addr,
+                    "port": port,
+                    "family": fam,
+                    "proto": proto,
+                    "flags": 0,
+                }
+            )
+        return out
+
+    async def close(self) -> None:
+        return None
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     # В нашей сети IPv4 до Telegram не работает, поэтому фиксируем IPv6.
     # Это важно: иначе клиент может выбирать IPv4 и ловить ConnectTimeout.
     global _session
     timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
+    resolver = _StaticResolver({TELEGRAM_HOST: TELEGRAM_IPV6})
     connector = aiohttp.TCPConnector(
+        resolver=resolver,
         family=socket.AF_INET6,
         ttl_dns_cache=300,
         use_dns_cache=True,
@@ -45,7 +99,9 @@ def _get_session() -> aiohttp.ClientSession:
     if _session is None:
         # На случай, если startup не отработал (например, при тестах).
         timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
+        resolver = _StaticResolver({TELEGRAM_HOST: TELEGRAM_IPV6})
         connector = aiohttp.TCPConnector(
+            resolver=resolver,
             family=socket.AF_INET6,
             ttl_dns_cache=300,
             use_dns_cache=True,
