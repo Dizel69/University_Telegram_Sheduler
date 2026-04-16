@@ -2,11 +2,9 @@ import asyncio
 import json
 import logging
 import os
-import socket
-from typing import Any
+import subprocess
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import aiohttp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
@@ -15,99 +13,71 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN хранится в переменных окружения")
 
-API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
+TELEGRAM_HOST = "api.telegram.org"
+API_BASE = f"https://{TELEGRAM_HOST}/bot{BOT_TOKEN}"
+
+# Рабочие IP Telegram для явного route fallback
+TELEGRAM_IPV6 = os.getenv("TELEGRAM_API_IPV6", "2001:67c:4e8:f004::9")
+TELEGRAM_IPV4 = os.getenv("TELEGRAM_API_IPV4", "149.154.166.110")
 
 app = FastAPI(title="Сервис бота М15")
-_session: aiohttp.ClientSession | None = None
 
 
-TELEGRAM_HOST = "api.telegram.org"
-# IPv6 адрес, который у тебя гарантированно работает (проверено curl)
-TELEGRAM_IPV6 = os.getenv("TELEGRAM_API_IPV6", "2001:67c:4e8:f004::9")
-
-
-class _StaticResolver(aiohttp.abc.AbstractResolver):
-    def __init__(self, mapping: dict[str, str]):
-        self._mapping = mapping
-
-    async def resolve(
-        self,
-        host: str,
-        port: int = 0,
-        family: int = socket.AF_INET,
-    ) -> list[dict[str, Any]]:
-        if host in self._mapping:
-            ip = self._mapping[host]
-            return [
-                {
-                    "hostname": host,
-                    "host": ip,
-                    "port": port,
-                    "family": socket.AF_INET6,
-                    "proto": 0,
-                    "flags": 0,
-                }
-            ]
-        # fallback на системный резолвер
-        infos = await asyncio.get_running_loop().getaddrinfo(
-            host, port, family=family, type=socket.SOCK_STREAM
-        )
-        out: list[dict[str, Any]] = []
-        for fam, _type, proto, _canon, sockaddr in infos:
-            addr = sockaddr[0]
-            out.append(
-                {
-                    "hostname": host,
-                    "host": addr,
-                    "port": port,
-                    "family": fam,
-                    "proto": proto,
-                    "flags": 0,
-                }
-            )
-        return out
-
-    async def close(self) -> None:
-        return None
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    # В нашей сети IPv4 до Telegram не работает, поэтому фиксируем IPv6.
-    # Это важно: иначе клиент может выбирать IPv4 и ловить ConnectTimeout.
-    global _session
-    timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
-    resolver = _StaticResolver({TELEGRAM_HOST: TELEGRAM_IPV6})
-    connector = aiohttp.TCPConnector(
-        resolver=resolver,
-        family=socket.AF_INET6,
-        ttl_dns_cache=300,
-        use_dns_cache=True,
+async def _run_curl(args: list[str]) -> subprocess.CompletedProcess[str]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        lambda: subprocess.run(args, text=True, capture_output=True),
     )
-    _session = aiohttp.ClientSession(timeout=timeout, connector=connector)
 
 
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    global _session
-    if _session is not None:
-        await _session.close()
-        _session = None
+async def _telegram_call(method: str, payload: dict) -> dict:
+    url = f"{API_BASE}/{method}"
+    payload_json = json.dumps(payload, ensure_ascii=False)
 
+    # Пробуем маршруты по порядку: IPv6 -> IPv4 -> системный DNS
+    resolve_variants = [
+        f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
+        f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
+        None,
+    ]
 
-def _get_session() -> aiohttp.ClientSession:
-    if _session is None:
-        # На случай, если startup не отработал (например, при тестах).
-        timeout = aiohttp.ClientTimeout(total=120, connect=15, sock_read=90)
-        resolver = _StaticResolver({TELEGRAM_HOST: TELEGRAM_IPV6})
-        connector = aiohttp.TCPConnector(
-            resolver=resolver,
-            family=socket.AF_INET6,
-            ttl_dns_cache=300,
-            use_dns_cache=True,
-        )
-        return aiohttp.ClientSession(timeout=timeout, connector=connector)
-    return _session
+    last_error = "unknown error"
+    for resolve in resolve_variants:
+        cmd = [
+            "curl",
+            "-sS",
+            "--connect-timeout",
+            "15",
+            "--max-time",
+            "120",
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            payload_json,
+        ]
+        if resolve is not None:
+            cmd.extend(["--resolve", resolve])
+
+        result = await _run_curl(cmd)
+        if result.returncode != 0:
+            route = resolve or "system-dns"
+            last_error = f"route={route} rc={result.returncode} err={result.stderr.strip()}"
+            logger.warning("Telegram curl failed: %s", last_error)
+            continue
+
+        try:
+            body = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            logger.warning("Telegram returned non-JSON: %s", result.stdout[:200])
+            raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
+
+        return body
+
+    raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
 
 class SendRequest(BaseModel):
@@ -132,29 +102,7 @@ async def send_message(req: SendRequest):
         if req.thread_id is not None:
             payload["message_thread_id"] = req.thread_id
 
-        url = f"{API_BASE}/sendMessage"
-        session = _get_session()
-        async with session.post(url, json=payload) as resp:
-            text = await resp.text()
-            if resp.status != 200:
-                logger.warning(
-                    "Telegram send non-200: status=%s body=%s",
-                    resp.status,
-                    text,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Telegram HTTP {resp.status}: {text}",
-                )
-
-        try:
-            body = json.loads(text)
-        except json.JSONDecodeError as e:
-            logger.warning("Telegram send invalid JSON: %s", e)
-            raise HTTPException(
-                status_code=502,
-                detail="Telegram returned invalid JSON",
-            )
+        body = await _telegram_call("sendMessage", payload)
 
         if not body.get("ok"):
             logger.warning("Telegram API error payload: %s", body)
@@ -183,31 +131,8 @@ async def create_topic(req: CreateTopicRequest):
     """
     try:
         logger.info("POST /create_topic payload: %s", req.dict())
-
         payload = {"chat_id": req.chat_id, "name": req.name}
-        url = f"{API_BASE}/createForumTopic"
-        session = _get_session()
-        async with session.post(url, json=payload) as resp:
-            text = await resp.text()
-            if resp.status != 200:
-                logger.warning(
-                    "Telegram create_topic non-200: status=%s body=%s",
-                    resp.status,
-                    text,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Telegram HTTP {resp.status}: {text}",
-                )
-
-        try:
-            body = json.loads(text)
-        except json.JSONDecodeError as e:
-            logger.warning("Telegram create_topic invalid JSON: %s", e)
-            raise HTTPException(
-                status_code=502,
-                detail="Telegram returned invalid JSON",
-            )
+        body = await _telegram_call("createForumTopic", payload)
 
         if not body.get("ok"):
             logger.warning("Telegram API error payload (create_topic): %s", body)
