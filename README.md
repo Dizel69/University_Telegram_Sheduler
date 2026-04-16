@@ -42,6 +42,10 @@ DATABASE_URL=postgresql://postgres:postgres@postgres:5432/m15db
 BACKEND_URL=http://backend:8000
 BOT_SERVICE_URL=http://bot:8081
 
+# Если у сервера IPv4 до Telegram не работает, можно зафиксировать IPv6
+# для bot-контейнера через docker-compose extra_hosts.
+TELEGRAM_API_IPV6=2001:67c:4e8:f004::9
+
 # Для ссылок в Telegram на карточку события в UI
 # Если FRONTEND_URL не задан, backend попробует собрать его из HOST:3000
 HOST=127.0.0.1
@@ -157,6 +161,7 @@ Backend нормализует типы в каноничные токены:
 - **Бот не отправляет в тему**: проверь `thread_id` (message_thread_id) и что чат — супергруппа с включёнными темами.
 - **401/403 с фронта**: проверь `ADMIN_TOKEN` и заголовок `X-ADMIN-TOKEN`.
 - **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (или `HOST`, чтобы backend собрал `http://{HOST}:3000`).
+- **Telegram доступен только по IPv6**: в `.env` задай `TELEGRAM_API_IPV6`, затем пересоздай `bot`. `docker-compose.yml` зафиксирует `api.telegram.org` на этот IPv6 через `extra_hosts`. Если контейнер всё равно не выходит по IPv6, нужно включить IPv6 в Docker на сервере или использовать VPN/proxy.
 
 ## Схема взаимодействия контейнеров
 
