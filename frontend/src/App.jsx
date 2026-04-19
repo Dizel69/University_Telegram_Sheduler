@@ -43,7 +43,7 @@ export default function App() {
     }
 
     if (isAdmin) return (
-      <div style={{display:'flex',alignItems:'center',gap:8}}>
+      <div className="login-auth">
         <span style={{fontSize:12,opacity:0.8}}>Администратор</span>
         <button className="btn" onClick={doLogout}>Выйти</button>
       </div>
@@ -96,7 +96,7 @@ export default function App() {
           <button className={tab==='calendar'? 'tab active':'tab'} onClick={() => setTab('calendar')}>Календарь</button>
           <button className={tab==='homework'? 'tab active':'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
         </nav>
-        <div style={{marginLeft:12, display:'flex', alignItems:'center', gap:8}}>
+        <div className="topbar-auth">
           {/* Видимая кнопка авторизации (единственный элемент управления) */}
           <AuthButton />
         </div>

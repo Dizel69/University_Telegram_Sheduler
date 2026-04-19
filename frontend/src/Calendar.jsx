@@ -37,14 +37,14 @@ function TransferModal({ ev, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 360, maxWidth: 560 }}>
+      <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3>Перенести событие</h3>
           <button className="btn" onClick={onClose}>Закрыть</button>
         </div>
         <div style={{ marginTop: 8 }}>
           <div style={{ fontWeight: 700 }}>{ev.title || ev.subject || ev.type}</div>
-          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="row-grid-2" style={{ marginTop: 8 }}>
             <div>
               <label className="label">Новая дата</label>
               <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} />
@@ -58,7 +58,7 @@ function TransferModal({ ev, onClose, onSaved }) {
               <input type="time" value={targetEnd} onChange={e => setTargetEnd(e.target.value)} />
             </div>
           </div>
-          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+          <div className="actions-wrap" style={{ marginTop: 8 }}>
             <button className="btn btn-primary" onClick={doTransfer} disabled={saving}>{saving ? 'Переношу...' : 'Перенести'}</button>
             <button className="btn" onClick={onClose}>Отмена</button>
           </div>
@@ -247,13 +247,13 @@ export default function Calendar() {
   return (
     <ErrorBoundary>
     <div className="card">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <div>
+      <div className="calendar-toolbar">
+        <div className="calendar-toolbar-group">
           <button className="btn" onClick={prev}>◀</button>
           <button className="btn" onClick={goToday}>Сегодня</button>
           <button className="btn" onClick={next}>▶</button>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <div className="calendar-toolbar-group">
           {/* Редактирование доступно только админам */}
           {adminToken ? (
             <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
@@ -272,7 +272,7 @@ export default function Calendar() {
         <div>{loading ? 'Загрузка...' : ''}</div>
       </div>
       {/* Legend explaining colors */}
-      <div style={{display:'flex',justifyContent:'flex-end',gap:12,marginTop:8,marginBottom:6}}>
+      <div className="calendar-legend">
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#ef4444',borderRadius:3,display:'inline-block'}}></span>
           <span style={{fontSize:13,color:'#374151'}}>Перенос</span>
@@ -306,6 +306,7 @@ export default function Calendar() {
         </div>
       )}
 
+      <div className="calendar-wrap">
       <div className="calendar-grid">
   <div className="weekday">Пн</div>
   <div className="weekday">Вт</div>
@@ -357,13 +358,14 @@ export default function Calendar() {
           )
         })}
       </div>
+      </div>
       {/* Day detail modal/panel */}
       {openDay && (
         <div className="modal-overlay" onClick={() => setOpenDay(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{minWidth:360,maxWidth:680}}>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <h3>События за {openDay}</h3>
-                <div style={{display:'flex',gap:8}}>
+                <div className="actions-wrap">
                   {adminToken ? (
                     <button className="btn btn-danger" onClick={() => deleteEventsForDay(openDay)}>Удалить все за день</button>
                   ) : null}
@@ -389,7 +391,7 @@ export default function Calendar() {
                   </div>
                   <div style={{marginTop:6}}>{ev.body}</div>
                   {ev.teacher ? <div style={{marginTop:6,fontSize:13,color:'#374151'}}>Преподаватель: {ev.teacher}</div> : null}
-                  <div style={{marginTop:8,display:'flex',gap:8}}>
+                  <div className="actions-wrap" style={{marginTop:8}}>
                     {adminToken ? (
                       <button className="btn btn-sm" onClick={async () => {
                         try { await axios.post(`/events/${ev.id}/send_now`, null, { headers: { 'x-admin-token': adminToken } }); alert('Отправлено'); load(); }
@@ -584,21 +586,21 @@ export default function Calendar() {
     }
 
     return (
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 360, maxWidth: 680 }}>
+        <div className="modal-overlay" onClick={onClose}>
+        <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3>Добавить событие на {date}</h3>
             <button className="btn" onClick={onClose}>Закрыть</button>
           </div>
           <div style={{ marginTop: 8 }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div className="actions-wrap" style={{ marginBottom: 8 }}>
               <button className={tab === 'main' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('main')}>Основное</button>
               {type !== 'homework' && (
                 <button className={tab === 'teacher' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('teacher')}>Преподаватель</button>
               )}
             </div>
             {tab === 'main' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div className="row-grid-2">
                 <div>
                   <label className="label">Тип</label>
                   <select value={type} onChange={e => setType(e.target.value)}>
@@ -685,7 +687,7 @@ export default function Calendar() {
             <label className="label">Подробности</label>
             <textarea value={body} onChange={e => setBody(e.target.value)} />
 
-            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="actions-wrap" style={{ marginTop: 8, alignItems: 'center' }}>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Сохраняю...' : 'Сохранить'}</button>
               <button className="btn" onClick={onClose}>Отмена</button>
             </div>

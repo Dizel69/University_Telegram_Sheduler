@@ -203,7 +203,7 @@ export default function EventForm({ onCreated }) {
         {type === 'schedule' && (
           <div>
             <label className="label">Тип пары</label>
-            <div style={{display:'flex', gap:12, alignItems:'center'}}>
+            <div className="form-choice-row">
               <button 
                 type="button"
                 onClick={() => setLessonType('lecture')}
@@ -239,7 +239,7 @@ export default function EventForm({ onCreated }) {
         {type === 'exam_control' && (
           <div>
             <label className="label">Вид</label>
-            <div style={{display:'flex', gap:12, alignItems:'center'}}>
+            <div className="form-choice-row">
               <button
                 type="button"
                 onClick={() => setExamKind('control')}

@@ -63,13 +63,13 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 360, maxWidth: 680 }}>
+      <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3>Редактировать событие</h3>
           <button className="btn" onClick={onClose}>Закрыть</button>
         </div>
         <div style={{ marginTop: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="row-grid-2">
             <div>
               <label className="label">Тип</label>
               <select value={type} onChange={e => setType(e.target.value)}>
@@ -139,14 +139,14 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
           <label className="label">Подробности</label>
           <textarea value={body} onChange={e => setBody(e.target.value)} />
 
-          <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="actions-wrap" style={{ marginTop: 8, alignItems: 'center' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={applySeries} onChange={e => setApplySeries(e.target.checked)} />
               <span>Применить ко всей серии</span>
             </label>
           </div>
 
-          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+          <div className="actions-wrap" style={{ marginTop: 8 }}>
             <button className="btn btn-primary" onClick={doSave} disabled={saving}>{saving ? 'Сохраняю...' : 'Сохранить'}</button>
             <button className="btn" onClick={onClose}>Отмена</button>
           </div>

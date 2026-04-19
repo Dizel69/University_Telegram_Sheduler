@@ -8,10 +8,10 @@
 /* make sizing predictable */
 *, *::before, *::after { box-sizing: border-box; }
 body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial; background:var(--bg); margin:0}
-.container{max-width:none;width:calc(100% - 32px);margin:10px auto;padding:12px}
-.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.container{max-width:none;width:min(1400px,calc(100% - 32px));margin:10px auto;padding:12px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
 .topbar h1{font-size:20px;margin:0}
-nav{display:flex;gap:8px}
+nav{display:flex;gap:8px;flex-wrap:wrap}
 .tab{background:transparent;border:1px solid transparent;padding:8px 12px;border-radius:10px;cursor:pointer;color:var(--muted)}
 .tab.active{background:linear-gradient(90deg,#eef6ff,#f7fbff);border-color:rgba(59,130,246,0.12);color:var(--accent);box-shadow:0 6px 20px rgba(59,130,246,0.08)}
 .card{background:var(--card);padding:16px;border-radius:var(--radius);box-shadow:0 6px 18px rgba(12,18,31,0.04);}
@@ -23,6 +23,7 @@ textarea{min-height:120px}
 .form-actions{display:flex;gap:12px;align-items:center;margin-top:12px}
 .btn{background:#f3f4f6;border:1px solid #e6e9ef;padding:8px 12px;border-radius:8px;cursor:pointer}
 .btn-primary{background:var(--accent);color:white;border:none}
+.btn-danger{background:#ef4444;color:#fff;border:none}
 .btn-sm{padding:6px 8px;font-size:13px}
 .status{color:var(--muted)}
 .list-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -37,7 +38,8 @@ textarea{min-height:120px}
 .error{color:#b91c1c}  /* CSS класс для ошибок */
 
 /* calendar styles */
-.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:start;width:100%}
+.calendar-wrap{width:100%;overflow-x:auto;padding-bottom:6px}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:start;width:100%;min-width:840px}
 .calendar-grid { row-gap: 0px !important; margin-top: 0px !important }
 .weekday{font-weight:600;padding:4px 6px 2px;background:#fff;border-radius:8px;text-align:center;align-self:start;height:28px}
 .weekday { margin-bottom: 0px !important }
@@ -59,11 +61,39 @@ textarea{min-height:120px}
 
 /* modal styles for login */
 .modal-overlay{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(2,6,23,0.45);display:flex;align-items:center;justify-content:center;z-index:1000}
-.modal{background:#fff;padding:16px;border-radius:12px;min-width:320px;box-shadow:0 12px 40px rgba(2,6,23,0.12)}
+.modal{background:#fff;padding:16px;border-radius:12px;width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;box-shadow:0 12px 40px rgba(2,6,23,0.12)}
+.modal.modal-wide{width:min(680px,calc(100vw - 24px))}
+.calendar-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.calendar-toolbar-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.calendar-legend{display:flex;justify-content:flex-end;gap:12px;margin-top:8px;margin-bottom:6px;flex-wrap:wrap}
+.actions-wrap{display:flex;gap:8px;flex-wrap:wrap}
+.topbar-auth{margin-left:12px;display:flex;align-items:center;gap:8px}
+.login-auth{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.form-choice-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end}
 
 /* responsive tweaks */
-@media(max-width:640px){.container{padding:12px}.form-grid{grid-template-columns:1fr}}
+@media(max-width:640px){
+  .container{width:calc(100% - 16px);padding:8px}
+  .card{padding:12px}
+  .topbar{align-items:flex-start}
+  .topbar h1{font-size:17px;line-height:1.35}
+  nav{width:100%}
+  .tab{padding:8px 10px;font-size:13px}
+  .topbar-auth{width:100%;margin-left:0;justify-content:flex-start}
+  .form-grid,.row-grid-2{grid-template-columns:1fr}
+  .form-actions{flex-wrap:wrap}
+  .status{width:100%}
+  .events-grid{grid-template-columns:1fr}
+  .event-row{align-items:flex-start;gap:8px;flex-direction:column}
+  .event-actions,.actions-wrap{width:100%}
+  .event-actions .btn,.actions-wrap .btn{flex:1 1 140px}
+  .calendar-toolbar-group{width:100%}
+  .calendar-toolbar-group .btn{flex:1 1 120px}
+  .calendar-legend{justify-content:flex-start}
+  .modal{padding:12px}
+}
 
 /* homework list styles */
 .homework-divider {
