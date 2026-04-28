@@ -3,7 +3,9 @@ import axios from 'axios'
 
 export default function Login() {
   const [token, setToken] = useState(localStorage.getItem('admin_token') || '')
+  const [inputToken, setInputToken] = useState('')
   const [show, setShow] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (token) {
@@ -31,10 +33,34 @@ export default function Login() {
   // NOTE: we do NOT auto-open the login modal on mount so anonymous users are not prompted.
   // The modal can be opened by other components via `window.openAdminLogin()` or by UI controls.
 
-  function submit() {
-    if (!token) return alert('Введите токен')
-    // сохраняется эффектом
-    setShow(false)
+  useEffect(() => {
+    if (show) {
+      setInputToken(token || '')
+      setError('')
+    }
+  }, [show, token])
+
+  async function submit() {
+    const candidate = inputToken.trim()
+    if (!candidate) {
+      setError('Введите токен')
+      return
+    }
+    try {
+      await axios.get('/admin/validate', { headers: { 'x-admin-token': candidate } })
+      setToken(candidate)
+      setError('')
+      setShow(false)
+      window.dispatchEvent(new CustomEvent('admin-token-changed'))
+      window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: candidate }))
+    } catch {
+      localStorage.removeItem('admin_token')
+      delete axios.defaults.headers.common['x-admin-token']
+      setToken('')
+      setError('Неверный пароль')
+      window.dispatchEvent(new CustomEvent('admin-token-changed'))
+      window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
+    }
   }
 
   function logout() {
@@ -50,8 +76,11 @@ export default function Login() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>Вход администратора</h3>
             <div style={{marginTop:8}}>
-              <input placeholder="Токен администратора" value={token} onChange={e => setToken(e.target.value)} style={{width:'100%'}} />
+              <input placeholder="Токен администратора" value={inputToken} onChange={e => setInputToken(e.target.value)} style={{width:'100%'}} />
             </div>
+            {error ? (
+              <div style={{marginTop:8,fontSize:13,color:'#dc2626'}}>{error}</div>
+            ) : null}
             <div className="modal-actions" style={{marginTop:12}}>
               <button className="btn" onClick={submit}>Войти</button>
               <button className="btn" onClick={() => setShow(false)}>Отмена</button>

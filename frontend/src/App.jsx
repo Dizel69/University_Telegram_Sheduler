@@ -11,22 +11,72 @@ export default function App() {
   // По умолчанию показываем календарь анонимным пользователям. Когда админ входит, может переключать вкладки.
   const [tab, setTab] = useState('calendar')
   const [lastCreated, setLastCreated] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  async function validateAdminToken(token) {
+    if (!token) return false
+    try {
+      await axios.get('/admin/validate', { headers: { 'x-admin-token': token } })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  useEffect(() => {
+    let isCancelled = false
+    async function syncAdminState() {
+      const storedToken = localStorage.getItem('admin_token')
+      if (!storedToken) {
+        if (!isCancelled) setIsAdmin(false)
+        return
+      }
+
+      const isValid = await validateAdminToken(storedToken)
+      if (isCancelled) return
+
+      if (isValid) {
+        axios.defaults.headers.common['x-admin-token'] = storedToken
+        setIsAdmin(true)
+      } else {
+        localStorage.removeItem('admin_token')
+        delete axios.defaults.headers.common['x-admin-token']
+        setIsAdmin(false)
+      }
+    }
+
+    syncAdminState()
+    function onAdminTokenChanged() { syncAdminState() }
+    function onStorage(e) {
+      if (e.key === 'admin_token') syncAdminState()
+    }
+
+    window.addEventListener('admin-token-changed', onAdminTokenChanged)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      isCancelled = true
+      window.removeEventListener('admin-token-changed', onAdminTokenChanged)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
 
   // Компонент кнопки авторизации: видимая кнопка, которая просит токен администратора
   function AuthButton() {
-    const [isAdmin, setIsAdmin] = useState(!!localStorage.getItem('admin_token'))
-
-    useEffect(() => {
-      function onStorage(e) {
-        if (e.key === 'admin_token') setIsAdmin(!!e.newValue)
-      }
-      window.addEventListener('storage', onStorage)
-      return () => window.removeEventListener('storage', onStorage)
-    }, [])
-
-    function doPromptLogin() {
+    async function doPromptLogin() {
       const t = window.prompt('Введите admin токен:')
       if (!t) return
+
+      const isValid = await validateAdminToken(t)
+      if (!isValid) {
+        localStorage.removeItem('admin_token')
+        delete axios.defaults.headers.common['x-admin-token']
+        setIsAdmin(false)
+        window.alert('Неверный пароль')
+        window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
+        window.dispatchEvent(new CustomEvent('admin-token-changed'))
+        return
+      }
+
       localStorage.setItem('admin_token', t)
       axios.defaults.headers.common['x-admin-token'] = t
       setIsAdmin(true)
@@ -87,7 +137,7 @@ export default function App() {
         <h1>Планировщик Университета — Администратор</h1>
         <nav>
           {/* Показываем админ вкладки только если вошли */}
-          { !!localStorage.getItem('admin_token') ? (
+          { isAdmin ? (
             <>
               <button className={tab==='create'? 'tab active':'tab'} onClick={() => setTab('create')}>Создать</button>
               <button className={tab==='list'? 'tab active':'tab'} onClick={() => setTab('list')}>События</button>
