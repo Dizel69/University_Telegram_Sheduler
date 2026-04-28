@@ -13,6 +13,11 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
+      '/admin': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/events': {
         target: 'http://backend:8000',
         changeOrigin: true,
