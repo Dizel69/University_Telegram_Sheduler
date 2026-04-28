@@ -2,20 +2,9 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 
 export default function Login() {
-  const [token, setToken] = useState(localStorage.getItem('admin_token') || '')
   const [inputToken, setInputToken] = useState('')
   const [show, setShow] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (token) {
-      localStorage.setItem('admin_token', token)
-      axios.defaults.headers.common['x-admin-token'] = token
-    } else {
-      localStorage.removeItem('admin_token')
-      delete axios.defaults.headers.common['x-admin-token']
-    }
-  }, [token])
 
   // expose global opener for cases where header wants to trigger the modal
   useEffect(() => {
@@ -35,10 +24,10 @@ export default function Login() {
 
   useEffect(() => {
     if (show) {
-      setInputToken(token || '')
+      setInputToken(localStorage.getItem('admin_token') || '')
       setError('')
     }
-  }, [show, token])
+  }, [show])
 
   async function submit() {
     const candidate = inputToken.trim()
@@ -48,7 +37,8 @@ export default function Login() {
     }
     try {
       await axios.get('/admin/validate', { headers: { 'x-admin-token': candidate } })
-      setToken(candidate)
+      localStorage.setItem('admin_token', candidate)
+      axios.defaults.headers.common['x-admin-token'] = candidate
       setError('')
       setShow(false)
       window.dispatchEvent(new CustomEvent('admin-token-changed'))
@@ -56,7 +46,6 @@ export default function Login() {
     } catch {
       localStorage.removeItem('admin_token')
       delete axios.defaults.headers.common['x-admin-token']
-      setToken('')
       setError('Неверный пароль')
       window.dispatchEvent(new CustomEvent('admin-token-changed'))
       window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
