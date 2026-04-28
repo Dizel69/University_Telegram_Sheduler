@@ -63,10 +63,6 @@ export default function Login() {
     }
   }
 
-  function logout() {
-    setToken('')
-  }
-
   // This component intentionally does not render an inline button to avoid duplicates.
   // It only mounts the modal (when open) and registers the global opener.
   return (
@@ -75,8 +71,17 @@ export default function Login() {
         <div className="modal-overlay" onClick={() => setShow(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>Вход администратора</h3>
+            <div style={{marginTop:8}}>Кто ты воин? Введи ка пароль:</div>
             <div style={{marginTop:8}}>
-              <input placeholder="Токен администратора" value={inputToken} onChange={e => setInputToken(e.target.value)} style={{width:'100%'}} />
+              <input
+                placeholder="Пароль"
+                value={inputToken}
+                onChange={e => setInputToken(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') submit()
+                }}
+                style={{width:'100%'}}
+              />
             </div>
             {error ? (
               <div style={{marginTop:8,fontSize:13,color:'#dc2626'}}>{error}</div>

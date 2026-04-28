@@ -62,26 +62,8 @@ export default function App() {
 
   // Компонент кнопки авторизации: видимая кнопка, которая просит токен администратора
   function AuthButton() {
-    async function doPromptLogin() {
-      const t = window.prompt('Введите admin токен:')
-      if (!t) return
-
-      const isValid = await validateAdminToken(t)
-      if (!isValid) {
-        localStorage.removeItem('admin_token')
-        delete axios.defaults.headers.common['x-admin-token']
-        setIsAdmin(false)
-        window.alert('Неверный пароль')
-        window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
-        window.dispatchEvent(new CustomEvent('admin-token-changed'))
-        return
-      }
-
-      localStorage.setItem('admin_token', t)
-      axios.defaults.headers.common['x-admin-token'] = t
-      setIsAdmin(true)
-      window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: t }))
-      window.dispatchEvent(new CustomEvent('admin-token-changed'))
+    function openLoginModal() {
+      window.dispatchEvent(new Event('open-admin-login'))
     }
 
     function doLogout() {
@@ -100,7 +82,7 @@ export default function App() {
     )
 
     return (
-      <button className="btn btn-primary" onClick={doPromptLogin}>Авторизоваться</button>
+      <button className="btn btn-primary" onClick={openLoginModal}>Авторизоваться</button>
     )
   }
 
