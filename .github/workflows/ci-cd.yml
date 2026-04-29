@@ -5,9 +5,32 @@ on:
     branches: [ main ]
 
 jobs:
+  parse_commit:
+    name: Parse commit name
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.parse.outputs.should_build }}
+    steps:
+      - name: Parse last commit title
+        id: parse
+        run: |
+          COMMIT_TITLE="${{ github.event.head_commit.message }}"
+          FIRST_LINE="$(printf '%s\n' "$COMMIT_TITLE" | sed -n '1p')"
+          FIRST_LINE_LOWER="$(printf '%s' "$FIRST_LINE" | tr '[:upper:]' '[:lower:]')"
+
+          if printf '%s' "$FIRST_LINE_LOWER" | grep -Eq '^docs($|[:(])'; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "Commit starts with docs, build is skipped."
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Commit does not start with docs, build will continue."
+          fi
+
   transfer:
     name: Transfer code to server
     runs-on: ubuntu-latest
+    needs: parse_commit
+    if: ${{ needs.parse_commit.outputs.should_build == 'true' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -24,7 +47,8 @@ jobs:
   build:
     name: Build and restart on server
     runs-on: ubuntu-latest
-    needs: transfer
+    needs: [parse_commit, transfer]
+    if: ${{ needs.parse_commit.outputs.should_build == 'true' }}
     steps:
       - name: Run docker compose on server
         uses: appleboy/ssh-action@v0.1.10
