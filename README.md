@@ -11,7 +11,7 @@
 - **`postgres`**: база данных (через `docker-compose.yml`).
 - **`redis`**: сейчас поднимается в `docker-compose.yml`, но в коде core-флоу не завязан на Redis.
 
-> В репозитории также есть папка `parser` (FastAPI + pdfplumber для парсинга PDF), **но в текущем `docker-compose.yml` она не подключена**.
+> В репозитории также есть папка `parser` (FastAPI + pdfplumber для парсинга PDF), **но в текущем `docker-compose.yml` она не подключена** Она будет удалена.
 
 ## Быстрый старт (Docker)
 
