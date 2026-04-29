@@ -167,37 +167,46 @@ Backend нормализует типы в каноничные токены:
 
 ```mermaid
 flowchart LR
+    %% Внешние акторы
     U[Пользователь / Браузер]
     TG[Telegram API]
 
-    FE[frontend\n:3000->5173]
-    BE[backend\n:8000]
-    BOT[bot\n:8081]
+    %% Контейнеры приложения
+    FE["frontend\n:3000->5173"]
+    BE["backend\n:8000"]
+    BOT["bot\n:8081"]
     WRK[worker]
     PG[(postgres)]
     RD[(redis)]
 
-    PR[prometheus\n:9090]
-    GF[grafana\n:3001->3000]
-    CAD[cadvisor\n:8082->8080]
-    NE[node-exporter\n:9100]
+    %% Мониторинг
+    PR["prometheus\n:9090"]
+    GF["grafana\n:3001->3000"]
+    CAD["cadvisor\n:8082->8080"]
+    NE["node-exporter\n:9100"]
 
-    U -->|HTTP(S): UI, действия пользователя\n(логин, расписание, запросы)| FE
-    FE -->|REST/JSON: запросы API\n(пользователи, расписание, настройки)| BE
+    %% Пользовательские потоки
+    U -->|"HTTP(S): UI, действия пользователя\n(логин, расписание, запросы)"| FE
+    FE -->|"REST/JSON: запросы API\n(пользователи, расписание, настройки)"| BE
 
-    TG -->|Webhook/updates: сообщения, команды,\ncallback_query| BOT
-    BOT -->|HTTP API (JSON): чтение/запись данных,\nсинхронизация состояния бота| BE
-    BOT -->|sendMessage/editMessage и др.\n(Bot API JSON)| TG
+    %% Telegram-потоки
+    TG -->|"Webhook/updates: сообщения, команды,\ncallback_query"| BOT
+    BOT -->|"HTTP API (JSON): чтение/запись данных,\nсинхронизация состояния бота"| BE
+    BOT -->|"sendMessage/editMessage и др.\n(Bot API JSON)"| TG
 
-    WRK -->|REST/JSON: получение задач,\nсобытий и данных расписания| BE
-    WRK -->|Redis commands: очереди/кэши,\nключи задач и таймеров| RD
-    WRK -->|HTTP к bot-сервису: триггер отправки\nуведомлений/напоминаний| BOT
+    %% Worker-потоки
+    WRK -->|"REST/JSON: получение задач,\nсобытий и данных расписания"| BE
+    WRK -->|"Redis commands: очереди/кэши,\nключи задач и таймеров"| RD
+    WRK -->|"HTTP к bot-сервису: триггер отправки\nуведомлений/напоминаний"| BOT
 
-    BE -->|SQL (INSERT/SELECT/UPDATE):\nпользователи, расписание, состояния| PG
-    BE -->|Redis commands: кэш,\nвременные данные, rate-limit| RD
+    %% Backend-хранилища
+    BE -->|"SQL (INSERT/SELECT/UPDATE):\nпользователи, расписание, состояния"| PG
+    BE -->|"Redis commands: кэш,\nвременные данные, rate-limit"| RD
 
-    PR -->|scrape /metrics: метрики приложения\n(HTTP latency, ошибки, бизнес-метрики)| BE
-    PR -->|scrape /metrics: метрики контейнеров\n(CPU/RAM/FS/network)| CAD
-    PR -->|scrape /metrics: метрики хоста\n(load, mem, disk, net)| NE
-    GF -->|PromQL queries: чтение временных рядов\nдля панелей и алертов| PR
+    %% Метрики и дашборды
+    PR -->|"scrape /metrics: метрики приложения\n(HTTP latency, ошибки, бизнес-метрики)"| BE
+    PR -->|"scrape /metrics: метрики контейнеров\n(CPU/RAM/FS/network)"| CAD
+    PR -->|"scrape /metrics: метрики хоста\n(load, mem, disk, net)"| NE
+    GF -->|"PromQL queries: чтение временных рядов\nдля панелей и алертов"| PR
+
 ```
