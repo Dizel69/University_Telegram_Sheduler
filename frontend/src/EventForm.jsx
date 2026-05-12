@@ -52,6 +52,10 @@ export default function EventForm({ onCreated }) {
           body: message,
           reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
         }
+        if (type === 'homework') {
+          const sem = (localStorage.getItem('semester') || '').trim()
+          payload.semester = sem || null
+        }
         // keep type as canonical token (english) so backend/frontend stay consistent
         if (date) payload.date = date
         if (time) payload.time = time
@@ -121,6 +125,10 @@ export default function EventForm({ onCreated }) {
         }
         if (type === 'schedule') payload.lesson_type = lessonType
         if (type === 'exam_control') payload.lesson_type = examKind
+        if (type === 'homework') {
+          const sem = (localStorage.getItem('semester') || '').trim()
+          payload.semester = sem || null
+        }
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
         created.push(res.data)

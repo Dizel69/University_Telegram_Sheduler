@@ -352,6 +352,7 @@ def public_events():
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
+            'semester': getattr(ev, 'semester', None),
             'chat_id': ev.chat_id,
             'topic_thread_id': ev.topic_thread_id,
             'sent_message_id': getattr(ev, 'sent_message_id', None),
@@ -482,6 +483,7 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
+            'semester': getattr(ev, 'semester', None),
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id,
             'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
@@ -555,6 +557,7 @@ class EventUpdate(BaseModel):
     teacher: Optional[str] = None   # Новый преподаватель
     lesson_type: Optional[str] = None  # exam / control для exam_control; lecture / practice для schedule
     reminder_offset_hours: Optional[int] = None
+    semester: Optional[str] = None  # для homework
 
 
 @app.put('/events/{event_id}')

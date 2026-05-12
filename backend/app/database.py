@@ -24,12 +24,14 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS room TEXT")
                 conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS teacher TEXT")
                 conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS series_id TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN IF NOT EXISTS semester TEXT")
             else:
                 # SQLite / другие БД: попытка добавить колонны, игнорируем ошибки
                 conn.execute("ALTER TABLE event ADD COLUMN end_time TEXT")
                 conn.execute("ALTER TABLE event ADD COLUMN room TEXT")
                 conn.execute("ALTER TABLE event ADD COLUMN teacher TEXT")
                 conn.execute("ALTER TABLE event ADD COLUMN series_id TEXT")
+                conn.execute("ALTER TABLE event ADD COLUMN semester TEXT")
     except Exception:
         # некритично; если схема уже есть или БД не позволяет, игнорируем
         pass

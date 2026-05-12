@@ -25,6 +25,8 @@ class Event(SQLModel, table=True):
     series_id: Optional[str] = Field(default=None)
     # Тип урока (лекция или практика)
     lesson_type: Optional[str] = Field(default=None)
+    # Семестр (произвольная метка, как в настройках «Текущий семестр») — для домашних заданий
+    semester: Optional[str] = Field(default=None)
 
     chat_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     topic_thread_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 
 function backendBase() {
@@ -6,12 +6,14 @@ function backendBase() {
   return `http://${host}:8000`
 }
 
+const FILTER_ALL = '*'
+const FILTER_NO_SEMESTER = '__none__'
+
 function formatDate(dateStr) {
   if (!dateStr || dateStr === 'Без даты') return dateStr
   const date = new Date(dateStr)
   const options = { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' }
   const formatted = date.toLocaleDateString('ru-RU', options)
-  // "1 апреля 2026 г., среда" -> "1 апреля 2026, Среда"
   const parts = formatted.split(', ')
   if (parts.length === 2) {
     const datePart = parts[0].replace(' г.', '')
@@ -21,10 +23,22 @@ function formatDate(dateStr) {
   return formatted
 }
 
+function homeworkHeading(ev) {
+  const t = (ev.title || ev.subject || '').trim()
+  return t || '<без названия>'
+}
+
+function defaultSemesterFilter() {
+  const s = localStorage.getItem('semester')
+  return s && String(s).trim() ? String(s).trim() : FILTER_ALL
+}
+
 export default function HomeworkList() {
-  const [events, setEvents] = useState({})
+  const [allHomework, setAllHomework] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [semesterFilter, setSemesterFilter] = useState(defaultSemesterFilter)
+  const [subjectFilter, setSubjectFilter] = useState(FILTER_ALL)
 
   useEffect(() => { load() }, [])
 
@@ -34,26 +48,17 @@ export default function HomeworkList() {
     try {
       const res = await axios.get(backendBase() + '/calendar?type=homework')
       let hw = res.data
-      // если backend не поддерживает параметр ?type (старая версия), вернёт все события
       if (!Array.isArray(hw)) hw = []
       if (hw.length === 0) {
-        // пытаемся получить всё и фильтруем на клиенте как fallback
         const all = await axios.get(backendBase() + '/calendar')
         hw = (all.data || []).filter(ev => ev.type === 'homework')
       }
-      hw.sort((a,b) => {
+      hw.sort((a, b) => {
         if (!a.date) return 1
         if (!b.date) return -1
         return a.date.localeCompare(b.date)
       })
-      // Группируем по датам
-      const grouped = {}
-      for (const ev of hw) {
-        const date = ev.date || 'Без даты'
-        if (!grouped[date]) grouped[date] = []
-        grouped[date].push(ev)
-      }
-      setEvents(grouped)
+      setAllHomework(hw)
     } catch (e) {
       console.error(e)
       setError(e.response?.data?.detail || e.message || String(e))
@@ -62,12 +67,87 @@ export default function HomeworkList() {
     }
   }
 
+  const anyWithoutSemester = useMemo(
+    () => allHomework.some(ev => !(ev.semester || '').trim()),
+    [allHomework]
+  )
+
+  const semesterOptions = useMemo(() => {
+    const fromData = new Set()
+    for (const ev of allHomework) {
+      const s = (ev.semester || '').trim()
+      if (s) fromData.add(s)
+    }
+    const cur = (localStorage.getItem('semester') || '').trim()
+    if (cur) fromData.add(cur)
+    return Array.from(fromData).sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [allHomework])
+
+  const subjectOptions = useMemo(() => {
+    const set = new Set()
+    for (const ev of allHomework) {
+      set.add(homeworkHeading(ev))
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [allHomework])
+
+  const filtered = useMemo(() => {
+    return allHomework.filter(ev => {
+      if (semesterFilter === FILTER_NO_SEMESTER) {
+        if ((ev.semester || '').trim()) return false
+      } else if (semesterFilter !== FILTER_ALL) {
+        const sem = (ev.semester || '').trim()
+        if (sem !== semesterFilter) return false
+      }
+      if (subjectFilter !== FILTER_ALL) {
+        if (homeworkHeading(ev) !== subjectFilter) return false
+      }
+      return true
+    })
+  }, [allHomework, semesterFilter, subjectFilter])
+
+  const events = useMemo(() => {
+    const grouped = {}
+    for (const ev of filtered) {
+      const date = ev.date || 'Без даты'
+      if (!grouped[date]) grouped[date] = []
+      grouped[date].push(ev)
+    }
+    return grouped
+  }, [filtered])
+
   return (
     <div className="card">
       <h2>Домашние задания</h2>
+      <div className="homework-filters form-grid" style={{ marginTop: 12, marginBottom: 8 }}>
+        <div>
+          <label className="label">Семестр</label>
+          <select value={semesterFilter} onChange={e => setSemesterFilter(e.target.value)}>
+            <option value={FILTER_ALL}>Все семестры</option>
+            {anyWithoutSemester && (
+              <option value={FILTER_NO_SEMESTER}>Без семестра</option>
+            )}
+            {semesterOptions.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">Предмет / тема</label>
+          <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)}>
+            <option value={FILTER_ALL}>Все предметы</option>
+            {subjectOptions.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </div>
       {loading && <div>Загрузка...</div>}
       {error && <div className="error">Ошибка: {error}</div>}
-      {Object.keys(events).sort((a,b) => {
+      {!loading && !error && filtered.length === 0 && (
+        <div className="status" style={{ marginTop: 8 }}>Нет заданий по выбранным фильтрам.</div>
+      )}
+      {Object.keys(events).sort((a, b) => {
         if (a === 'Без даты') return 1
         if (b === 'Без даты') return -1
         return a.localeCompare(b)
@@ -78,7 +158,10 @@ export default function HomeworkList() {
           <div className="homework-list">
             {events[date].map(ev => (
               <div key={ev.id} className="homework-item-card">
-                <div className="homework-subject">{ev.title || ev.subject || '<без названия>'}</div>
+                <div className="homework-subject">{homeworkHeading(ev)}</div>
+                {semesterFilter === FILTER_ALL && (ev.semester || '').trim() ? (
+                  <div className="homework-semester">{(ev.semester || '').trim()}</div>
+                ) : null}
                 <div className="homework-body">{ev.body}</div>
               </div>
             ))}

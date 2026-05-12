@@ -18,6 +18,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
   const [reminderOffset, setReminderOffset] = useState(
     ev.reminder_offset_hours != null ? ev.reminder_offset_hours : 24
   )
+  const [semester, setSemester] = useState(ev.semester || '')
   const [applySeries, setApplySeries] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -43,6 +44,9 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
       else payload.lesson_type = null
       if (type === 'homework' || type === 'exam_control') {
         payload.reminder_offset_hours = Number.isFinite(Number(reminderOffset)) ? Number(reminderOffset) : 24
+      }
+      if (type === 'homework') {
+        payload.semester = semester.trim() ? semester.trim() : null
       }
 
       const q = applySeries ? '?apply_to_series=true' : ''
@@ -85,6 +89,18 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
                 <label className="label">Предмет</label>
                 <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Предмет" />
               </div>
+            )}
+            {type === 'homework' && (
+              <>
+                <div>
+                  <label className="label">Предмет / тема</label>
+                  <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математика" />
+                </div>
+                <div>
+                  <label className="label">Семестр</label>
+                  <input value={semester} onChange={e => setSemester(e.target.value)} placeholder="Как в настройках семестра" />
+                </div>
+              </>
             )}
             <div>
               <label className="label">Короткий заголовок</label>

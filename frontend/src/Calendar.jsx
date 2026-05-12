@@ -560,7 +560,7 @@ export default function Calendar() {
         for (const d of occurrences) {
           const payload = {
             type,
-            subject: type === 'exam_control' ? (subject.trim() || null) : null,
+            subject: type === 'exam_control' ? (subject.trim() || null) : (type === 'homework' ? (title.trim() || null) : null),
             title: title || null,
             body: body || '',
             date: d,
@@ -572,6 +572,10 @@ export default function Calendar() {
             reminder_offset_hours: rem,
           }
           if (type === 'exam_control') payload.lesson_type = examKind
+          if (type === 'homework') {
+            const sem = (localStorage.getItem('semester') || '').trim()
+            payload.semester = sem || null
+          }
           await axios.post('/events', payload, { headers })
           created.push(1)
         }
