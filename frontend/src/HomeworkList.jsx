@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
+import {
+  getSemesterForDate,
+  isFutureCanonicalSemesterLabel,
+  listCanonicalSemesterLabelsStartedBy,
+  ymdFromDate,
+} from './semesterCalendar'
 
 function backendBase() {
   const host = import.meta.env.VITE_HOST || window.location.hostname
@@ -29,8 +35,7 @@ function homeworkHeading(ev) {
 }
 
 function defaultSemesterFilter() {
-  const s = localStorage.getItem('semester')
-  return s && String(s).trim() ? String(s).trim() : FILTER_ALL
+  return getSemesterForDate(new Date()) || FILTER_ALL
 }
 
 export default function HomeworkList() {
@@ -67,32 +72,52 @@ export default function HomeworkList() {
     }
   }
 
+  const todayYmd = useMemo(() => ymdFromDate(new Date()), [])
+
+  const visibleHomework = useMemo(() => {
+    return allHomework.filter(ev => {
+      const sem = (ev.semester || '').trim()
+      if (sem && isFutureCanonicalSemesterLabel(sem, todayYmd)) return false
+      return true
+    })
+  }, [allHomework, todayYmd])
+
   const anyWithoutSemester = useMemo(
-    () => allHomework.some(ev => !(ev.semester || '').trim()),
-    [allHomework]
+    () => visibleHomework.some(ev => !(ev.semester || '').trim()),
+    [visibleHomework]
   )
 
   const semesterOptions = useMemo(() => {
-    const fromData = new Set()
-    for (const ev of allHomework) {
+    const options = new Set(listCanonicalSemesterLabelsStartedBy(todayYmd))
+    for (const ev of visibleHomework) {
       const s = (ev.semester || '').trim()
-      if (s) fromData.add(s)
+      if (!s) continue
+      if (isFutureCanonicalSemesterLabel(s, todayYmd)) continue
+      options.add(s)
     }
-    const cur = (localStorage.getItem('semester') || '').trim()
-    if (cur) fromData.add(cur)
-    return Array.from(fromData).sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [allHomework])
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [visibleHomework, todayYmd])
 
   const subjectOptions = useMemo(() => {
     const set = new Set()
-    for (const ev of allHomework) {
+    for (const ev of visibleHomework) {
       set.add(homeworkHeading(ev))
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [allHomework])
+  }, [visibleHomework])
+
+  const currentSemester = useMemo(() => getSemesterForDate(todayYmd), [todayYmd])
+
+  function shouldShowSemesterUnderSubject(ev) {
+    const sem = (ev.semester || '').trim()
+    if (!sem) return false
+    if (semesterFilter !== FILTER_ALL && sem === semesterFilter) return false
+    if (currentSemester && sem === currentSemester) return false
+    return true
+  }
 
   const filtered = useMemo(() => {
-    return allHomework.filter(ev => {
+    return visibleHomework.filter(ev => {
       if (semesterFilter === FILTER_NO_SEMESTER) {
         if ((ev.semester || '').trim()) return false
       } else if (semesterFilter !== FILTER_ALL) {
@@ -104,7 +129,7 @@ export default function HomeworkList() {
       }
       return true
     })
-  }, [allHomework, semesterFilter, subjectFilter])
+  }, [visibleHomework, semesterFilter, subjectFilter])
 
   const events = useMemo(() => {
     const grouped = {}
@@ -159,7 +184,7 @@ export default function HomeworkList() {
             {events[date].map(ev => (
               <div key={ev.id} className="homework-item-card">
                 <div className="homework-subject">{homeworkHeading(ev)}</div>
-                {semesterFilter === FILTER_ALL && (ev.semester || '').trim() ? (
+                {shouldShowSemesterUnderSubject(ev) ? (
                   <div className="homework-semester">{(ev.semester || '').trim()}</div>
                 ) : null}
                 <div className="homework-body">{ev.body}</div>

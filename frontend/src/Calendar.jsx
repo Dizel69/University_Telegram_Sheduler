@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
+import { getSemesterForDate } from './semesterCalendar'
 import EditEventModal from './EditEventModal'
 import ErrorBoundary from './ErrorBoundary'
 
@@ -573,8 +574,7 @@ export default function Calendar() {
           }
           if (type === 'exam_control') payload.lesson_type = examKind
           if (type === 'homework') {
-            const sem = (localStorage.getItem('semester') || '').trim()
-            payload.semester = sem || null
+            payload.semester = getSemesterForDate(d) || null
           }
           await axios.post('/events', payload, { headers })
           created.push(1)

@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import axios from 'axios'
+import { getSemesterForDate } from './semesterCalendar'
 
 export default function EventForm({ onCreated }) {
   const [type, setType] = useState('schedule')
@@ -18,7 +19,11 @@ export default function EventForm({ onCreated }) {
   const [saveOnly, setSaveOnly] = useState(false)
   const [lessonType, setLessonType] = useState('lecture')
   const [examKind, setExamKind] = useState('control')
-  const semester = localStorage.getItem('semester') || ''
+
+  function homeworkSemesterFromFormDate() {
+    const d = (date || '').trim()
+    return getSemesterForDate(d || new Date()) || null
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -53,8 +58,7 @@ export default function EventForm({ onCreated }) {
           reminder_offset_hours: Number.isFinite(Number(reminder)) ? Number(reminder) : 24,
         }
         if (type === 'homework') {
-          const sem = (localStorage.getItem('semester') || '').trim()
-          payload.semester = sem || null
+          payload.semester = homeworkSemesterFromFormDate()
         }
         // keep type as canonical token (english) so backend/frontend stay consistent
         if (date) payload.date = date
@@ -126,8 +130,7 @@ export default function EventForm({ onCreated }) {
         if (type === 'schedule') payload.lesson_type = lessonType
         if (type === 'exam_control') payload.lesson_type = examKind
         if (type === 'homework') {
-          const sem = (localStorage.getItem('semester') || '').trim()
-          payload.semester = sem || null
+          payload.semester = getSemesterForDate(d) || null
         }
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
@@ -199,12 +202,11 @@ export default function EventForm({ onCreated }) {
         {/* show semester control when creating homework */}
         {type === 'homework' && (
           <div style={{gridColumn:'1/-1', textAlign:'right', fontSize:12, opacity:0.6}}>
-            {semester ? (
-              <>Семестр: <b>{semester}</b>{' '}</>
+            {homeworkSemesterFromFormDate() ? (
+              <>Семестр по дате задания: <b>{homeworkSemesterFromFormDate()}</b></>
             ) : (
-              <>Семестр не настроен.{' '}</>
+              <>Дата вне учебных семестров — поле семестра будет пустым.</>
             )}
-            <a href="#semester" style={{fontSize:12}}>{semester ? 'изменить' : 'настроить'}</a>
           </div>
         )}
 

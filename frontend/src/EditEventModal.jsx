@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import axios from 'axios'
+import { getSemesterForDate } from './semesterCalendar'
 
 export default function EditEventModal({ ev, onClose, onSaved }) {
   if (!ev) return null
@@ -18,7 +19,11 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
   const [reminderOffset, setReminderOffset] = useState(
     ev.reminder_offset_hours != null ? ev.reminder_offset_hours : 24
   )
-  const [semester, setSemester] = useState(ev.semester || '')
+  const [semester, setSemester] = useState(
+    (ev.semester && String(ev.semester).trim())
+      ? String(ev.semester).trim()
+      : (getSemesterForDate(ev.date || new Date()) || '')
+  )
   const [applySeries, setApplySeries] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -76,7 +81,16 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
           <div className="row-grid-2">
             <div>
               <label className="label">Тип</label>
-              <select value={type} onChange={e => setType(e.target.value)}>
+              <select value={type} onChange={e => {
+                const v = e.target.value
+                setType(v)
+                if (v === 'homework') {
+                  const next = (ev.semester && String(ev.semester).trim())
+                    || getSemesterForDate(ev.date || new Date())
+                    || ''
+                  setSemester(next)
+                }
+              }}>
                 <option value="schedule">Пара / Мероприятие</option>
                 <option value="exam_control">Контрольная / экзамен</option>
                 <option value="transfer">Перенос</option>
