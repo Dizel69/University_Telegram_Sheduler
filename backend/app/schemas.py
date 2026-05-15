@@ -65,3 +65,47 @@ class EventPublic(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class UserPublic(BaseModel):
+    id: int
+    last_name: str
+    first_name: str
+    middle_name: Optional[str] = None
+    birth_date: Optional[date_type] = None
+    login: str
+    is_admin: bool
+    is_owner: bool
+
+    class Config:
+        orm_mode = True
+
+
+class LoginRequest(BaseModel):
+    login: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserPublic
+
+
+class UserCreate(BaseModel):
+    last_name: str
+    first_name: str
+    middle_name: Optional[str] = None
+    birth_date: Optional[date_type] = None
+    login: str
+    password: str
+    is_admin: bool = False
+
+
+class UserUpdate(BaseModel):
+    last_name: Optional[str] = None
+    first_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    birth_date: Optional[date_type] = None
+    password: Optional[str] = None
+    is_admin: Optional[bool] = None

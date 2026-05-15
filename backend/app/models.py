@@ -2,7 +2,7 @@ from typing import Optional
 import datetime as dt
 
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, BigInteger
+from sqlalchemy import Column, BigInteger, UniqueConstraint
 
 
 class Event(SQLModel, table=True):
@@ -37,3 +37,32 @@ class Event(SQLModel, table=True):
     reminder_offset_hours: int = Field(default=24)
     reminder_sent: bool = Field(default=False)
     source: Optional[str] = Field(default="admin")
+
+
+class User(SQLModel, table=True):
+    """Учётная запись пользователя приложения (до 6 человек)."""
+
+    __tablename__ = "app_user"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    last_name: str = Field(index=True)
+    first_name: str
+    middle_name: Optional[str] = Field(default=None)
+    birth_date: Optional[dt.date] = Field(default=None)
+    login: str = Field(unique=True, index=True)
+    password_hash: str
+    is_admin: bool = Field(default=False)
+    is_owner: bool = Field(default=False)
+
+
+class HomeworkCompletion(SQLModel, table=True):
+    """Отметка «ДЗ выполнено» для пары пользователь + событие."""
+
+    __tablename__ = "homework_completion"
+
+    __table_args__ = (UniqueConstraint("user_id", "event_id", name="uq_hw_user_event"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="app_user.id", index=True)
+    event_id: int = Field(foreign_key="event.id", index=True)
+    completed_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)

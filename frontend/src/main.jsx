@@ -4,18 +4,15 @@ import axios from 'axios'
 import App from './App'
 import './styles.css'
 
-// Присоединяем токен администратора из localStorage к стандартному заголовку axios
-const token = localStorage.getItem('admin_token')
-if (token) {
-  axios.defaults.headers.common['x-admin-token'] = token
+const userTok = localStorage.getItem('user_token')
+if (userTok) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${userTok}`
 }
 
-// Наблюдаем за изменениями хранилища (вход/выход в других вкладках)
 window.addEventListener('storage', (e) => {
-  if (e.key === 'admin_token') {
-    const t = e.newValue
-    if (t) axios.defaults.headers.common['x-admin-token'] = t
-    else delete axios.defaults.headers.common['x-admin-token']
+  if (e.key === 'user_token') {
+    if (e.newValue) axios.defaults.headers.common['Authorization'] = `Bearer ${e.newValue}`
+    else delete axios.defaults.headers.common['Authorization']
   }
 })
 

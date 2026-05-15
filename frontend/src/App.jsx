@@ -1,92 +1,72 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import EventForm from './EventForm'
 import EventsList from './EventsList'
 import Calendar from './Calendar'
-import Login from './Login'
+import UserLogin from './UserLogin'
 import Semester from './Semester'
 import HomeworkList from './HomeworkList'
+import UsersAdmin from './UsersAdmin'
 
 export default function App() {
-  // По умолчанию показываем календарь анонимным пользователям. Когда админ входит, может переключать вкладки.
   const [tab, setTab] = useState('calendar')
   const [lastCreated, setLastCreated] = useState(null)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [accountUser, setAccountUser] = useState(null)
 
-  async function validateAdminToken(token) {
-    if (!token) return false
-    try {
-      await axios.get('/admin/validate', { headers: { 'x-admin-token': token } })
-      return true
-    } catch {
-      return false
-    }
-  }
+  const showAdminTabs = Boolean(accountUser?.is_admin)
+  const showUsersTab = Boolean(accountUser?.is_owner)
 
   useEffect(() => {
     let isCancelled = false
-    async function syncAdminState() {
-      const storedToken = localStorage.getItem('admin_token')
-      if (!storedToken) {
-        if (!isCancelled) setIsAdmin(false)
+    async function syncAccount() {
+      const t = localStorage.getItem('user_token')
+      if (!t) {
+        if (!isCancelled) {
+          setAccountUser(null)
+          delete axios.defaults.headers.common['Authorization']
+        }
         return
       }
-
-      const isValid = await validateAdminToken(storedToken)
-      if (isCancelled) return
-
-      if (isValid) {
-        axios.defaults.headers.common['x-admin-token'] = storedToken
-        setIsAdmin(true)
-      } else {
-        localStorage.removeItem('admin_token')
-        delete axios.defaults.headers.common['x-admin-token']
-        setIsAdmin(false)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
+      try {
+        const { data } = await axios.get('/auth/me')
+        if (isCancelled) return
+        setAccountUser(data)
+      } catch {
+        if (!isCancelled) {
+          localStorage.removeItem('user_token')
+          delete axios.defaults.headers.common['Authorization']
+          setAccountUser(null)
+        }
       }
     }
 
-    syncAdminState()
-    function onAdminTokenChanged() { syncAdminState() }
+    syncAccount()
+    function onAcc() { syncAccount() }
+    window.addEventListener('user-auth-changed', onAcc)
     function onStorage(e) {
-      if (e.key === 'admin_token') syncAdminState()
+      if (e.key === 'user_token') syncAccount()
     }
-
-    window.addEventListener('admin-token-changed', onAdminTokenChanged)
     window.addEventListener('storage', onStorage)
     return () => {
       isCancelled = true
-      window.removeEventListener('admin-token-changed', onAdminTokenChanged)
+      window.removeEventListener('user-auth-changed', onAcc)
       window.removeEventListener('storage', onStorage)
     }
   }, [])
 
-  // Компонент кнопки авторизации: видимая кнопка, которая просит токен администратора
-  function AuthButton() {
-    function openLoginModal() {
-      window.dispatchEvent(new Event('open-admin-login'))
-    }
-
-    function doLogout() {
-      localStorage.removeItem('admin_token')
-      delete axios.defaults.headers.common['x-admin-token']
-      setIsAdmin(false)
-      window.dispatchEvent(new StorageEvent('storage', { key: 'admin_token', newValue: null }))
-      window.dispatchEvent(new CustomEvent('admin-token-changed'))
-    }
-
-    if (isAdmin) return (
-      <div className="login-auth">
-        <span style={{fontSize:12,opacity:0.8}}>Администратор</span>
-        <button className="btn" onClick={doLogout}>Выйти</button>
-      </div>
-    )
-
-    return (
-      <button className="btn btn-primary" onClick={openLoginModal}>Авторизоваться</button>
-    )
+  function logoutAccount() {
+    localStorage.removeItem('user_token')
+    delete axios.defaults.headers.common['Authorization']
+    setAccountUser(null)
+    window.dispatchEvent(new CustomEvent('user-auth-changed'))
+    window.dispatchEvent(new StorageEvent('storage', { key: 'user_token', newValue: null }))
   }
 
-  // состояние для скрытых параметров семестра (доступно через хеш)
+  function openUserLoginModal() {
+    window.dispatchEvent(new Event('open-user-login'))
+  }
+
   const [currentSemester, setCurrentSemester] = useState(localStorage.getItem('semester') || '')
 
   useEffect(() => {
@@ -97,15 +77,11 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
-  // скрытый индикатор для скрытности параметра семестра
-
-  // обработка скрытой навигации по семестру через URL хеш
   useEffect(() => {
     const h = window.location.hash.replace(/^#/, '')
     if (h === 'semester') setTab('semester')
   }, [])
   useEffect(() => {
-    // синхронизируем хеш для закладок
     if (tab === 'semester') {
       window.location.hash = 'semester'
     } else if (window.location.hash === '#semester') {
@@ -113,36 +89,59 @@ export default function App() {
     }
   }, [tab])
 
+  useEffect(() => {
+    if (tab === 'users' && !showUsersTab) setTab('calendar')
+    if ((tab === 'create' || tab === 'list') && !showAdminTabs) setTab('calendar')
+  }, [tab, showUsersTab, showAdminTabs])
+
+  const calendarIsAdmin = useMemo(() => Boolean(accountUser?.is_admin), [accountUser])
+
   return (
     <div className="container">
       <header className="topbar">
-        <h1>Планировщик Университета — Администратор</h1>
+        <h1>Планировщик университета</h1>
         <nav>
-          {/* Показываем админ вкладки только если вошли */}
-          { isAdmin ? (
+          {showAdminTabs ? (
             <>
-              <button className={tab==='create'? 'tab active':'tab'} onClick={() => setTab('create')}>Создать</button>
-              <button className={tab==='list'? 'tab active':'tab'} onClick={() => setTab('list')}>События</button>
+              <button type="button" className={tab === 'create' ? 'tab active' : 'tab'} onClick={() => setTab('create')}>Создать</button>
+              <button type="button" className={tab === 'list' ? 'tab active' : 'tab'} onClick={() => setTab('list')}>События</button>
             </>
-          ) : null }
-          <button className={tab==='calendar'? 'tab active':'tab'} onClick={() => setTab('calendar')}>Календарь</button>
-          <button className={tab==='homework'? 'tab active':'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
+          ) : null}
+          {showUsersTab ? (
+            <button type="button" className={tab === 'users' ? 'tab active' : 'tab'} onClick={() => setTab('users')}>Пользователи</button>
+          ) : null}
+          <button type="button" className={tab === 'calendar' ? 'tab active' : 'tab'} onClick={() => setTab('calendar')}>Календарь</button>
+          <button type="button" className={tab === 'homework' ? 'tab active' : 'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
         </nav>
         <div className="topbar-auth">
-          {/* Видимая кнопка авторизации (единственный элемент управления) */}
-          <AuthButton />
+          {accountUser ? (
+            <div className="login-auth">
+              <span style={{ fontSize: 12, opacity: 0.85 }}>
+                {accountUser.last_name}
+                {' '}
+                {(accountUser.first_name || '').charAt(0).toUpperCase()}.
+              </span>
+              <button type="button" className="btn btn-sm" onClick={logoutAccount}>Выйти</button>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-primary btn-sm" onClick={openUserLoginModal}>Войти</button>
+          )}
         </div>
       </header>
 
       <main>
-        {tab === 'create' && <EventForm onCreated={d => { setLastCreated(d); setTab('list') }} />}
-        {tab === 'list' && <EventsList highlightId={lastCreated?.id} />}
-        {tab === 'calendar' && <Calendar />}
-        {tab === 'homework' && <HomeworkList />}
-        {tab === 'semester' && <Semester /> /* still reachable via hash or manual setTab */}
+        {tab === 'create' && showAdminTabs && (
+          <EventForm onCreated={d => { setLastCreated(d); setTab('list') }} />
+        )}
+        {tab === 'list' && showAdminTabs && (
+          <EventsList highlightId={lastCreated?.id} isAdmin={Boolean(accountUser?.is_admin)} />
+        )}
+        {tab === 'calendar' && <Calendar isAdmin={calendarIsAdmin} />}
+        {tab === 'homework' && <HomeworkList accountUser={accountUser} />}
+        {tab === 'users' && showUsersTab && <UsersAdmin />}
+        {tab === 'semester' && <Semester />}
       </main>
-      {/* Mount Login modal handler (modal will only render when triggered) */}
-      <Login />
+      <UserLogin />
     </div>
   )
 }

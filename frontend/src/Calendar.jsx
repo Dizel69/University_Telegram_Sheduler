@@ -3,6 +3,7 @@ import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import EditEventModal from './EditEventModal'
 import ErrorBoundary from './ErrorBoundary'
+import { bearerAuthHeaders } from './authHeaders'
 
 /** Порядок в ячейке дня: контрольная/экзамен выше домашки. */
 function calendarTypeOrder(t) {
@@ -23,8 +24,7 @@ function TransferModal({ ev, onClose, onSaved }) {
       const payload = { date: targetDate }
       payload.time = targetTime || null
       payload.end_time = targetEnd || null
-      const token = localStorage.getItem('admin_token')
-      const headers = token ? { 'x-admin-token': token } : {}
+      const headers = { ...bearerAuthHeaders() }
       await axios.put(`/events/${ev.id}`, payload, { headers })
       alert('Перенесено')
       if (onSaved) onSaved()
@@ -80,7 +80,7 @@ function monthLabel(year, month) {
   return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(new Date(Date.UTC(year, month, 1)))
 }
 
-export default function Calendar() {
+export default function Calendar({ isAdmin = false }) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
@@ -114,24 +114,13 @@ export default function Calendar() {
   const [openDay, setOpenDay] = useState(null) // 'YYYY-MM-DD' or null
   const [transferEvent, setTransferEvent] = useState(null)
   const [editEvent, setEditEvent] = useState(null)
-  const [adminToken, setAdminToken] = useState(localStorage.getItem('admin_token'))
   const [showHomework, setShowHomework] = useState(true)
 
   useEffect(() => { load() }, [year, month])
 
   useEffect(() => {
-    function syncAdminToken() {
-      const t = localStorage.getItem('admin_token')
-      setAdminToken(t)
-      if (!t) setEditing(false)
-    }
-    window.addEventListener('storage', syncAdminToken)
-    window.addEventListener('admin-token-changed', syncAdminToken)
-    return () => {
-      window.removeEventListener('storage', syncAdminToken)
-      window.removeEventListener('admin-token-changed', syncAdminToken)
-    }
-  }, [])
+    if (!isAdmin) setEditing(false)
+  }, [isAdmin])
 
   function backendBase() {
     // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
@@ -217,7 +206,7 @@ export default function Calendar() {
   async function deleteEventsForDay(day) {
     if (!confirm('Удалить все события за день? Это действие нельзя отменить.')) return
     try {
-      const resp = await fetch(`/events/day?date=${day}`, { method: 'DELETE', headers: { 'x-admin-token': adminToken } })
+      const resp = await fetch(`/events/day?date=${day}`, { method: 'DELETE', headers: { ...bearerAuthHeaders() } })
       if (!resp.ok) throw new Error('delete failed: ' + resp.status)
       const j = await resp.json()
       alert('Удалено: ' + j.deleted)
@@ -232,7 +221,7 @@ export default function Calendar() {
   async function deleteEventsForMonth() {
     if (!confirm('Удалить все события за отображаемый месяц? Это действие нельзя отменить.')) return
     try {
-      const resp = await fetch(`/events/month?year=${year}&month=${month+1}`, { method: 'DELETE', headers: { 'x-admin-token': adminToken } })
+      const resp = await fetch(`/events/month?year=${year}&month=${month + 1}`, { method: 'DELETE', headers: { ...bearerAuthHeaders() } })
       if (!resp.ok) throw new Error('delete failed: ' + resp.status)
       const j = await resp.json()
       alert('Удалено: ' + j.deleted)
@@ -256,7 +245,7 @@ export default function Calendar() {
         </div>
         <div className="calendar-toolbar-group">
           {/* Редактирование доступно только админам */}
-          {adminToken ? (
+          {isAdmin ? (
             <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
           ) : null}
           <label className="homework-toggle">
@@ -265,7 +254,7 @@ export default function Calendar() {
             <span className="toggle-emoji">{showHomework ? '📓' : '❌'}</span>
             <span className="toggle-label">{showHomework ? 'Выключить отображение Д/З' : 'Включить отображение Д/З'}</span>
           </label>
-          {editing && adminToken ? (
+          {editing && isAdmin ? (
             <button className="btn btn-danger" onClick={deleteEventsForMonth}>Удалить все события за месяц</button>
           ) : null}
         </div>
@@ -343,7 +332,7 @@ export default function Calendar() {
                       e.stopPropagation()
                       if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
                       try {
-                        await axios.delete(`/events/${ev.id}`, { headers: { 'x-admin-token': adminToken } })
+                        await axios.delete(`/events/${ev.id}`, { headers: bearerAuthHeaders() })
                         // refresh calendar
                         await load()
                       } catch (err) {
@@ -367,7 +356,7 @@ export default function Calendar() {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <h3>События за {openDay}</h3>
                 <div className="actions-wrap">
-                  {adminToken ? (
+                  {isAdmin ? (
                     <button className="btn btn-danger" onClick={() => deleteEventsForDay(openDay)}>Удалить все за день</button>
                   ) : null}
                   <button className="btn" onClick={() => setOpenDay(null)}>Закрыть</button>
@@ -393,19 +382,21 @@ export default function Calendar() {
                   <div className="event-body" style={{marginTop:6}}>{ev.body}</div>
                   {ev.teacher ? <div style={{marginTop:6,fontSize:13,color:'#374151'}}>Преподаватель: {ev.teacher}</div> : null}
                   <div className="actions-wrap" style={{marginTop:8}}>
-                    {adminToken ? (
+                    {isAdmin ? (
                       <button className="btn btn-sm" onClick={async () => {
-                        try { await axios.post(`/events/${ev.id}/send_now`, null, { headers: { 'x-admin-token': adminToken } }); alert('Отправлено'); load(); }
+                        try { await axios.post(`/events/${ev.id}/send_now`, null, { headers: bearerAuthHeaders() }); alert('Отправлено'); load(); }
                         catch(e){ alert('Ошибка: ' + (e.response?.data?.detail || e.message)) }
                       }}>Отправить сейчас</button>
                     ) : null}
                     <button className="btn btn-sm" onClick={() => alert('Показать в календаре: ' + ev.id)}>Открыть</button>
+                    {isAdmin ? (
+                      <>
                     <button className="btn btn-sm" onClick={() => setEditEvent(ev)}>Редактировать</button>
                     <button className="btn btn-sm" onClick={() => setTransferEvent(ev)}>Перенести</button>
                     <button className="btn btn-sm" onClick={async () => {
                       if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
                       try {
-                        await axios.delete(`/events/${ev.id}`, { headers: { 'x-admin-token': adminToken } })
+                        await axios.delete(`/events/${ev.id}`, { headers: bearerAuthHeaders() })
                         alert('Событие удалено')
                         // refresh calendar and close day view if no events remain
                         await load()
@@ -416,6 +407,8 @@ export default function Calendar() {
                         alert('Ошибка удаления: ' + (e.response?.data?.detail || e.message))
                       }
                     }}>Удалить</button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -445,7 +438,7 @@ export default function Calendar() {
       {/* UI PDF импорта удален */}
       {/* Add event modal (shown when editing and a date selected) */}
       {addDate && (
-        <AddEventModal date={addDate} adminToken={adminToken} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />
+        <AddEventModal date={addDate} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />
       )}
       {transferEvent && (
         <TransferModal ev={transferEvent} onClose={() => setTransferEvent(null)} onSaved={() => { setTransferEvent(null); load() }} />
@@ -495,7 +488,7 @@ export default function Calendar() {
     return t
   }
 
-  function AddEventModal({ date, adminToken, onClose, onSaved }) {
+  function AddEventModal({ date, onClose, onSaved }) {
     const [type, setType] = useState('schedule')
     const [subject, setSubject] = useState('')
     const [title, setTitle] = useState('')
@@ -550,8 +543,7 @@ export default function Calendar() {
           }
         }
 
-        const headers = { 'Content-Type': 'application/json' }
-        if (adminToken) headers['x-admin-token'] = adminToken
+        const headers = { 'Content-Type': 'application/json', ...bearerAuthHeaders() }
 
         const created = []
         const rem = (type === 'homework' || type === 'exam_control')

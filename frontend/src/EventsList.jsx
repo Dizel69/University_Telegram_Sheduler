@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
+import { bearerAuthHeaders } from './authHeaders'
 
-export default function EventsList({ highlightId }) {
+export default function EventsList({ highlightId, isAdmin = false }) {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const adminToken = localStorage.getItem('admin_token')
 
   async function load() {
     setLoading(true)
@@ -57,7 +57,7 @@ export default function EventsList({ highlightId }) {
 
   async function sendNow(id) {
     try {
-      await axios.post(`/events/${id}/send_now`, null, { headers: { 'x-admin-token': adminToken } })
+      await axios.post(`/events/${id}/send_now`, null, { headers: bearerAuthHeaders() })
       load()
     } catch (e) {
     const serverData = e.response?.data
@@ -69,7 +69,7 @@ export default function EventsList({ highlightId }) {
   async function deleteEvent(id) {
     if (!confirm('Переместить событие в корзину (удалить)?')) return
     try {
-      await axios.delete(`/events/${id}`, { headers: { 'x-admin-token': adminToken } })
+      await axios.delete(`/events/${id}`, { headers: bearerAuthHeaders() })
       load()
     } catch (e) {
       alert('Ошибка удаления: ' + (e.response?.data?.detail || e.message))
@@ -110,9 +110,9 @@ export default function EventsList({ highlightId }) {
             </div>
             <div className="event-body">{ev.body}</div>
             <div className="event-actions">
-              {adminToken ? <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button> : null}
+              {isAdmin ? <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button> : null}
               <button className="btn btn-sm" onClick={() => showTargetChat(ev.id)}>Показать чат</button>
-              {adminToken ? <button className="btn btn-sm" onClick={() => deleteEvent(ev.id)}>Удалить</button> : null}
+              {isAdmin ? <button className="btn btn-sm" onClick={() => deleteEvent(ev.id)}>Удалить</button> : null}
             </div>
           </div>
         ))}

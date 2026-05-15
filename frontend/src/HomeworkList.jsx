@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import {
   SECOND_SEMESTER_LABEL,
@@ -8,11 +8,6 @@ import {
   normalizeSemesterLabel,
   ymdFromDate,
 } from './semesterCalendar'
-
-function backendBase() {
-  const host = import.meta.env.VITE_HOST || window.location.hostname
-  return `http://${host}:8000`
-}
 
 const FILTER_ALL = '*'
 const FILTER_NO_SEMESTER = '__none__'
@@ -40,24 +35,35 @@ function defaultSemesterFilter() {
   return SECOND_SEMESTER_LABEL
 }
 
-export default function HomeworkList() {
+function groupByDate(items) {
+  const grouped = {}
+  for (const ev of items) {
+    const date = ev.date || 'Без даты'
+    if (!grouped[date]) grouped[date] = []
+    grouped[date].push(ev)
+  }
+  return grouped
+}
+
+export default function HomeworkList({ accountUser }) {
   const [allHomework, setAllHomework] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [semesterFilter, setSemesterFilter] = useState(defaultSemesterFilter)
   const [subjectFilter, setSubjectFilter] = useState(FILTER_ALL)
+  const [completedIds, setCompletedIds] = useState(() => new Set())
+  const [hwTab, setHwTab] = useState('active')
+  const [busyId, setBusyId] = useState(null)
 
-  useEffect(() => { load() }, [])
-
-  async function load() {
+  const loadCalendar = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await axios.get(backendBase() + '/calendar?type=homework')
+      let res = await axios.get('/calendar?type=homework')
       let hw = res.data
       if (!Array.isArray(hw)) hw = []
       if (hw.length === 0) {
-        const all = await axios.get(backendBase() + '/calendar')
+        const all = await axios.get('/calendar')
         hw = (all.data || []).filter(ev => ev.type === 'homework')
       }
       hw.sort((a, b) => {
@@ -72,7 +78,34 @@ export default function HomeworkList() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => { loadCalendar() }, [loadCalendar])
+
+  const reloadCompletions = useCallback(async () => {
+    if (!accountUser?.id) {
+      setCompletedIds(new Set())
+      return
+    }
+    try {
+      const { data } = await axios.get('/homework-completion')
+      const ids = data?.event_ids
+      setCompletedIds(new Set(Array.isArray(ids) ? ids : []))
+    } catch {
+      setCompletedIds(new Set())
+    }
+  }, [accountUser])
+
+  useEffect(() => { reloadCompletions() }, [reloadCompletions])
+
+  useEffect(() => {
+    function onUser() {
+      reloadCompletions()
+      loadCalendar()
+    }
+    window.addEventListener('user-auth-changed', onUser)
+    return () => window.removeEventListener('user-auth-changed', onUser)
+  }, [reloadCompletions, loadCalendar])
 
   const todayYmd = useMemo(() => ymdFromDate(new Date()), [])
 
@@ -139,19 +172,79 @@ export default function HomeworkList() {
     })
   }, [visibleHomework, semesterFilter, subjectFilter])
 
-  const events = useMemo(() => {
-    const grouped = {}
-    for (const ev of filtered) {
-      const date = ev.date || 'Без даты'
-      if (!grouped[date]) grouped[date] = []
-      grouped[date].push(ev)
+  const activeList = useMemo(() => {
+    if (!accountUser) return filtered
+    return filtered.filter(ev => !completedIds.has(ev.id))
+  }, [filtered, accountUser, completedIds])
+
+  const doneList = useMemo(() => {
+    if (!accountUser) return []
+    return filtered.filter(ev => completedIds.has(ev.id))
+  }, [filtered, accountUser, completedIds])
+
+  const listForView = accountUser
+    ? (hwTab === 'active' ? activeList : doneList)
+    : filtered
+
+  const events = useMemo(() => groupByDate(listForView), [listForView])
+
+  async function markComplete(evId) {
+    if (!accountUser) return
+    setBusyId(evId)
+    try {
+      await axios.post(`/homework-completion/${evId}`)
+      setCompletedIds(prev => {
+        const n = new Set(prev)
+        n.add(evId)
+        return n
+      })
+    } catch (e) {
+      console.error(e)
+      setError(e.response?.data?.detail || e.message || String(e))
+    } finally {
+      setBusyId(null)
     }
-    return grouped
-  }, [filtered])
+  }
+
+  async function markUncomplete(evId) {
+    if (!accountUser) return
+    setBusyId(evId)
+    try {
+      await axios.delete(`/homework-completion/${evId}`)
+      setCompletedIds(prev => {
+        const n = new Set(prev)
+        n.delete(evId)
+        return n
+      })
+    } catch (e) {
+      console.error(e)
+      setError(e.response?.data?.detail || e.message || String(e))
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   return (
     <div className="card">
       <h2>Домашние задания</h2>
+      {accountUser ? (
+        <div className="homework-mode-tabs" style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            className={hwTab === 'active' ? 'tab active' : 'tab'}
+            onClick={() => setHwTab('active')}
+          >
+            К выполнению
+          </button>
+          <button
+            type="button"
+            className={hwTab === 'done' ? 'tab active' : 'tab'}
+            onClick={() => setHwTab('done')}
+          >
+            Завершённые
+          </button>
+        </div>
+      ) : null}
       <div className="homework-filters form-grid" style={{ marginTop: 12, marginBottom: 8 }}>
         <div>
           <label className="label">Семестр</label>
@@ -177,8 +270,12 @@ export default function HomeworkList() {
       </div>
       {loading && <div>Загрузка...</div>}
       {error && <div className="error">Ошибка: {error}</div>}
-      {!loading && !error && filtered.length === 0 && (
-        <div className="status" style={{ marginTop: 8 }}>Нет заданий по выбранным фильтрам.</div>
+      {!loading && !error && listForView.length === 0 && (
+        <div className="status" style={{ marginTop: 8 }}>
+          {accountUser && hwTab === 'done'
+            ? 'Нет завершённых заданий по фильтрам.'
+            : 'Нет заданий по выбранным фильтрам.'}
+        </div>
       )}
       {Object.keys(events).sort((a, b) => {
         if (a === 'Без даты') return 1
@@ -196,6 +293,29 @@ export default function HomeworkList() {
                   <div className="homework-semester">{normalizeSemesterLabel(ev.semester)}</div>
                 ) : null}
                 <div className="homework-body">{ev.body}</div>
+                {accountUser ? (
+                  <div className="homework-item-actions">
+                    {hwTab === 'active' ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={busyId === ev.id}
+                        onClick={() => markComplete(ev.id)}
+                      >
+                        Выполнено
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={busyId === ev.id}
+                        onClick={() => markUncomplete(ev.id)}
+                      >
+                        Вернуть в активные
+                      </button>
+                    )}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

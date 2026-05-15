@@ -1,6 +1,6 @@
 import os
 import time as _time
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -9,6 +9,9 @@ from app.database import init_db
 from app.schemas import EventCreate, EventPublic
 from app.models import Event
 from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
+from app.type_utils import canonical_event_type
+from app.deps import require_admin, require_admin_token_header
+from app.account_routes import router as accounts_router
 import httpx
 from typing import List, Optional
 import calendar as _calendar
@@ -42,6 +45,8 @@ TYPE_HASHTAG = {
 }
 
 app = FastAPI(title="Планировщик университета - Бэкенд")
+
+app.include_router(accounts_router)
 
 HTTP_REQUESTS_TOTAL = Counter(
     "http_requests_total",
@@ -138,37 +143,13 @@ def _resolve_thread_id(ev_obj):
     return None
 
 
-def _canonical_type(t: str) -> str:
-    """
-    Возвращает каноничный английский токен для известных типов.
-    """
-    if not t:
-        return t
-    n = str(t).lower().strip()
-    if 'перенос' in n or 'transfer' in n:
-        return 'transfer'
-    if 'домаш' in n or 'homework' in n:
-        return 'homework'
-    if (
-        'exam_control' in n
-        or 'контрольн' in n
-        or 'экзамен' in n
-    ):
-        return 'exam_control'
-    if 'распис' in n or 'schedule' in n:
-        return 'schedule'
-    if 'объяв' in n or 'announcement' in n:
-        return 'announcement'
-    return n
-
-
 def _build_telegram_message_text(ev) -> str:
     """
     Текст поста в Telegram. Для exam_control — формат с хэштегами по выбору вида;
     для остальных типов — прежняя схема + ссылка.
     """
     link = f"{FRONTEND_URL}/calendar/m15/event/{getattr(ev, 'id', 0)}"
-    canon = _canonical_type(getattr(ev, "type", "") or "")
+    canon = canonical_event_type(getattr(ev, "type", "") or "")
 
     if canon == "exam_control":
         lines = []
@@ -204,20 +185,8 @@ def _build_telegram_message_text(ev) -> str:
     return "\n".join([p for p in parts if p is not None and p != ""])
 
 
-def require_admin(x_admin_token: str | None = Header(None)):
-    """
-    Требует валидный X-ADMIN-TOKEN в заголовке, соответствующий ADMIN_TOKEN из переменных среды.
-    Если ADMIN_TOKEN не настроен, админ-функции отключены.
-    """
-    if not ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Администраторские действия выключены для этого экземпляра")
-    if x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Неверный токен администратора")
-    return True
-
-
 @app.get('/admin/validate')
-def admin_validate(admin_ok: bool = Depends(require_admin)):
+def admin_validate(admin_ok: bool = Depends(require_admin_token_header)):
     """Лёгкий эндпоинт для проверки админ-токена при входе с фронтенда."""
     return {"ok": True}
 
@@ -240,7 +209,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
             ev.type = 'transfer'
         else:
             try:
-                ev.type = _canonical_type(ev.type)
+                ev.type = canonical_event_type(ev.type)
             except Exception:
                 pass
     except Exception:
@@ -260,7 +229,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
         mark_reminder_sent(created.id)
         # Нормализуем возвращаемый тип для согласованности фронтенда
         try:
-            created.type = _canonical_type(created.type)
+            created.type = canonical_event_type(created.type)
         except Exception:
             pass
         return created
@@ -324,7 +293,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
 
     # Нормализуем возвращаемый тип для согласованности фронтенда
     try:
-        created.type = _canonical_type(created.type)
+        created.type = canonical_event_type(created.type)
     except Exception:
         pass
     return created
@@ -341,7 +310,7 @@ def public_events():
     for ev in rows:
         out.append({
             'id': ev.id,
-            'type': _canonical_type(ev.type),
+            'type': canonical_event_type(ev.type),
             'subject': ev.subject,
             'title': ev.title,
             'body': ev.body,
@@ -408,7 +377,7 @@ def resolve_chat(event_id: int):
         raise HTTPException(status_code=404, detail="событие не найдено")
 
     # Возвращаем как разрешённый chat_id так и thread_id для удобства UI
-    return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": _canonical_type(ev.type)}
+    return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": canonical_event_type(ev.type)}
 
 
 @app.delete("/events/{event_id}")
@@ -432,7 +401,7 @@ def events_due_reminders():
     for ev in due:
         result.append({
             "id": ev.id,
-            "type": _canonical_type(ev.type),
+            "type": canonical_event_type(ev.type),
             "title": ev.title,
             "subject": getattr(ev, "subject", None),
             "body": ev.body,
@@ -467,7 +436,7 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
     for ev in all_ev:
         if not in_range(ev):
             continue
-        can = _canonical_type(ev.type)
+        can = canonical_event_type(ev.type)
         if type and can != type:
             continue
         filtered.append({
@@ -525,7 +494,7 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
             ev.type = 'transfer'
         else:
             try:
-                ev.type = _canonical_type(ev.type)
+                ev.type = canonical_event_type(ev.type)
             except Exception:
                 pass
     except Exception:
@@ -538,7 +507,7 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
 
     created = add_event(ev)
     try:
-        created.type = _canonical_type(created.type)
+        created.type = canonical_event_type(created.type)
     except Exception:
         pass
     return created
