@@ -429,6 +429,9 @@ export default function Calendar({ isAdmin = false }) {
                   </div>
                   <div style={{marginLeft:12,display:'flex',flexDirection:'column',gap:6}}>
                     <button className="btn btn-sm" onClick={() => window.open(`${window.location.origin}/calendar/m15/event/${ev.id}`,'_blank')}>Открыть</button>
+                    {isAdmin ? (
+                      <button className="btn btn-sm" onClick={() => setEditEvent(ev)}>Редактировать</button>
+                    ) : null}
                   </div>
                 </div>
               ))}

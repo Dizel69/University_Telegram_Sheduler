@@ -67,6 +67,7 @@ export default function EventForm({ onCreated }) {
         if (room) payload.room = room
         if (teacher) payload.teacher = teacher
         if (type === 'schedule') payload.lesson_type = lessonType
+        if (type === 'exam_control') payload.lesson_type = examKind
 
         let res
         if (saveOnly) {
