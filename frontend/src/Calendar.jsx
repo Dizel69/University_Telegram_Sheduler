@@ -390,7 +390,7 @@ export default function Calendar() {
                     </div>
                     <div style={{fontSize:12,color:'#6b7280'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
-                  <div style={{marginTop:6}}>{ev.body}</div>
+                  <div className="event-body" style={{marginTop:6}}>{ev.body}</div>
                   {ev.teacher ? <div style={{marginTop:6,fontSize:13,color:'#374151'}}>Преподаватель: {ev.teacher}</div> : null}
                   <div className="actions-wrap" style={{marginTop:8}}>
                     {adminToken ? (
@@ -432,7 +432,7 @@ export default function Calendar() {
                 <div key={ev.id} style={{padding:8,border:'1px solid #eef2ff',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700}}>{ev.title || ev.subject || ev.type}</div>
-                    <div style={{fontSize:13,color:'#374151',marginTop:6}}>{(ev.body || '').slice(0,240)}</div>
+                    <div className="event-body" style={{fontSize:13,color:'#374151',marginTop:6}}>{(ev.body || '').slice(0,240)}{(ev.body || '').length > 240 ? '…' : ''}</div>
                   </div>
                   <div style={{marginLeft:12,display:'flex',flexDirection:'column',gap:6}}>
                     <button className="btn btn-sm" onClick={() => window.open(`${window.location.origin}/calendar/m15/event/${ev.id}`,'_blank')}>Открыть</button>

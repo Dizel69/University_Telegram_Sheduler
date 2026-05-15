@@ -33,7 +33,7 @@ textarea{min-height:120px}
 .event-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .event-title{font-weight:600}
 .event-meta{font-size:12px;color:var(--muted)}
-.event-body{color:#0b1220;margin-bottom:8px}
+.event-body{color:#0b1220;margin-bottom:8px;white-space:pre-wrap;word-break:break-word}
 .event-actions{display:flex;gap:8px}
 .error{color:#b91c1c}  /* CSS класс для ошибок */
 
@@ -132,7 +132,8 @@ textarea{min-height:120px}
   margin-bottom: 6px;
 }
 .homework-body {
-  /* обычный текст */
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* homework toggle */
