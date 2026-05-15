@@ -1,9 +1,25 @@
 /** Учебные семестры: границы включительно (локальная дата YYYY-MM-DD). */
 export const ACADEMIC_SEMESTERS = [
-  { label: '2 семестр', start: '2026-02-01', end: '2026-07-01' },
-  { label: '3 семестр', start: '2026-09-01', end: '2027-01-25' },
-  { label: '4 семестр', start: '2027-02-01', end: '2027-07-01' },
+  { label: 'Второй семестр', start: '2026-02-01', end: '2026-07-01' },
+  { label: 'Третий семестр', start: '2026-09-01', end: '2027-01-25' },
+  { label: 'Четвёртый семестр', start: '2027-02-01', end: '2027-07-01' },
 ]
+
+/** Значение фильтра по умолчанию на вкладке домашних заданий. */
+export const SECOND_SEMESTER_LABEL = 'Второй семестр'
+
+/** Старые подписи в БД → актуальные (для фильтра и отображения). */
+const LEGACY_SEMESTER_LABELS = {
+  '2 семестр': SECOND_SEMESTER_LABEL,
+  '3 семестр': 'Третий семестр',
+  '4 семестр': 'Четвёртый семестр',
+}
+
+export function normalizeSemesterLabel(label) {
+  const t = (label || '').trim()
+  if (!t) return ''
+  return LEGACY_SEMESTER_LABELS[t] || t
+}
 
 export function ymdFromDate(d) {
   const dt = d instanceof Date ? d : new Date(d)
@@ -15,7 +31,7 @@ export function ymdFromDate(d) {
 }
 
 export function getSemesterPeriodByLabel(label) {
-  const t = (label || '').trim()
+  const t = normalizeSemesterLabel(label)
   if (!t) return null
   return ACADEMIC_SEMESTERS.find(s => s.label === t) || null
 }

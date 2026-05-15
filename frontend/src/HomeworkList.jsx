@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import {
+  SECOND_SEMESTER_LABEL,
   getSemesterForDate,
   isFutureCanonicalSemesterLabel,
   listCanonicalSemesterLabelsStartedBy,
+  normalizeSemesterLabel,
   ymdFromDate,
 } from './semesterCalendar'
 
@@ -35,7 +37,7 @@ function homeworkHeading(ev) {
 }
 
 function defaultSemesterFilter() {
-  return getSemesterForDate(new Date()) || FILTER_ALL
+  return SECOND_SEMESTER_LABEL
 }
 
 export default function HomeworkList() {
@@ -89,11 +91,12 @@ export default function HomeworkList() {
 
   const semesterOptions = useMemo(() => {
     const options = new Set(listCanonicalSemesterLabelsStartedBy(todayYmd))
+    options.add(SECOND_SEMESTER_LABEL)
     for (const ev of visibleHomework) {
       const s = (ev.semester || '').trim()
       if (!s) continue
       if (isFutureCanonicalSemesterLabel(s, todayYmd)) continue
-      options.add(s)
+      options.add(normalizeSemesterLabel(s))
     }
     return Array.from(options).sort((a, b) => a.localeCompare(b, 'ru'))
   }, [visibleHomework, todayYmd])
@@ -111,8 +114,13 @@ export default function HomeworkList() {
   function shouldShowSemesterUnderSubject(ev) {
     const sem = (ev.semester || '').trim()
     if (!sem) return false
-    if (semesterFilter !== FILTER_ALL && sem === semesterFilter) return false
-    if (currentSemester && sem === currentSemester) return false
+    const semNorm = normalizeSemesterLabel(sem)
+    const filterNorm =
+      semesterFilter === FILTER_ALL || semesterFilter === FILTER_NO_SEMESTER
+        ? ''
+        : normalizeSemesterLabel(semesterFilter)
+    if (filterNorm && semNorm === filterNorm) return false
+    if (currentSemester && semNorm === currentSemester) return false
     return true
   }
 
@@ -122,7 +130,7 @@ export default function HomeworkList() {
         if ((ev.semester || '').trim()) return false
       } else if (semesterFilter !== FILTER_ALL) {
         const sem = (ev.semester || '').trim()
-        if (sem !== semesterFilter) return false
+        if (normalizeSemesterLabel(sem) !== normalizeSemesterLabel(semesterFilter)) return false
       }
       if (subjectFilter !== FILTER_ALL) {
         if (homeworkHeading(ev) !== subjectFilter) return false
@@ -185,7 +193,7 @@ export default function HomeworkList() {
               <div key={ev.id} className="homework-item-card">
                 <div className="homework-subject">{homeworkHeading(ev)}</div>
                 {shouldShowSemesterUnderSubject(ev) ? (
-                  <div className="homework-semester">{(ev.semester || '').trim()}</div>
+                  <div className="homework-semester">{normalizeSemesterLabel(ev.semester)}</div>
                 ) : null}
                 <div className="homework-body">{ev.body}</div>
               </div>
