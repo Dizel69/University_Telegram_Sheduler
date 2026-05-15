@@ -58,6 +58,19 @@ def init_db() -> None:
     except Exception:
         pass
 
+    # Устаревшие метки семестра («2», «2 семестр») → канонические подписи календаря
+    try:
+        from app.semester_utils import legacy_semester_migrations
+
+        with engine.begin() as conn:
+            for old, new in legacy_semester_migrations():
+                conn.execute(
+                    text("UPDATE event SET semester = :new WHERE TRIM(semester) = :old"),
+                    {"new": new, "old": old},
+                )
+    except Exception:
+        pass
+
 
 def seed_owner_if_needed() -> None:
     """

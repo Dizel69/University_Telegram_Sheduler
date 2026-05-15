@@ -2,6 +2,8 @@ from pydantic import BaseModel, validator
 from typing import Optional
 from datetime import date as date_type, time as time_type
 
+from .semester_utils import normalize_semester_label
+
 
 class EventCreate(BaseModel):
     """Схема для создания события."""
@@ -41,6 +43,12 @@ class EventCreate(BaseModel):
             return None
         return v
 
+    @validator('semester', pre=True)
+    def _normalize_semester(cls, v):
+        if v is None or v == "":
+            return None
+        return normalize_semester_label(v)
+
 
 class EventPublic(BaseModel):
     """Схема для публичного представления события."""
@@ -62,6 +70,10 @@ class EventPublic(BaseModel):
     sent_message_id: Optional[int] = None
     source: Optional[str] = None
     reminder_offset_hours: int = 24
+
+    @validator('semester', pre=True)
+    def _normalize_semester_public(cls, v):
+        return normalize_semester_label(v)
 
     class Config:
         orm_mode = True

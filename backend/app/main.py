@@ -10,13 +10,14 @@ from app.schemas import EventCreate, EventPublic
 from app.models import Event
 from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
 from app.type_utils import canonical_event_type
+from app.semester_utils import normalize_semester_label
 from app.deps import require_admin, require_admin_token_header
 from app.account_routes import router as accounts_router
 import httpx
 from typing import List, Optional
 import calendar as _calendar
 from datetime import datetime, date, time
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
@@ -321,7 +322,7 @@ def public_events():
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
-            'semester': getattr(ev, 'semester', None),
+            'semester': normalize_semester_label(getattr(ev, 'semester', None)),
             'chat_id': ev.chat_id,
             'topic_thread_id': ev.topic_thread_id,
             'sent_message_id': getattr(ev, 'sent_message_id', None),
@@ -452,7 +453,7 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
             'teacher': getattr(ev, 'teacher', None),
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
-            'semester': getattr(ev, 'semester', None),
+            'semester': normalize_semester_label(getattr(ev, 'semester', None)),
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id,
             'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
@@ -527,6 +528,12 @@ class EventUpdate(BaseModel):
     lesson_type: Optional[str] = None  # exam / control для exam_control; lecture / practice для schedule
     reminder_offset_hours: Optional[int] = None
     semester: Optional[str] = None  # для homework
+
+    @validator('semester', pre=True)
+    def _normalize_semester(cls, v):
+        if v is None or v == '':
+            return None
+        return normalize_semester_label(v)
 
 
 @app.put('/events/{event_id}')
