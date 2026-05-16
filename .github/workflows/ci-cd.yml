@@ -59,7 +59,9 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             docker compose down || true
-            docker compose up --build -d || exit 1
+            docker builder prune -af || true
+            COMPOSE_PARALLEL_LIMIT=1 docker compose build --pull || exit 1
+            docker compose up -d || exit 1
             docker ps || exit 1
 
   # post:
