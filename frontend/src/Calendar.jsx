@@ -9,6 +9,7 @@ import { bearerAuthHeaders } from './authHeaders'
 function calendarTypeOrder(t) {
   if (t === 'exam_control') return 0
   if (t === 'homework') return 1
+  if (t === 'birthday') return 2
   return 2
 }
 
@@ -283,6 +284,10 @@ export default function Calendar({ isAdmin = false }) {
           <span style={{width:12,height:12,background:'#34d399',borderRadius:3,display:'inline-block'}}></span>
           <span style={{fontSize:13,color:'#374151'}}>Объявление</span>
         </div>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <span style={{width:12,height:12,background:'#facc15',borderRadius:3,display:'inline-block'}}></span>
+          <span style={{fontSize:13,color:'#374151'}}>День рождения</span>
+        </div>
       </div>
       {loadError && (
         <div className="card" style={{marginTop:12,borderLeft:'4px solid #ef4444',padding:12,background:'#fff8f8'}}>
@@ -315,7 +320,7 @@ export default function Calendar({ isAdmin = false }) {
             <div key={idx} className={"day" + (ds === todayIso ? ' today' : '')} onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
               <div className="date-num">{dt.getUTCDate()}</div>
               {evs.slice(0,5).map(ev => (
-                <div key={ev.id} className="cal-ev" style={{display:'flex',flexDirection:'column',gap:4,padding:6,marginTop:6,background: eventColor(ev),borderRadius:6,color:'#fff',fontSize:12}}>
+                <div key={ev.id} className="cal-ev" style={{display:'flex',flexDirection:'column',gap:4,padding:6,marginTop:6,background: eventColor(ev),borderRadius:6,color:eventTextColor(ev),fontSize:12}}>
                   <div style={{display:'flex',justifyContent:'flex-start',alignItems:'flex-start'}}>
                     <div style={{fontSize:11,opacity:0.9,fontWeight:'bold'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
@@ -327,7 +332,7 @@ export default function Calendar({ isAdmin = false }) {
                   </div>
                   {ev.room ? <div style={{fontSize:10,opacity:0.95,textAlign:'center',marginTop:6}}>{ev.room}</div> : null}
                   {/* delete button on mini-card (visible in edit mode) */}
-                  {editing && (
+                  {editing && ev.type !== 'birthday' && (
                     <button className="btn btn-sm" onClick={async (e) => {
                       e.stopPropagation()
                       if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
@@ -368,7 +373,7 @@ export default function Calendar({ isAdmin = false }) {
                 <div key={ev.id} style={{padding:8,borderBottom:'1px solid #eef2ff'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <div style={{background: eventColor(ev), color:'#fff', padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
+                      <div style={{background: eventColor(ev), color:eventTextColor(ev), padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
                       <div style={{fontWeight:700}}>
                         {ev.type === 'schedule' ? lessonIcon(ev.lesson_type) : null}
                         {ev.type === 'exam_control' ? examKindIcon(ev.lesson_type) : null}
@@ -382,14 +387,14 @@ export default function Calendar({ isAdmin = false }) {
                   <div className="event-body" style={{marginTop:6}}>{ev.body}</div>
                   {ev.teacher ? <div style={{marginTop:6,fontSize:13,color:'#374151'}}>Преподаватель: {ev.teacher}</div> : null}
                   <div className="actions-wrap" style={{marginTop:8}}>
-                    {isAdmin ? (
+                    {isAdmin && ev.type !== 'birthday' ? (
                       <button className="btn btn-sm" onClick={async () => {
                         try { await axios.post(`/events/${ev.id}/send_now`, null, { headers: bearerAuthHeaders() }); alert('Отправлено'); load(); }
                         catch(e){ alert('Ошибка: ' + (e.response?.data?.detail || e.message)) }
                       }}>Отправить сейчас</button>
                     ) : null}
                     <button className="btn btn-sm" onClick={() => alert('Показать в календаре: ' + ev.id)}>Открыть</button>
-                    {isAdmin ? (
+                    {isAdmin && ev.type !== 'birthday' ? (
                       <>
                     <button className="btn btn-sm" onClick={() => setEditEvent(ev)}>Редактировать</button>
                     <button className="btn btn-sm" onClick={() => setTransferEvent(ev)}>Перенести</button>
@@ -463,6 +468,7 @@ export default function Calendar({ isAdmin = false }) {
     if (n.includes('homework') || n.includes('домаш') || n.includes('домашнее_задание') || n.includes('домашняя_работа')) return '#a78bfa'
     if (n.includes('transfer') || n.includes('перенос')) return '#ef4444'
     if (n.includes('announcement') || n.includes('объявлен')) return '#34d399'
+    if (n.includes('birthday') || n.includes('рождени')) return '#facc15'
     return '#9ca3af'
   }
 
@@ -472,6 +478,7 @@ export default function Calendar({ isAdmin = false }) {
       if (!ev) return typeColor(ev?.type)
       const body = (ev.body || '').toString().toLowerCase()
       const title = (ev.title || '').toString().toLowerCase()
+      if (ev.type === 'birthday') return '#facc15'
       // if body/title mention перенос — force transfer color
       if (body.includes('перенос') || title.includes('перенос') || body.includes('перенес')) return '#ef4444'
       return typeColor(ev.type)
@@ -480,9 +487,14 @@ export default function Calendar({ isAdmin = false }) {
     }
   }
 
+  function eventTextColor(ev) {
+    return ev?.type === 'birthday' ? '#713f12' : '#fff'
+  }
+
   function typeLabel(t) {
     if (!t) return ''
     const n = String(t).toLowerCase().trim()
+    if (n.includes('birthday') || n.includes('рождени')) return 'День рождения'
     if (n.includes('transfer') || n.includes('перенос')) return 'Перенос'
     if (n.includes('homework') || n.startsWith('home') || n.includes('домаш')) return 'Домашняя работа'
     if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return 'Контрольная / экзамен'

@@ -381,6 +381,86 @@ def resolve_chat(event_id: int):
     return {"chat_id": _resolve_chat_id(ev), "thread_id": _resolve_thread_id(ev), "type": canonical_event_type(ev.type)}
 
 
+BIRTHDAY_CALENDAR_END = date(2027, 8, 31)
+
+
+def _parse_calendar_date(value: str | None, fallback: date) -> date:
+    if not value:
+        return fallback
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="неверный формат даты")
+
+
+def _birthday_on_year(month: int, day: int, year: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        # Для 29 февраля в невисокосный год показываем день рождения 28 февраля.
+        if month == 2 and day == 29:
+            return date(year, 2, 28)
+        return None
+
+
+def _birthday_calendar_events(start: str | None, end: str | None) -> list[dict]:
+    """
+    Виртуальные события дней рождения из профилей пользователей.
+    Не сохраняются в таблицу event и автоматически доступны до конца августа 2027.
+    """
+    from sqlmodel import Session, select
+
+    from app.database import engine
+    from app.models import User
+
+    range_start = _parse_calendar_date(start, date.today())
+    range_end = _parse_calendar_date(end, BIRTHDAY_CALENDAR_END)
+    if range_end > BIRTHDAY_CALENDAR_END:
+        range_end = BIRTHDAY_CALENDAR_END
+    if range_start > range_end:
+        return []
+
+    out = []
+    with Session(engine) as session:
+        users = session.exec(
+            select(User)
+            .where(User.birth_date != None)
+            .order_by(User.last_name, User.first_name)
+        ).all()
+
+    for user in users:
+        birth_date = getattr(user, "birth_date", None)
+        if not birth_date:
+            continue
+        full_name = " ".join(
+            part for part in [user.last_name, user.first_name, user.middle_name] if part
+        )
+        for year in range(range_start.year, range_end.year + 1):
+            birthday = _birthday_on_year(birth_date.month, birth_date.day, year)
+            if not birthday or birthday < range_start or birthday > range_end:
+                continue
+            out.append({
+                "id": f"birthday-{user.id}-{year}",
+                "type": "birthday",
+                "subject": None,
+                "title": f"День рождения: {full_name}",
+                "body": f"День рождения пользователя {full_name}.",
+                "date": birthday.isoformat(),
+                "time": None,
+                "end_time": None,
+                "room": None,
+                "teacher": None,
+                "series_id": None,
+                "lesson_type": None,
+                "semester": None,
+                "chat_id": None,
+                "thread_id": None,
+                "reminder_offset_hours": 24,
+                "source": "birthday",
+            })
+    return out
+
+
 @app.delete("/events/{event_id}")
 def delete_event_endpoint(event_id: int, admin_ok: bool = Depends(require_admin)):
     from .crud import delete_event
@@ -426,6 +506,7 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
     """
     from .crud import get_public_events
     all_ev = get_public_events(limit=1000)
+    requested_type = canonical_event_type(type) if type else None
     def in_range(ev):
         if start and ev.date and ev.date.isoformat() < start:
             return False
@@ -438,7 +519,7 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
         if not in_range(ev):
             continue
         can = canonical_event_type(ev.type)
-        if type and can != type:
+        if requested_type and can != requested_type:
             continue
         filtered.append({
             'id': ev.id,
@@ -457,7 +538,10 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id,
             'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
+            'source': ev.source,
         })
+    if not requested_type or requested_type == "birthday":
+        filtered.extend(_birthday_calendar_events(start, end))
     return filtered
 
 

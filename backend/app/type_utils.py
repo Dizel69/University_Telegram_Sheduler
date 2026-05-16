@@ -15,4 +15,6 @@ def canonical_event_type(t: str) -> str:
         return "schedule"
     if "объяв" in n or "announcement" in n:
         return "announcement"
+    if "birthday" in n or "день рождения" in n or "рождени" in n:
+        return "birthday"
     return n
