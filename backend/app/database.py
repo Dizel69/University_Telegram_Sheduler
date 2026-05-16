@@ -10,7 +10,7 @@ engine = create_engine(DATABASE_URL, echo=False)
 
 # Учётная запись по умолчанию (создаётся при старте, если задан пароль в .env)
 ADMIN_SEED_LOGIN = "admin"
-MAX_APP_USERS = 7
+MAX_APP_USERS = 8
 
 
 def init_db() -> None:

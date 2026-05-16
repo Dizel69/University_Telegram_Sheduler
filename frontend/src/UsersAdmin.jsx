@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import PasswordField from './PasswordField'
 
-const MAX_USERS = 7
+const MAX_USERS = 8
 
 function formatBirth(d) {
   if (!d) return '—'

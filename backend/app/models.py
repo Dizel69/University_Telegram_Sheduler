@@ -40,7 +40,7 @@ class Event(SQLModel, table=True):
 
 
 class User(SQLModel, table=True):
-    """Учётная запись пользователя приложения (до 6 человек)."""
+    """Учётная запись пользователя приложения (до 8 человек)."""
 
     __tablename__ = "app_user"
 
