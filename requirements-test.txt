@@ -1,0 +1,7 @@
+-r backend/requirements.txt
+-r bot/requirements.txt
+-r worker/requirements.txt
+
+pytest
+pytest-asyncio
+pytest-cov
