@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { bearerAuthHeaders } from './authHeaders'
 
@@ -6,14 +6,35 @@ export default function EventsList({ highlightId, isAdmin = false }) {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [eventsTab, setEventsTab] = useState('current')
+
+  function parseEventBoundary(ev) {
+    if (!ev.date) return null
+    const [year, month, day] = String(ev.date).split('-').map(Number)
+    if (!year || !month || !day) return null
+    const timeValue = ev.end_time || ev.time || '23:59:59'
+    const [hours = 23, minutes = 59, seconds = 59] = String(timeValue).split(':').map(Number)
+    return new Date(year, month - 1, day, hours || 0, minutes || 0, seconds || 0)
+  }
+
+  function eventSortValue(ev) {
+    const boundary = parseEventBoundary(ev)
+    return boundary ? boundary.getTime() : Number.MAX_SAFE_INTEGER
+  }
+
+  function isCompletedEvent(ev) {
+    const boundary = parseEventBoundary(ev)
+    if (!boundary) return false
+    return boundary.getTime() < Date.now()
+  }
 
   async function load() {
     setLoading(true)
     try {
-  const res = await axios.get('/events')
-  // hide events created manually via calendar UI (source === 'manual')
-  const list = (res.data || []).filter(ev => ev.source !== 'manual')
-  setEvents(list)
+      const res = await axios.get('/events')
+      // hide events created manually via calendar UI (source === 'manual')
+      const list = (res.data || []).filter(ev => ev.source !== 'manual')
+      setEvents(list)
       setError(null)
     } catch (e) {
       setError(e.message)
@@ -54,6 +75,20 @@ export default function EventsList({ highlightId, isAdmin = false }) {
   }
 
   useEffect(() => { load() }, [])
+
+  const { currentEvents, completedEvents } = useMemo(() => {
+    const current = []
+    const completed = []
+    for (const ev of events) {
+      if (isCompletedEvent(ev)) completed.push(ev)
+      else current.push(ev)
+    }
+    current.sort((a, b) => eventSortValue(a) - eventSortValue(b))
+    completed.sort((a, b) => eventSortValue(b) - eventSortValue(a))
+    return { currentEvents: current, completedEvents: completed }
+  }, [events])
+
+  const visibleEvents = eventsTab === 'completed' ? completedEvents : currentEvents
 
   async function sendNow(id) {
     try {
@@ -97,8 +132,33 @@ export default function EventsList({ highlightId, isAdmin = false }) {
 
       {!loading && !events.length && <div>Событий нет.</div>}
 
+      {!loading && events.length > 0 && (
+        <div className="events-mode-tabs">
+          <button
+            type="button"
+            className={eventsTab === 'current' ? 'tab active' : 'tab'}
+            onClick={() => setEventsTab('current')}
+          >
+            Текущие ({currentEvents.length})
+          </button>
+          <button
+            type="button"
+            className={eventsTab === 'completed' ? 'tab active' : 'tab'}
+            onClick={() => setEventsTab('completed')}
+          >
+            Завершенные ({completedEvents.length})
+          </button>
+        </div>
+      )}
+
+      {!loading && events.length > 0 && visibleEvents.length === 0 && (
+        <div className="status">
+          {eventsTab === 'completed' ? 'Завершенных событий нет.' : 'Текущих событий нет.'}
+        </div>
+      )}
+
       <div className="events-grid">
-        {events.map(ev => (
+        {visibleEvents.map(ev => (
           <div key={ev.id} className={"event-card" + (highlightId===ev.id ? ' highlight':'' )}>
             <div className="event-row">
               <div style={{display:'flex',alignItems:'center',gap:8}}>
