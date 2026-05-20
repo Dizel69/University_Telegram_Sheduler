@@ -81,6 +81,66 @@ function monthLabel(year, month) {
   return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(new Date(Date.UTC(year, month, 1)))
 }
 
+const RANGE_HIGHLIGHTS_KEY = 'calendarDayRangeHighlights'
+
+/** Бледный фон для заливки диапазона (hex вида #rrggbb). */
+function highlightPaleBackground(hex, alpha = 0.22) {
+  if (!hex || typeof hex !== 'string') return null
+  const h = hex.replace('#', '').trim()
+  if (h.length !== 6 || !/^[0-9a-fA-F]+$/.test(h)) return null
+  const n = parseInt(h, 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+function isDateInHighlightRange(isoDay, start, end) {
+  return isoDay >= start && isoDay <= end
+}
+
+function readRangeHighlightsFromStorage() {
+  try {
+    const raw = localStorage.getItem(RANGE_HIGHLIGHTS_KEY)
+    const p = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(p)) return []
+    return p.filter(
+      (x) =>
+        x &&
+        typeof x.start === 'string' &&
+        typeof x.end === 'string' &&
+        typeof x.color === 'string' &&
+        x.start <= x.end
+    )
+  } catch {
+    return []
+  }
+}
+
+function RangeHighlightColorModal({ range, color, onColorChange, onApply, onCancel }) {
+  if (!range) return null
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>Цвет выделения</h3>
+        <p style={{ fontSize: 14, color: '#374151', marginTop: 8 }}>
+          От <strong>{range.start}</strong> до <strong>{range.end}</strong> — подсветятся все дни между этими датами включительно (порядок нажатий не важен). Выберите цвет — на сетке он будет показан бледным.
+        </p>
+        <label className="label">Цвет</label>
+        <input type="color" value={color} onChange={(e) => onColorChange(e.target.value)} style={{ width: '100%', height: 44, padding: 4, cursor: 'pointer' }} />
+        <div className="actions-wrap" style={{ marginTop: 16 }}>
+          <button type="button" className="btn btn-primary" onClick={onApply}>
+            Применить
+          </button>
+          <button type="button" className="btn" onClick={onCancel}>
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Calendar({ isAdmin = false }) {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -108,6 +168,12 @@ export default function Calendar({ isAdmin = false }) {
   }
   const [undated, setUndated] = useState([])
   const [editing, setEditing] = useState(false)
+  /** Режим «карандаш»: два клика по дням, затем выбор цвета. */
+  const [rangeHighlightMode, setRangeHighlightMode] = useState(false)
+  const [rangeSelectStart, setRangeSelectStart] = useState(null)
+  const [pendingHighlightRange, setPendingHighlightRange] = useState(null)
+  const [pendingHighlightColor, setPendingHighlightColor] = useState('#94a3b8')
+  const [rangeHighlights, setRangeHighlights] = useState(readRangeHighlightsFromStorage)
   const [addDate, setAddDate] = useState(null) // 'YYYY-MM-DD' for add-event modal
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState(null)
@@ -162,6 +228,22 @@ export default function Calendar({ isAdmin = false }) {
   useEffect(() => {
     if (!isAdmin) setEditing(false)
   }, [isAdmin])
+
+  useEffect(() => {
+    if (!editing) {
+      setRangeHighlightMode(false)
+      setRangeSelectStart(null)
+      setPendingHighlightRange(null)
+    }
+  }, [editing])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(RANGE_HIGHLIGHTS_KEY, JSON.stringify(rangeHighlights))
+    } catch {
+      /* ignore */
+    }
+  }, [rangeHighlights])
 
   // PDF parser removed — no external parser service used
 
@@ -252,6 +334,22 @@ export default function Calendar({ isAdmin = false }) {
     }
   }
 
+  function cellHighlightBackground(isoDay) {
+    for (let i = rangeHighlights.length - 1; i >= 0; i--) {
+      const r = rangeHighlights[i]
+      if (isDateInHighlightRange(isoDay, r.start, r.end)) {
+        return highlightPaleBackground(r.color)
+      }
+    }
+    return null
+  }
+
+  function clearAllRangeHighlights() {
+    if (!rangeHighlights.length) return
+    if (!confirm('Убрать все цветные заливки дней с календаря?')) return
+    setRangeHighlights([])
+  }
+
   async function deleteEventsForMonth() {
     if (!confirm('Удалить все события за отображаемый месяц? Это действие нельзя отменить.')) return
     try {
@@ -280,7 +378,41 @@ export default function Calendar({ isAdmin = false }) {
         <div className="calendar-toolbar-group">
           {/* Редактирование доступно только админам */}
           {isAdmin ? (
-            <button className={editing? 'btn btn-danger':'btn'} onClick={() => setEditing(!editing)}>{editing? 'Выход из ред.' : 'Редактировать'}</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    className={rangeHighlightMode ? 'btn btn-primary' : 'btn'}
+                    title={rangeHighlightMode ? 'Выключить выделение диапазона дней' : 'Выделить диапазон дней цветом'}
+                    onClick={() => {
+                      setRangeHighlightMode((v) => !v)
+                      setRangeSelectStart(null)
+                      setPendingHighlightRange(null)
+                    }}
+                    aria-pressed={rangeHighlightMode}
+                    style={{ minWidth: 40, fontSize: 18, lineHeight: 1, padding: '8px 10px' }}
+                  >
+                    ✏
+                  </button>
+                  {rangeHighlightMode ? (
+                    <span className="status" style={{ fontSize: 13, maxWidth: 280 }}>
+                      {rangeSelectStart
+                        ? 'Карандаш: нажмите второй день диапазона.'
+                        : 'Карандаш: нажмите первый день, затем второй.'}
+                    </span>
+                  ) : null}
+                  {rangeHighlights.length ? (
+                    <button type="button" className="btn btn-sm" onClick={clearAllRangeHighlights}>
+                      Очистить заливки
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              <button className={editing ? 'btn btn-danger' : 'btn'} onClick={() => setEditing(!editing)}>
+                {editing ? 'Выход из ред.' : 'Редактировать'}
+              </button>
+            </div>
           ) : null}
           <label className="homework-toggle">
             <input type="checkbox" checked={showHomework} onChange={() => setShowHomework(!showHomework)} />
@@ -349,8 +481,31 @@ export default function Calendar({ isAdmin = false }) {
           const ds = dt.toISOString().slice(0,10)
           const evs = (events[ds] || []).filter(ev => showHomework || ev.type !== 'homework')
           const todayIso = new Date().toISOString().slice(0,10)
+          const hlBg = cellHighlightBackground(ds)
           return (
-            <div key={idx} className={"day" + (ds === todayIso ? ' today' : '')} onClick={() => { if (editing) setAddDate(ds); else setOpenDay(ds) }} style={{cursor:'pointer'}}>
+            <div
+              key={idx}
+              className={'day' + (ds === todayIso ? ' today' : '')}
+              onClick={() => {
+                if (editing && rangeHighlightMode) {
+                  if (!rangeSelectStart) {
+                    setRangeSelectStart(ds)
+                    return
+                  }
+                  const start = rangeSelectStart < ds ? rangeSelectStart : ds
+                  const end = rangeSelectStart < ds ? ds : rangeSelectStart
+                  setRangeSelectStart(null)
+                  setPendingHighlightColor(
+                    rangeHighlights.length ? rangeHighlights[rangeHighlights.length - 1].color : '#94a3b8',
+                  )
+                  setPendingHighlightRange({ start, end })
+                  return
+                }
+                if (editing) setAddDate(ds)
+                else setOpenDay(ds)
+              }}
+              style={{ cursor: 'pointer', ...(hlBg ? { background: hlBg } : {}) }}
+            >
               <div className="date-num">{dt.getUTCDate()}</div>
               {evs.slice(0,5).map(ev => (
                 <div key={ev.id} className="cal-ev" style={{display:'flex',flexDirection:'column',gap:4,padding:6,marginTop:6,background: eventColor(ev),borderRadius:6,color:eventTextColor(ev),fontSize:12}}>
@@ -478,6 +633,20 @@ export default function Calendar({ isAdmin = false }) {
         )}
       {/* UI PDF импорта удален */}
       {/* Add event modal (shown when editing and a date selected) */}
+      <RangeHighlightColorModal
+        range={pendingHighlightRange}
+        color={pendingHighlightColor}
+        onColorChange={setPendingHighlightColor}
+        onApply={() => {
+          if (!pendingHighlightRange) return
+          setRangeHighlights((prev) => [
+            ...prev,
+            { ...pendingHighlightRange, color: pendingHighlightColor },
+          ])
+          setPendingHighlightRange(null)
+        }}
+        onCancel={() => setPendingHighlightRange(null)}
+      />
       {addDate && (
         <AddEventModal date={addDate} onClose={() => { setAddDate(null) }} onSaved={() => { setAddDate(null); load() }} />
       )}
