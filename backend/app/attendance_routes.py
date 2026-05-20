@@ -4,7 +4,7 @@ from typing import List, Set
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
-from app.database import engine
+from app import database
 from app.deps import require_admin
 from app.models import AttendanceMark, Event, User
 from app.schemas import AttendanceBoard, AttendanceMarkPublic, AttendanceMarkSet, UserPublic
@@ -43,7 +43,7 @@ def get_attendance_board(
     date: dt.date = Query(..., description="Дата посещаемости (YYYY-MM-DD)"),
     _admin=Depends(require_admin),
 ):
-    with Session(engine) as session:
+    with Session(database.engine) as session:
         users = session.exec(select(User).order_by(User.last_name, User.first_name)).all()
         subjects = _subjects_for_date(session, date)
         rows = session.exec(select(AttendanceMark).where(AttendanceMark.attendance_date == date)).all()
@@ -69,7 +69,7 @@ def set_attendance_mark(payload: AttendanceMarkSet, _admin=Depends(require_admin
     if not subject:
         raise HTTPException(status_code=400, detail="Укажите предмет")
 
-    with Session(engine) as session:
+    with Session(database.engine) as session:
         user = session.get(User, payload.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")

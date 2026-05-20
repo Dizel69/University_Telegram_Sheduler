@@ -38,6 +38,11 @@ POSTGRES_PASSWORD=postgres
 POSTGRES_DB=m15db
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/m15db
 
+# Схема БД при старте backend: SQLModel.metadata.create_all добавляет **отсутствующие**
+# таблицы по моделям. Дополнительные идемпотентные изменения (ALTER и т.п. для старых БД)
+# — в `backend/app/schema_migrations.py` (функция `apply_additive_schema_migrations`),
+# она вызывается из `init_db()`.
+
 # URLs для связи сервисов (можно оставить дефолты)
 BACKEND_URL=http://backend:8000
 BOT_SERVICE_URL=http://bot:8081

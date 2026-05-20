@@ -23,40 +23,10 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     seed_owner_if_needed()
-    # Добавляем колонки к существующей таблице event (модель новее БД).
-    # В SA 2.x сырой SQL только через text(); иначе ALTER не выполняется, а ошибка глотается.
-    try:
-        dialect = engine.dialect.name
-        if dialect == "postgresql":
-            stmts = [
-                "ALTER TABLE event ADD COLUMN IF NOT EXISTS end_time time",
-                "ALTER TABLE event ADD COLUMN IF NOT EXISTS room TEXT",
-                "ALTER TABLE event ADD COLUMN IF NOT EXISTS teacher TEXT",
-                "ALTER TABLE event ADD COLUMN IF NOT EXISTS series_id TEXT",
-                "ALTER TABLE event ADD COLUMN IF NOT EXISTS lesson_type TEXT",
-                "ALTER TABLE event ADD COLUMN IF NOT EXISTS semester TEXT",
-            ]
-            with engine.begin() as conn:
-                for sql in stmts:
-                    conn.execute(text(sql))
-        else:
-            # SQLite: ADD COLUMN IF NOT EXISTS с 3.35+; на старых — тихий сбой по одной колонке
-            alters = [
-                "ALTER TABLE event ADD COLUMN end_time TEXT",
-                "ALTER TABLE event ADD COLUMN room TEXT",
-                "ALTER TABLE event ADD COLUMN teacher TEXT",
-                "ALTER TABLE event ADD COLUMN series_id TEXT",
-                "ALTER TABLE event ADD COLUMN lesson_type TEXT",
-                "ALTER TABLE event ADD COLUMN semester TEXT",
-            ]
-            for sql in alters:
-                try:
-                    with engine.begin() as conn:
-                        conn.execute(text(sql))
-                except Exception:
-                    pass
-    except Exception:
-        pass
+
+    from app.schema_migrations import apply_additive_schema_migrations
+
+    apply_additive_schema_migrations(engine)
 
     # Устаревшие метки семестра («2», «2 семестр») → канонические подписи календаря
     try:
@@ -79,7 +49,7 @@ def seed_owner_if_needed() -> None:
     Пароль берётся из ADMIN_PASSWORD; если нет — из OWNER_PASSWORD; если нет — из ADMIN_TOKEN
     (как у старого входа по секрету), чтобы можно было использовать один уже настроенный секрет.
 
-    Пользовательские профили и отметки по ДЗ всегда хранятся в БД (таблицы app_user, homework_completion).
+    Пользовательские профили и связанные данные хранятся в БД (app_user, homework_completion, attendance_mark).
     """
     from sqlmodel import select
 
