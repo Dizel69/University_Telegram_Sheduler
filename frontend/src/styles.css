@@ -45,8 +45,7 @@ textarea{min-height:120px}
 
 /* calendar styles */
 .calendar-wrap{width:100%;overflow-x:auto;padding-bottom:6px}
-.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:stretch;width:100%;min-width:840px}
-.calendar-grid { row-gap: 0px !important; margin-top: 0px !important }
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:12px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:stretch;width:100%;min-width:840px}
 .weekday{font-weight:600;padding:4px 6px 2px;background:#fff;border-radius:8px;text-align:center;align-self:start;height:28px}
 .weekday { margin-bottom: 0px !important }
 .day{min-height:120px;height:100%;background:#fff;border-radius:8px;padding:6px;border:1px solid #eef2ff;display:flex;flex-direction:column;justify-content:flex-start;overflow:auto;align-self:stretch;box-sizing:border-box}
