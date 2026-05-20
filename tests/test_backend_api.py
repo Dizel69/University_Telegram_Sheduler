@@ -250,6 +250,14 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
                 date=lesson_day,
             )
         )
+        session.add(
+            Event(
+                type="transfer",
+                subject="Языки разметки",
+                body="Перенесено с понедельника",
+                date=date(2026, 5, 22),
+            )
+        )
         student = User(
             last_name="Stud",
             first_name="Test",
@@ -303,6 +311,10 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     assert all(not u.get("is_owner") for u in data["users"])
     assert any(
         str(d["date"])[:10] == lesson_day.isoformat() and "Math" in d["subjects"]
+        for d in data["days"]
+    )
+    assert any(
+        str(d["date"])[:10] == "2026-05-22" and "Языки разметки" in d["subjects"]
         for d in data["days"]
     )
 

@@ -19,7 +19,7 @@ from app.type_utils import canonical_event_type
 
 router = APIRouter(tags=["attendance"])
 
-_SCHEDULE_TYPES = frozenset({"schedule", "exam_control"})
+_SCHEDULE_TYPES = frozenset({"schedule", "exam_control", "transfer"})
 
 
 def _monday_week_start(d: dt.date) -> dt.date:
