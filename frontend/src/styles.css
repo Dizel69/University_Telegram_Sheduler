@@ -45,14 +45,17 @@ textarea{min-height:120px}
 
 /* calendar styles */
 .calendar-wrap{width:100%;overflow-x:auto;padding-bottom:6px}
-.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:start;width:100%;min-width:840px}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));/* first row = weekdays */ grid-template-rows:36px; column-gap:6px;row-gap:0px;margin-top:0px; /* subsequent rows = days: allow rows to grow with content */ grid-auto-rows:minmax(120px, auto);align-items:stretch;width:100%;min-width:840px}
 .calendar-grid { row-gap: 0px !important; margin-top: 0px !important }
 .weekday{font-weight:600;padding:4px 6px 2px;background:#fff;border-radius:8px;text-align:center;align-self:start;height:28px}
 .weekday { margin-bottom: 0px !important }
-.day{min-height:120px;background:#fff;border-radius:8px;padding:6px;border:1px solid #eef2ff;display:flex;flex-direction:column;justify-content:flex-start;overflow:auto}
+.day{min-height:120px;height:100%;background:#fff;border-radius:8px;padding:6px;border:1px solid #eef2ff;display:flex;flex-direction:column;justify-content:flex-start;overflow:auto;align-self:stretch;box-sizing:border-box}
 /* соседние дни одной «блочной» подсветки наезжают на column-gap; чуть выше в стопке, чтобы шов не просвечивал */
 .day.day-highlight-run{position:relative;z-index:1}
-.day.empty{background:transparent;border:none}
+/* сшитый диапазон: фон на всю высоту строки; карточки событий тянутся до высоты самого высокого дня в строке */
+.day.day-highlight-stitch{overflow:hidden}
+.day.day-highlight-stitch .cal-ev{flex:1 1 auto;min-height:0}
+.day.empty{background:transparent;border:none;min-height:0;height:auto;align-self:stretch}
 .date-num{font-weight:700;margin-bottom:6px}
 .cal-ev{background:linear-gradient(90deg,#f8fafc,#ffffff);padding:6px;border-radius:6px;margin-bottom:4px;font-size:13px;display:flex;flex-direction:column;align-items:stretch;gap:6px;overflow:visible;word-break:break-word}
 .cal-ev > div { overflow:visible; text-overflow:unset; white-space:normal }

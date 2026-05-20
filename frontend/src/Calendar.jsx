@@ -538,7 +538,12 @@ export default function Calendar({ isAdmin = false }) {
           return (
             <div
               key={idx}
-              className={'day' + (ds === todayIso ? ' today' : '') + (hlBg && (prevMerge || nextMerge) ? ' day-highlight-run' : '')}
+              className={
+                'day' +
+                (ds === todayIso ? ' today' : '') +
+                (hlBg && wantStitch ? ' day-highlight-stitch' : '') +
+                (hlBg && (prevMerge || nextMerge) ? ' day-highlight-run' : '')
+              }
               onClick={() => {
                 if (editing && rangeHighlightMode) {
                   if (!rangeSelectStart) {
