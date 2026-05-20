@@ -27,6 +27,12 @@ export default defineConfig({
         target: 'http://backend:8000',
         changeOrigin: true,
         secure: false,
+        // SPA-ссылки вида /calendar/m15/event/:id — это React, не API GET /calendar
+        bypass(req) {
+          if (req.url?.startsWith('/calendar/m15')) {
+            return '/index.html'
+          }
+        },
       },
       '/auth': {
         target: 'http://backend:8000',

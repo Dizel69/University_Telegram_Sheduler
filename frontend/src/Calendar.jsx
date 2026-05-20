@@ -117,18 +117,51 @@ export default function Calendar({ isAdmin = false }) {
   const [editEvent, setEditEvent] = useState(null)
   const [showHomework, setShowHomework] = useState(true)
 
-  useEffect(() => { load() }, [year, month])
-
-  useEffect(() => {
-    if (!isAdmin) setEditing(false)
-  }, [isAdmin])
-
   function backendBase() {
     // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
     // Храним конфиг в переменных окружения или runtime host; избегаем hardcoding локального hostname
     const host = import.meta.env.VITE_HOST || window.location.hostname
     return `http://${host}:8000`
   }
+
+  useEffect(() => { load() }, [year, month])
+
+  // Диплинк из Telegram: /calendar/m15/event/:id — открыть нужный месяц и день
+  useEffect(() => {
+    const m = window.location.pathname.match(/^\/calendar\/m15\/event\/(\d+)$/)
+    if (!m) return
+    const eventId = Number(m[1])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const base = backendBase()
+        const { data } = await axios.get(`${base}/events`)
+        if (cancelled) return
+        const ev = data.find((e) => e.id === eventId)
+        if (!ev) return
+        if (ev.date) {
+          const [y, mo] = ev.date.split('-').map(Number)
+          setYear(y)
+          setMonth(mo - 1)
+          setOpenDay(ev.date)
+        } else {
+          setTimeout(() => {
+            document.getElementById(`undated-event-${eventId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+          }, 600)
+        }
+        window.history.replaceState({}, '', '/')
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isAdmin) setEditing(false)
+  }, [isAdmin])
 
   // PDF parser removed — no external parser service used
 
@@ -427,7 +460,7 @@ export default function Calendar({ isAdmin = false }) {
             <h4>События без даты ({undated.length})</h4>
             <div style={{display:'grid',gap:8}}>
               {undated.filter(ev => showHomework || ev.type !== 'homework').map(ev => (
-                <div key={ev.id} style={{padding:8,border:'1px solid #eef2ff',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div key={ev.id} id={`undated-event-${ev.id}`} style={{padding:8,border:'1px solid #eef2ff',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700}}>{ev.title || ev.subject || ev.type}</div>
                     <div className="event-body" style={{fontSize:13,color:'#374151',marginTop:6}}>{(ev.body || '').slice(0,240)}{(ev.body || '').length > 240 ? '…' : ''}</div>
