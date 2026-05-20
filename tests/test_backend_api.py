@@ -2,7 +2,7 @@ from datetime import date, time, timedelta
 
 from sqlmodel import Session, select
 
-from app.models import Event, HomeworkCompletion, User
+from app.models import AttendanceMark, Event, HomeworkCompletion, User
 
 
 ADMIN_HEADERS = {"X-ADMIN-TOKEN": "test-admin-token"}
@@ -235,3 +235,69 @@ def test_owner_user_management(backend_client):
 
     admin_delete_response = backend_client.delete("/owner/users/1", headers=headers)
     assert admin_delete_response.status_code == 400
+
+
+def test_attendance_board_and_marks(backend_client, backend_engine):
+    day = date(2026, 5, 19)
+    with Session(backend_engine) as session:
+        session.add(
+            Event(
+                type="schedule",
+                subject="Math",
+                body="Lecture",
+                date=day,
+            )
+        )
+        session.commit()
+
+    denied = backend_client.get("/admin/attendance", params={"date": day.isoformat()})
+    assert denied.status_code in (401, 403)
+
+    board = backend_client.get(
+        "/admin/attendance",
+        params={"date": day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    assert board.status_code == 200
+    data = board.json()
+    assert data["date"] == day.isoformat()
+    assert "Math" in data["subjects"]
+    assert len(data["users"]) >= 1
+    user_id = data["users"][0]["id"]
+
+    set_n = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": user_id, "subject": "Math", "date": day.isoformat(), "mark": "N"},
+    )
+    assert set_n.status_code == 200
+
+    board2 = backend_client.get(
+        "/admin/attendance",
+        params={"date": day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    assert board2.json()["marks"] == [{"user_id": user_id, "subject": "Math", "mark": "N"}]
+
+    set_b = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": user_id, "subject": "Math", "date": day.isoformat(), "mark": "Б"},
+    )
+    assert set_b.status_code == 200
+
+    with Session(backend_engine) as session:
+        row = session.exec(select(AttendanceMark)).first()
+        assert row.mark == "B"
+
+    clear = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": user_id, "subject": "Math", "date": day.isoformat(), "mark": None},
+    )
+    assert clear.status_code == 200
+    assert backend_client.get(
+        "/admin/attendance",
+        params={"date": day.isoformat()},
+        headers=ADMIN_HEADERS,
+    ).json()["marks"] == []

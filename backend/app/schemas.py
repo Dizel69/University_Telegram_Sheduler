@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator
-from typing import Optional
+from typing import List, Optional
 from datetime import date as date_type, time as time_type
 
 from .semester_utils import normalize_semester_label
@@ -121,3 +121,34 @@ class UserUpdate(BaseModel):
     birth_date: Optional[date_type] = None
     password: Optional[str] = None
     is_admin: Optional[bool] = None
+
+
+class AttendanceMarkPublic(BaseModel):
+    user_id: int
+    subject: str
+    mark: str  # N | B
+
+
+class AttendanceBoard(BaseModel):
+    date: date_type
+    users: List[UserPublic]
+    subjects: List[str]
+    marks: List[AttendanceMarkPublic]
+
+
+class AttendanceMarkSet(BaseModel):
+    user_id: int
+    subject: str
+    date: date_type
+    mark: Optional[str] = None  # N, B или null — снять отметку
+
+    @validator("mark")
+    def _validate_mark(cls, v):
+        if v is None or v == "":
+            return None
+        m = str(v).strip().upper()
+        if m in ("Н", "N"):
+            return "N"
+        if m in ("Б", "B"):
+            return "B"
+        raise ValueError("mark must be N, B or empty")

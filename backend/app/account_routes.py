@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from app.database import MAX_APP_USERS, engine
 from app.deps import require_logged_in_user, require_owner
-from app.models import Event, HomeworkCompletion, User
+from app.models import AttendanceMark, Event, HomeworkCompletion, User
 from app.schemas import LoginRequest, LoginResponse, UserCreate, UserPublic, UserUpdate
 from app.security import create_access_token, hash_password, verify_password
 from app.type_utils import canonical_event_type
@@ -128,6 +128,10 @@ def delete_user(user_id: int, _ok: None = Depends(require_owner)):
         comps = session.exec(select(HomeworkCompletion).where(HomeworkCompletion.user_id == user_id)).all()
         for c in comps:
             session.delete(c)
+
+        att = session.exec(select(AttendanceMark).where(AttendanceMark.user_id == user_id)).all()
+        for a in att:
+            session.delete(a)
 
         session.delete(u)
         session.commit()

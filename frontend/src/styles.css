@@ -187,3 +187,103 @@ textarea{min-height:120px}
   font-size: 14px;
   color: var(--muted);
 }
+
+/* attendance */
+.attendance-card h2 { margin-top: 0 }
+.attendance-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.attendance-toolbar input[type="date"] { width: auto; min-width: 160px }
+.attendance-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.attendance-table-wrap {
+  overflow: auto;
+  margin-top: 16px;
+  max-width: 100%;
+  border: 1px solid #eef2ff;
+  border-radius: 10px;
+}
+.attendance-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+}
+.attendance-table th,
+.attendance-table td {
+  border: 1px solid #eef2ff;
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+.attendance-table thead th {
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 12px;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.attendance-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  text-align: left !important;
+  min-width: 140px;
+  max-width: 200px;
+}
+.attendance-table thead .attendance-sticky-col {
+  background: #f8fafc;
+  z-index: 3;
+}
+.attendance-user-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.attendance-cell {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+.attendance-mark-btn {
+  min-width: 32px;
+  padding: 4px 8px;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #e6e9ef;
+  background: #fff;
+  cursor: pointer;
+  color: var(--muted);
+}
+.attendance-mark-btn:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #374151;
+}
+.attendance-mark-btn.active-n {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+.attendance-mark-btn.active-b {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+.attendance-mark-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.attendance-cell-busy {
+  opacity: 0.7;
+}
