@@ -99,6 +99,29 @@ function isDateInHighlightRange(isoDay, start, end) {
   return isoDay >= start && isoDay <= end
 }
 
+/** Совпадает с `column-gap` у `.calendar-grid` в styles.css */
+const CALENDAR_COLUMN_GAP_PX = 6
+
+function addCalendarDaysIso(iso, deltaDays) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays))
+  return dt.toISOString().slice(0, 10)
+}
+
+/** Какой диапазон «сверху» (последний в списке) задаёт подсветку дня. */
+function topHighlightRangeIndex(isoDay, ranges) {
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const r = ranges[i]
+    if (isDateInHighlightRange(isoDay, r.start, r.end)) return i
+  }
+  return -1
+}
+
+/** Старые записи без поля — вести себя как со сшивкой. */
+function rangeWantsStitch(r) {
+  return Boolean(r) && r.stitch !== false
+}
+
 function readRangeHighlightsFromStorage() {
   try {
     const raw = localStorage.getItem(RANGE_HIGHLIGHTS_KEY)
@@ -117,7 +140,7 @@ function readRangeHighlightsFromStorage() {
   }
 }
 
-function RangeHighlightColorModal({ range, color, onColorChange, onApply, onCancel }) {
+function RangeHighlightColorModal({ range, color, onColorChange, stitch, onStitchChange, onApply, onCancel }) {
   if (!range) return null
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -128,6 +151,11 @@ function RangeHighlightColorModal({ range, color, onColorChange, onApply, onCanc
         </p>
         <label className="label">Цвет</label>
         <input type="color" value={color} onChange={(e) => onColorChange(e.target.value)} style={{ width: '100%', height: 44, padding: 4, cursor: 'pointer' }} />
+        <label className="homework-toggle" style={{ marginTop: 14 }}>
+          <input type="checkbox" checked={stitch} onChange={(e) => onStitchChange(e.target.checked)} />
+          <span className="toggle-slider"></span>
+          <span className="toggle-label">Сшить дни недели? (без щелей между соседними датами в строке)</span>
+        </label>
         <div className="actions-wrap" style={{ marginTop: 16 }}>
           <button type="button" className="btn btn-primary" onClick={onApply}>
             Применить
@@ -173,6 +201,8 @@ export default function Calendar({ isAdmin = false }) {
   const [rangeSelectStart, setRangeSelectStart] = useState(null)
   const [pendingHighlightRange, setPendingHighlightRange] = useState(null)
   const [pendingHighlightColor, setPendingHighlightColor] = useState('#94a3b8')
+  /** Сшивать соседние дни визуально (ползунок в модалке цвета). */
+  const [pendingStitchDays, setPendingStitchDays] = useState(true)
   const [rangeHighlights, setRangeHighlights] = useState(readRangeHighlightsFromStorage)
   const [addDate, setAddDate] = useState(null) // 'YYYY-MM-DD' for add-event modal
   const [loading, setLoading] = useState(false)
@@ -334,16 +364,6 @@ export default function Calendar({ isAdmin = false }) {
     }
   }
 
-  function cellHighlightBackground(isoDay) {
-    for (let i = rangeHighlights.length - 1; i >= 0; i--) {
-      const r = rangeHighlights[i]
-      if (isDateInHighlightRange(isoDay, r.start, r.end)) {
-        return highlightPaleBackground(r.color)
-      }
-    }
-    return null
-  }
-
   function clearAllRangeHighlights() {
     if (!rangeHighlights.length) return
     if (!confirm('Убрать все цветные заливки дней с календаря?')) return
@@ -481,11 +501,44 @@ export default function Calendar({ isAdmin = false }) {
           const ds = dt.toISOString().slice(0,10)
           const evs = (events[ds] || []).filter(ev => showHomework || ev.type !== 'homework')
           const todayIso = new Date().toISOString().slice(0,10)
-          const hlBg = cellHighlightBackground(ds)
+          const hlIdx = topHighlightRangeIndex(ds, rangeHighlights)
+          const hl = hlIdx >= 0 ? rangeHighlights[hlIdx] : null
+          const hlBg = hlIdx < 0 ? null : highlightPaleBackground(hl.color)
+          const wantStitch = hlIdx >= 0 && rangeWantsStitch(hl)
+          const prevCell = idx > 0 ? days[idx - 1] : null
+          const nextCell = idx + 1 < days.length ? days[idx + 1] : null
+          const prevIso = prevCell ? prevCell.toISOString().slice(0, 10) : null
+          const nextIso = nextCell ? nextCell.toISOString().slice(0, 10) : null
+          const prevMerge =
+            wantStitch &&
+            hlIdx >= 0 &&
+            prevIso === addCalendarDaysIso(ds, -1) &&
+            topHighlightRangeIndex(prevIso, rangeHighlights) === hlIdx
+          const nextMerge =
+            wantStitch &&
+            hlIdx >= 0 &&
+            nextIso === addCalendarDaysIso(ds, 1) &&
+            topHighlightRangeIndex(nextIso, rangeHighlights) === hlIdx
+
+          const bridgeStyle = {}
+          if (hlBg) {
+            if (prevMerge) {
+              bridgeStyle.marginLeft = -CALENDAR_COLUMN_GAP_PX
+              bridgeStyle.borderTopLeftRadius = 0
+              bridgeStyle.borderBottomLeftRadius = 0
+              bridgeStyle.borderLeftWidth = 0
+            }
+            if (nextMerge) {
+              bridgeStyle.borderTopRightRadius = 0
+              bridgeStyle.borderBottomRightRadius = 0
+              bridgeStyle.borderRightWidth = 0
+            }
+          }
+
           return (
             <div
               key={idx}
-              className={'day' + (ds === todayIso ? ' today' : '')}
+              className={'day' + (ds === todayIso ? ' today' : '') + (hlBg && (prevMerge || nextMerge) ? ' day-highlight-run' : '')}
               onClick={() => {
                 if (editing && rangeHighlightMode) {
                   if (!rangeSelectStart) {
@@ -498,13 +551,16 @@ export default function Calendar({ isAdmin = false }) {
                   setPendingHighlightColor(
                     rangeHighlights.length ? rangeHighlights[rangeHighlights.length - 1].color : '#94a3b8',
                   )
+                  setPendingStitchDays(
+                    rangeHighlights.length ? rangeWantsStitch(rangeHighlights[rangeHighlights.length - 1]) : true,
+                  )
                   setPendingHighlightRange({ start, end })
                   return
                 }
                 if (editing) setAddDate(ds)
                 else setOpenDay(ds)
               }}
-              style={{ cursor: 'pointer', ...(hlBg ? { background: hlBg } : {}) }}
+              style={{ cursor: 'pointer', ...(hlBg ? { background: hlBg } : {}), ...bridgeStyle }}
             >
               <div className="date-num">{dt.getUTCDate()}</div>
               {evs.slice(0,5).map(ev => (
@@ -637,11 +693,17 @@ export default function Calendar({ isAdmin = false }) {
         range={pendingHighlightRange}
         color={pendingHighlightColor}
         onColorChange={setPendingHighlightColor}
+        stitch={pendingStitchDays}
+        onStitchChange={setPendingStitchDays}
         onApply={() => {
           if (!pendingHighlightRange) return
           setRangeHighlights((prev) => [
             ...prev,
-            { ...pendingHighlightRange, color: pendingHighlightColor },
+            {
+              ...pendingHighlightRange,
+              color: pendingHighlightColor,
+              stitch: pendingStitchDays,
+            },
           ])
           setPendingHighlightRange(null)
         }}
