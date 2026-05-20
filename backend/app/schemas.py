@@ -126,13 +126,22 @@ class UserUpdate(BaseModel):
 class AttendanceMarkPublic(BaseModel):
     user_id: int
     subject: str
+    date: date_type
     mark: str  # N | B
 
 
-class AttendanceBoard(BaseModel):
+class AttendanceDayColumn(BaseModel):
+    """Один день недели: колонки-предметы под датой."""
+
     date: date_type
-    users: List[UserPublic]
     subjects: List[str]
+
+
+class AttendanceBoard(BaseModel):
+    week_start: date_type
+    week_end: date_type
+    users: List[UserPublic]
+    days: List[AttendanceDayColumn]
     marks: List[AttendanceMarkPublic]
 
 
