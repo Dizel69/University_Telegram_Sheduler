@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import axios from 'axios'
 
 /** Локальная дата в YYYY-MM-DD (без UTC-сдвига). */
@@ -53,7 +53,9 @@ function addDaysYmd(ymd, delta) {
 function userLabel(u) {
   const parts = [u.last_name, u.first_name]
   if (u.middle_name) parts.push(u.middle_name)
-  return parts.filter(Boolean).join(' ')
+  const base = parts.filter(Boolean).join(' ')
+  if (u.is_admin && !u.is_owner) return `${base} (админ)`
+  return base
 }
 
 function markKey(userId, dateStr, subject) {
@@ -72,6 +74,66 @@ function countWeekMarks(userId, markMap) {
   return { absent, sick }
 }
 
+function AttendanceMarkCell({
+  cellKey,
+  current,
+  busy,
+  menuOpen,
+  onToggleMenu,
+  onPick,
+}) {
+  const wrapRef = useRef(null)
+
+  const hasMenu = menuOpen === cellKey
+
+  useEffect(() => {
+    if (!hasMenu) return
+    function onDocDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        onToggleMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', onDocDown)
+    return () => document.removeEventListener('mousedown', onDocDown)
+  }, [hasMenu, onToggleMenu])
+
+  return (
+    <div className="attendance-dropdown-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className={`attendance-cell-trigger${current === 'N' ? ' attendance-cell-trigger-n' : ''}${current === 'B' ? ' attendance-cell-trigger-b' : ''}`}
+        disabled={busy}
+        onClick={e => {
+          e.stopPropagation()
+          onToggleMenu(hasMenu ? null : cellKey)
+        }}
+        title="Нажмите, чтобы выбрать отметку"
+      >
+        {current === 'N' ? 'Н' : current === 'B' ? 'Б' : '\u00a0'}
+      </button>
+      {hasMenu && (
+        <ul className="attendance-dropdown-menu" role="menu">
+          <li>
+            <button type="button" className="attendance-dropdown-item" onClick={() => onPick(null)} role="menuitem">
+              Нет отметки
+            </button>
+          </li>
+          <li>
+            <button type="button" className="attendance-dropdown-item" onClick={() => onPick('N')} role="menuitem">
+              Н — неуважительная причина
+            </button>
+          </li>
+          <li>
+            <button type="button" className="attendance-dropdown-item" onClick={() => onPick('B')} role="menuitem">
+              Б — по болезни
+            </button>
+          </li>
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function AttendanceAdmin() {
   const [weekMonday, setWeekMonday] = useState(() => ymdFromDate(mondayOfWeekContaining(ymdToday())))
   const [days, setDays] = useState([])
@@ -81,6 +143,7 @@ export default function AttendanceAdmin() {
   const [error, setError] = useState(null)
   const [status, setStatus] = useState('')
   const [busyKey, setBusyKey] = useState(null)
+  const [menuOpenKey, setMenuOpenKey] = useState(null)
 
   const weekEndYmd = useMemo(() => addDaysYmd(weekMonday, 6), [weekMonday])
   const weekRangeLabel = useMemo(
@@ -92,6 +155,7 @@ export default function AttendanceAdmin() {
     setLoading(true)
     setError(null)
     setStatus('')
+    setMenuOpenKey(null)
     try {
       const { data } = await axios.get('/admin/attendance', { params: { week_start: weekMonday } })
       setUsers(Array.isArray(data.users) ? data.users : [])
@@ -152,21 +216,17 @@ export default function AttendanceAdmin() {
     }
   }
 
-  function toggleMark(userId, dateStr, subject, kind) {
-    const key = markKey(userId, dateStr, subject)
-    const current = marks.get(key) || null
-    if (current === kind) {
-      setMark(userId, dateStr, subject, null)
-    } else {
-      setMark(userId, dateStr, subject, kind)
-    }
+  function handlePick(userId, dateStr, subject, value) {
+    setMenuOpenKey(null)
+    setMark(userId, dateStr, subject, value)
   }
 
   return (
     <div className="card attendance-card">
       <h2>Посещаемость</h2>
       <p className="status" style={{ marginTop: 4 }}>
-        Неделя с понедельника по воскресенье. В списке только учётные записи без прав администратора.
+        Неделя с понедельника по воскресенье. Учётка <strong>владельца</strong> в списке не отображается; остальные
+        администраторы — как и студенты. Нажмите ячейку, чтобы выбрать <strong>Н</strong> или <strong>Б</strong>.
       </p>
 
       <div className="attendance-week-nav" role="group" aria-label="Выбор недели">
@@ -186,9 +246,9 @@ export default function AttendanceAdmin() {
       </div>
 
       <div className="attendance-legend">
-        <span><strong>Н</strong> — неуважительная причина (отсутствовал)</span>
+        <span><strong>Н</strong> — неуважительная причина</span>
         <span><strong>Б</strong> — по болезни</span>
-        <span className="status">Пустая ячейка — присутствовал</span>
+        <span className="status">Пустая ячейка — без отметки (считается присутствие или сброс через меню)</span>
       </div>
 
       {loading && <div style={{ marginTop: 12 }}>Загрузка…</div>}
@@ -259,26 +319,14 @@ export default function AttendanceAdmin() {
                         const busy = busyKey === key
                         return (
                           <td key={key} className={busy ? 'attendance-cell-busy' : ''}>
-                            <div className="attendance-cell">
-                              <button
-                                type="button"
-                                className={`attendance-mark-btn${current === 'N' ? ' active-n' : ''}`}
-                                disabled={busy}
-                                onClick={() => toggleMark(u.id, dateStr, subject, 'N')}
-                                title="Неуважительная причина"
-                              >
-                                Н
-                              </button>
-                              <button
-                                type="button"
-                                className={`attendance-mark-btn${current === 'B' ? ' active-b' : ''}`}
-                                disabled={busy}
-                                onClick={() => toggleMark(u.id, dateStr, subject, 'B')}
-                                title="По болезни"
-                              >
-                                Б
-                              </button>
-                            </div>
+                            <AttendanceMarkCell
+                              cellKey={key}
+                              current={current}
+                              busy={busy}
+                              menuOpen={menuOpenKey}
+                              onToggleMenu={setMenuOpenKey}
+                              onPick={v => handlePick(u.id, dateStr, subject, v)}
+                            />
                           </td>
                         )
                       })
@@ -294,7 +342,7 @@ export default function AttendanceAdmin() {
       )}
 
       {!loading && !error && days.length > 0 && users.length === 0 && (
-        <p className="status" style={{ marginTop: 16 }}>Нет учётных записей студентов (не-админов).</p>
+        <p className="status" style={{ marginTop: 16 }}>Нет пользователей для отображения (кроме владельца).</p>
       )}
     </div>
   )

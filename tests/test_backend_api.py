@@ -256,11 +256,34 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
             login="stu_att",
             password_hash=hash_password("secret"),
             is_admin=False,
+            is_owner=False,
+        )
+        subadmin = User(
+            last_name="SubAdm",
+            first_name="Test",
+            login="subadm_att",
+            password_hash=hash_password("secret"),
+            is_admin=True,
+            is_owner=False,
+        )
+        owner_only = User(
+            last_name="Owner",
+            first_name="Test",
+            login="owner_att",
+            password_hash=hash_password("secret"),
+            is_admin=True,
+            is_owner=True,
         )
         session.add(student)
+        session.add(subadmin)
+        session.add(owner_only)
         session.commit()
         session.refresh(student)
+        session.refresh(subadmin)
+        session.refresh(owner_only)
         student_id = student.id
+        subadmin_id = subadmin.id
+        owner_id = owner_only.id
 
     denied = backend_client.get("/admin/attendance", params={"week_start": lesson_day.isoformat()})
     assert denied.status_code in (401, 403)
@@ -274,11 +297,21 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     data = board.json()
     assert data["week_start"] == "2026-05-18"
     assert data["week_end"] == "2026-05-24"
-    assert {u["login"] for u in data["users"]} == {"stu_att"}
+    logins = {u["login"] for u in data["users"]}
+    assert {"stu_att", "subadm_att"}.issubset(logins)
+    assert "owner_att" not in logins
+    assert all(not u.get("is_owner") for u in data["users"])
     assert any(
         str(d["date"])[:10] == lesson_day.isoformat() and "Math" in d["subjects"]
         for d in data["days"]
     )
+
+    owner_put = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": owner_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "N"},
+    )
+    assert owner_put.status_code == 400
 
     set_n = backend_client.put(
         "/admin/attendance",
@@ -287,14 +320,29 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     )
     assert set_n.status_code == 200
 
+    set_subadm = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": subadmin_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "Б"},
+    )
+    assert set_subadm.status_code == 200
+
     board2 = backend_client.get(
         "/admin/attendance",
         params={"week_start": lesson_day.isoformat()},
         headers=ADMIN_HEADERS,
     )
-    assert board2.json()["marks"] == [
-        {"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "N"}
-    ]
+    marks = board2.json()["marks"]
+    assert len(marks) == 2
+    assert {"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "N"} in marks
+    assert {"user_id": subadmin_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "B"} in marks
+
+    clear = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": None},
+    )
+    assert clear.status_code == 200
 
     set_b = backend_client.put(
         "/admin/attendance",
@@ -304,15 +352,21 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     assert set_b.status_code == 200
 
     with Session(backend_engine) as session:
-        row = session.exec(select(AttendanceMark)).first()
-        assert row.mark == "B"
+        rows = session.exec(select(AttendanceMark).where(AttendanceMark.user_id == student_id)).all()
+        assert len(rows) == 1
+        assert rows[0].mark == "B"
 
-    clear = backend_client.put(
+    backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": subadmin_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": None},
+    )
+
+    backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
         json={"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": None},
     )
-    assert clear.status_code == 200
     assert backend_client.get(
         "/admin/attendance",
         params={"week_start": lesson_day.isoformat()},

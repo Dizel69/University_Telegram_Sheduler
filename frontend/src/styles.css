@@ -276,39 +276,78 @@ textarea{min-height:120px}
   font-weight: 500;
   white-space: nowrap;
 }
-.attendance-cell {
+.attendance-dropdown-wrap {
+  position: relative;
+  min-height: 40px;
   display: flex;
-  gap: 4px;
+  align-items: center;
   justify-content: center;
 }
-.attendance-mark-btn {
-  min-width: 32px;
-  padding: 4px 8px;
-  font-weight: 700;
-  font-size: 13px;
-  border-radius: 6px;
-  border: 1px solid #e6e9ef;
-  background: #fff;
+.attendance-cell-trigger {
+  width: 100%;
+  min-height: 36px;
+  min-width: 44px;
+  background: transparent;
+  border: 1px dashed #e2e8f0;
+  border-radius: 8px;
   cursor: pointer;
-  color: var(--muted);
+  font-weight: 700;
+  font-size: 15px;
+  color: #334155;
 }
-.attendance-mark-btn:hover:not(:disabled) {
-  border-color: rgba(59, 130, 246, 0.35);
-  color: #374151;
+.attendance-cell-trigger:hover:not(:disabled) {
+  border-color: #94a3b8;
+  background: #f8fafc;
 }
-.attendance-mark-btn.active-n {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #b91c1c;
-}
-.attendance-mark-btn.active-b {
-  background: #fffbeb;
-  border-color: #fcd34d;
-  color: #b45309;
-}
-.attendance-mark-btn:disabled {
+.attendance-cell-trigger:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+.attendance-cell-trigger-n {
+  border-style: solid;
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.attendance-cell-trigger-b {
+  border-style: solid;
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+.attendance-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  min-width: 220px;
+  max-width: min(280px, 90vw);
+  background: #fff;
+  border: 1px solid #e6e9ef;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  padding: 4px 0;
+  list-style: none;
+  margin: 0;
+  text-align: left;
+}
+.attendance-dropdown-menu li {
+  margin: 0;
+}
+.attendance-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #334155;
+}
+.attendance-dropdown-item:hover {
+  background: #f1f5f9;
 }
 .attendance-cell-busy {
   opacity: 0.7;

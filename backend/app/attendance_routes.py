@@ -64,7 +64,7 @@ def get_attendance_board(
     with Session(database.engine) as session:
         users = session.exec(
             select(User)
-            .where(User.is_admin == False)  # noqa: E712
+            .where(User.is_owner == False)  # noqa: E712 — в отчёте все, кроме учётки владельца
             .order_by(User.last_name, User.first_name)
         ).all()
 
@@ -120,8 +120,8 @@ def set_attendance_mark(payload: AttendanceMarkSet, _admin=Depends(require_admin
         user = session.get(User, payload.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
-        if user.is_admin:
-            raise HTTPException(status_code=400, detail="Для учётной записи администратора посещаемость не ведётся")
+        if user.is_owner:
+            raise HTTPException(status_code=400, detail="Для учётной записи владельца посещаемость не ведётся")
 
         existing = session.exec(
             select(AttendanceMark).where(
