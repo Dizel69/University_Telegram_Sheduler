@@ -1,6 +1,6 @@
 import datetime as dt
-from datetime import timedelta
-from typing import List, Set
+from datetime import time as dt_time, timedelta
+from typing import List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
@@ -11,6 +11,7 @@ from app.models import AttendanceMark, Event, User
 from app.schemas import (
     AttendanceBoard,
     AttendanceDayColumn,
+    AttendanceLessonSlot,
     AttendanceMarkPublic,
     AttendanceMarkSet,
     UserPublic,
@@ -26,27 +27,81 @@ def _monday_week_start(d: dt.date) -> dt.date:
     return d - timedelta(days=d.weekday())
 
 
-def _subjects_for_date(session: Session, day: dt.date, *, fallback_global: bool) -> List[str]:
+def _event_subject(ev: Event) -> str:
+    return (ev.subject or ev.title or "").strip()
+
+
+def _lesson_label(ev: Event) -> str:
+    subj = _event_subject(ev) or "Предмет"
+    if ev.time:
+        return f"{subj} ({ev.time.strftime('%H:%M')})"
+    return subj
+
+
+def _slot_sort_key(ev: Event) -> Tuple:
+    t = ev.time or dt_time(23, 59, 59)
+    return (t, ev.id or 0)
+
+
+def _is_schedule_event(ev: Event) -> bool:
+    return canonical_event_type(ev.type or "") in _SCHEDULE_TYPES
+
+
+def _slots_for_date(session: Session, day: dt.date) -> List[AttendanceLessonSlot]:
     events = session.exec(select(Event).where(Event.date == day)).all()
-    subjects: Set[str] = set()
-    for ev in events:
-        if canonical_event_type(ev.type or "") not in _SCHEDULE_TYPES:
-            continue
-        subj = (ev.subject or ev.title or "").strip()
-        if subj:
-            subjects.add(subj)
+    schedule_events = [ev for ev in events if _is_schedule_event(ev) and _event_subject(ev)]
+    schedule_events.sort(key=_slot_sort_key)
+    return [
+        AttendanceLessonSlot(
+            event_id=ev.id,
+            subject=_event_subject(ev),
+            label=_lesson_label(ev),
+        )
+        for ev in schedule_events
+    ]
 
-    if subjects or not fallback_global:
-        return sorted(subjects)
 
-    all_schedule = session.exec(select(Event)).all()
-    for ev in all_schedule:
-        if canonical_event_type(ev.type or "") not in _SCHEDULE_TYPES:
+def _resort_day_slots(col: AttendanceDayColumn, session: Session) -> None:
+    evs = []
+    for s in col.slots:
+        ev = session.get(Event, s.event_id)
+        if ev:
+            evs.append(ev)
+    evs.sort(key=_slot_sort_key)
+    col.slots = [
+        AttendanceLessonSlot(
+            event_id=ev.id,
+            subject=_event_subject(ev),
+            label=_lesson_label(ev),
+        )
+        for ev in evs
+    ]
+
+
+def _merge_mark_slots(days_out: List[AttendanceDayColumn], marks: List[AttendanceMarkPublic], session: Session) -> None:
+    """Добавить столбцы для отметок, если событие ещё не попало в сетку."""
+    known = {s.event_id for d in days_out for s in d.slots}
+    for m in marks:
+        if m.event_id in known:
             continue
-        subj = (ev.subject or ev.title or "").strip()
-        if subj:
-            subjects.add(subj)
-    return sorted(subjects)
+        ev = session.get(Event, m.event_id)
+        if not ev or not ev.date:
+            continue
+        for col in days_out:
+            if col.date != ev.date:
+                continue
+            col.slots.append(
+                AttendanceLessonSlot(
+                    event_id=ev.id,
+                    subject=_event_subject(ev) or "Предмет",
+                    label=_lesson_label(ev),
+                )
+            )
+            known.add(m.event_id)
+            break
+    for col in days_out:
+        if col.slots:
+            _resort_day_slots(col, session)
 
 
 @router.get("/admin/attendance", response_model=AttendanceBoard)
@@ -54,7 +109,7 @@ def get_attendance_board(
     week_start: dt.date = Query(
         ...,
         alias="week_start",
-        description="Любой день; неделя берётся с понедельника по воскресенье (передайте понедельник или любую дату внутри недели)",
+        description="Любой день; неделя с понедельника по воскресенье",
     ),
     _admin=Depends(require_admin),
 ):
@@ -64,42 +119,26 @@ def get_attendance_board(
     with Session(database.engine) as session:
         users = session.exec(
             select(User)
-            .where(User.is_owner == False)  # noqa: E712 — в отчёте все, кроме учётки владельца
+            .where(User.is_owner == False)  # noqa: E712
             .order_by(User.last_name, User.first_name)
         ).all()
 
         days_out: List[AttendanceDayColumn] = []
         for i in range(7):
             d = monday + timedelta(days=i)
-            subj = _subjects_for_date(session, d, fallback_global=False)
-            days_out.append(AttendanceDayColumn(date=d, subjects=subj))
+            days_out.append(AttendanceDayColumn(date=d, slots=_slots_for_date(session, d)))
 
-        marks_rows = session.exec(
-            select(AttendanceMark).where(
-                AttendanceMark.attendance_date >= monday,
-                AttendanceMark.attendance_date <= sunday,
-            )
-        ).all()
+        marks_rows: List[AttendanceMark] = []
+        for r in session.exec(select(AttendanceMark)).all():
+            ev = session.get(Event, r.event_id)
+            if ev and ev.date and monday <= ev.date <= sunday:
+                marks_rows.append(r)
 
         marks = [
-            AttendanceMarkPublic(
-                user_id=r.user_id,
-                subject=r.subject,
-                date=r.attendance_date,
-                mark=r.mark,
-            )
+            AttendanceMarkPublic(user_id=r.user_id, event_id=r.event_id, mark=r.mark)
             for r in marks_rows
         ]
-
-        # подтянуть предметы, по которым уже есть отметки, в соответствующий день
-        for m in marks:
-            d = m.date
-            if d < monday or d > sunday:
-                continue
-            for col in days_out:
-                if col.date == d and m.subject not in col.subjects:
-                    col.subjects.append(m.subject)
-                    col.subjects.sort()
+        _merge_mark_slots(days_out, marks, session)
 
         return AttendanceBoard(
             week_start=monday,
@@ -112,10 +151,6 @@ def get_attendance_board(
 
 @router.put("/admin/attendance")
 def set_attendance_mark(payload: AttendanceMarkSet, _admin=Depends(require_admin)):
-    subject = payload.subject.strip()
-    if not subject:
-        raise HTTPException(status_code=400, detail="Укажите предмет")
-
     with Session(database.engine) as session:
         user = session.get(User, payload.user_id)
         if not user:
@@ -123,11 +158,16 @@ def set_attendance_mark(payload: AttendanceMarkSet, _admin=Depends(require_admin
         if user.is_owner:
             raise HTTPException(status_code=400, detail="Для учётной записи владельца посещаемость не ведётся")
 
+        ev = session.get(Event, payload.event_id)
+        if not ev:
+            raise HTTPException(status_code=404, detail="Событие не найдено")
+        if not _is_schedule_event(ev):
+            raise HTTPException(status_code=400, detail="Отметка только для пары из расписания")
+
         existing = session.exec(
             select(AttendanceMark).where(
                 AttendanceMark.user_id == payload.user_id,
-                AttendanceMark.subject == subject,
-                AttendanceMark.attendance_date == payload.date,
+                AttendanceMark.event_id == payload.event_id,
             )
         ).first()
 
@@ -144,8 +184,7 @@ def set_attendance_mark(payload: AttendanceMarkSet, _admin=Depends(require_admin
             session.add(
                 AttendanceMark(
                     user_id=payload.user_id,
-                    subject=subject,
-                    attendance_date=payload.date,
+                    event_id=payload.event_id,
                     mark=payload.mark,
                 )
             )

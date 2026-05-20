@@ -58,8 +58,16 @@ function userLabel(u) {
   return base
 }
 
-function markKey(userId, dateStr, subject) {
-  return `${userId}\0${dateStr}\0${subject}`
+function dayDateStr(day) {
+  return typeof day.date === 'string' ? day.date.slice(0, 10) : day.date
+}
+
+function daySlots(day) {
+  return Array.isArray(day.slots) ? day.slots : []
+}
+
+function markKey(userId, eventId) {
+  return `${userId}\0${eventId}`
 }
 
 function countWeekMarks(userId, markMap) {
@@ -162,8 +170,7 @@ export default function AttendanceAdmin() {
       setDays(Array.isArray(data.days) ? data.days : [])
       const next = new Map()
       for (const m of data.marks || []) {
-        const ds = typeof m.date === 'string' ? m.date.slice(0, 10) : m.date
-        next.set(markKey(m.user_id, ds, m.subject), m.mark)
+        next.set(markKey(m.user_id, m.event_id), m.mark)
       }
       setMarks(next)
     } catch (e) {
@@ -185,8 +192,8 @@ export default function AttendanceAdmin() {
     setWeekMonday(w => addDaysYmd(w, 7))
   }
 
-  async function setMark(userId, dateStr, subject, nextMark) {
-    const key = markKey(userId, dateStr, subject)
+  async function setMark(userId, eventId, nextMark) {
+    const key = markKey(userId, eventId)
     const prev = marks.get(key) || null
     setBusyKey(key)
     setStatus('')
@@ -199,8 +206,7 @@ export default function AttendanceAdmin() {
     try {
       await axios.put('/admin/attendance', {
         user_id: userId,
-        subject,
-        date: dateStr,
+        event_id: eventId,
         mark: nextMark,
       })
     } catch (e) {
@@ -216,17 +222,19 @@ export default function AttendanceAdmin() {
     }
   }
 
-  function handlePick(userId, dateStr, subject, value) {
+  function handlePick(userId, eventId, value) {
     setMenuOpenKey(null)
-    setMark(userId, dateStr, subject, value)
+    setMark(userId, eventId, value)
   }
+
+  const hasAnySlots = days.some(d => daySlots(d).length > 0)
 
   return (
     <div className="card attendance-card">
       <h2>Посещаемость</h2>
       <p className="status" style={{ marginTop: 4 }}>
-        Неделя с понедельника по воскресенье. Учётка <strong>владельца</strong> в списке не отображается; остальные
-        администраторы — как и студенты. Нажмите ячейку, чтобы выбрать <strong>Н</strong> или <strong>Б</strong>.
+        Каждая пара в календаре — отдельный столбец (даже один предмет дважды в день). Учётка{' '}
+        <strong>владельца</strong> не отображается. Нажмите ячейку для выбора <strong>Н</strong> или <strong>Б</strong>.
       </p>
 
       <div className="attendance-week-nav" role="group" aria-label="Выбор недели">
@@ -248,16 +256,16 @@ export default function AttendanceAdmin() {
       <div className="attendance-legend">
         <span><strong>Н</strong> — неуважительная причина</span>
         <span><strong>Б</strong> — по болезни</span>
-        <span className="status">Пустая ячейка — без отметки (считается присутствие или сброс через меню)</span>
+        <span className="status">Пустая ячейка — без отметки</span>
       </div>
 
       {loading && <div style={{ marginTop: 12 }}>Загрузка…</div>}
       {error && <div className="error" style={{ marginTop: 12 }}>{String(error)}</div>}
       {status && <div className="status" style={{ marginTop: 12 }}>{status}</div>}
 
-      {!loading && !error && days.length > 0 && !days.some(d => (d.subjects || []).length > 0) && (
+      {!loading && !error && days.length > 0 && !hasAnySlots && (
         <p className="status" style={{ marginTop: 12 }}>
-          На выбранной неделе в календаре нет занятий — ниже сетка по дням; столбцы заполнятся после добавления расписания.
+          На выбранной неделе в календаре нет занятий — столбцы появятся после добавления расписания.
         </p>
       )}
 
@@ -268,9 +276,9 @@ export default function AttendanceAdmin() {
               <tr>
                 <th rowSpan={2} className="attendance-sticky-col">Студент</th>
                 {days.map(day => {
-                  const dateStr = typeof day.date === 'string' ? day.date.slice(0, 10) : day.date
-                  const subs = day.subjects || []
-                  const colSpan = Math.max(1, subs.length)
+                  const dateStr = dayDateStr(day)
+                  const slots = daySlots(day)
+                  const colSpan = Math.max(1, slots.length)
                   return (
                     <th key={dateStr} colSpan={colSpan} className="attendance-day-head">
                       <div className="attendance-day-weekday">{weekdayShortRu(dateStr)}</div>
@@ -282,15 +290,15 @@ export default function AttendanceAdmin() {
               </tr>
               <tr>
                 {days.flatMap(day => {
-                  const dateStr = typeof day.date === 'string' ? day.date.slice(0, 10) : day.date
-                  const subs = day.subjects || []
-                  if (subs.length === 0) {
+                  const dateStr = dayDateStr(day)
+                  const slots = daySlots(day)
+                  if (slots.length === 0) {
                     return [
                       <th key={`${dateStr}-empty`} className="attendance-no-lessons">Нет пар</th>,
                     ]
                   }
-                  return subs.map(s => (
-                    <th key={`${dateStr}-${s}`} title={s}>{s}</th>
+                  return slots.map(slot => (
+                    <th key={slot.event_id} title={slot.label}>{slot.label}</th>
                   ))
                 })}
                 <th className="attendance-summary-sub">По болезни</th>
@@ -306,15 +314,15 @@ export default function AttendanceAdmin() {
                       {userLabel(u)}
                     </th>
                     {days.flatMap(day => {
-                      const dateStr = typeof day.date === 'string' ? day.date.slice(0, 10) : day.date
-                      const subs = day.subjects || []
-                      if (subs.length === 0) {
+                      const dateStr = dayDateStr(day)
+                      const slots = daySlots(day)
+                      if (slots.length === 0) {
                         return [
                           <td key={`${u.id}-${dateStr}-empty`} className="attendance-no-lessons">—</td>,
                         ]
                       }
-                      return subs.map(subject => {
-                        const key = markKey(u.id, dateStr, subject)
+                      return slots.map(slot => {
+                        const key = markKey(u.id, slot.event_id)
                         const current = marks.get(key) || null
                         const busy = busyKey === key
                         return (
@@ -325,7 +333,7 @@ export default function AttendanceAdmin() {
                               busy={busy}
                               menuOpen={menuOpenKey}
                               onToggleMenu={setMenuOpenKey}
-                              onPick={v => handlePick(u.id, dateStr, subject, v)}
+                              onPick={v => handlePick(u.id, slot.event_id, v)}
                             />
                           </td>
                         )

@@ -123,18 +123,25 @@ class UserUpdate(BaseModel):
     is_admin: Optional[bool] = None
 
 
+class AttendanceLessonSlot(BaseModel):
+    """Одна пара в сетке (отдельное событие расписания)."""
+
+    event_id: int
+    subject: str
+    label: str  # подпись столбца, напр. «Математика (09:00)»
+
+
 class AttendanceMarkPublic(BaseModel):
     user_id: int
-    subject: str
-    date: date_type
+    event_id: int
     mark: str  # N | B
 
 
 class AttendanceDayColumn(BaseModel):
-    """Один день недели: колонки-предметы под датой."""
+    """Один день недели: столбцы — отдельные пары."""
 
     date: date_type
-    subjects: List[str]
+    slots: List[AttendanceLessonSlot]
 
 
 class AttendanceBoard(BaseModel):
@@ -147,8 +154,7 @@ class AttendanceBoard(BaseModel):
 
 class AttendanceMarkSet(BaseModel):
     user_id: int
-    subject: str
-    date: date_type
+    event_id: int
     mark: Optional[str] = None  # N, B или null — снять отметку
 
     @validator("mark")

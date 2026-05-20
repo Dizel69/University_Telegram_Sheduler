@@ -69,16 +69,13 @@ class HomeworkCompletion(SQLModel, table=True):
 
 
 class AttendanceMark(SQLModel, table=True):
-    """Посещаемость: Н — отсутствовал, Б — болеет (на дату и предмет)."""
+    """Посещаемость по конкретной паре (событию): Н — отсутствовал, Б — болеет."""
 
     __tablename__ = "attendance_mark"
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "subject", "attendance_date", name="uq_attendance_user_subject_date"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "event_id", name="uq_attendance_user_event"),)
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="app_user.id", index=True)
-    subject: str = Field(index=True)
-    attendance_date: dt.date = Field(index=True)
+    event_id: int = Field(foreign_key="event.id", index=True)
     mark: str = Field(index=True)  # N | B

@@ -241,7 +241,24 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     from app.security import hash_password
 
     lesson_day = date(2026, 5, 19)
+    thursday = date(2026, 5, 21)
     with Session(backend_engine) as session:
+        math_morning = Event(
+            type="schedule",
+            subject="Разметка",
+            body="1-я пара",
+            date=thursday,
+            time=time(9, 0),
+        )
+        math_afternoon = Event(
+            type="schedule",
+            subject="Разметка",
+            body="2-я пара",
+            date=thursday,
+            time=time(11, 40),
+        )
+        session.add(math_morning)
+        session.add(math_afternoon)
         session.add(
             Event(
                 type="schedule",
@@ -289,9 +306,13 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
         session.refresh(student)
         session.refresh(subadmin)
         session.refresh(owner_only)
+        session.refresh(math_morning)
+        session.refresh(math_afternoon)
         student_id = student.id
         subadmin_id = subadmin.id
         owner_id = owner_only.id
+        math_morning_id = math_morning.id
+        math_afternoon_id = math_afternoon.id
 
     denied = backend_client.get("/admin/attendance", params={"week_start": lesson_day.isoformat()})
     assert denied.status_code in (401, 403)
@@ -309,33 +330,41 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     assert {"stu_att", "subadm_att"}.issubset(logins)
     assert "owner_att" not in logins
     assert all(not u.get("is_owner") for u in data["users"])
-    assert any(
-        str(d["date"])[:10] == lesson_day.isoformat() and "Math" in d["subjects"]
-        for d in data["days"]
-    )
-    assert any(
-        str(d["date"])[:10] == "2026-05-22" and "Языки разметки" in d["subjects"]
-        for d in data["days"]
-    )
+    thursday_day = next(d for d in data["days"] if str(d["date"])[:10] == thursday.isoformat())
+    thursday_slots = thursday_day["slots"]
+    assert len(thursday_slots) == 2
+    assert thursday_slots[0]["event_id"] != thursday_slots[1]["event_id"]
+    assert all("Разметка" in s["label"] for s in thursday_slots)
+
+    with Session(backend_engine) as session:
+        math_ev = session.exec(select(Event).where(Event.date == lesson_day, Event.subject == "Math")).first()
+        math_event_id = math_ev.id
 
     owner_put = backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
-        json={"user_id": owner_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "N"},
+        json={"user_id": owner_id, "event_id": math_event_id, "mark": "N"},
     )
     assert owner_put.status_code == 400
 
-    set_n = backend_client.put(
+    set_morning_n = backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
-        json={"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "N"},
+        json={"user_id": student_id, "event_id": math_morning_id, "mark": "N"},
     )
-    assert set_n.status_code == 200
+    assert set_morning_n.status_code == 200
+
+    set_afternoon_b = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": student_id, "event_id": math_afternoon_id, "mark": "Б"},
+    )
+    assert set_afternoon_b.status_code == 200
 
     set_subadm = backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
-        json={"user_id": subadmin_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "Б"},
+        json={"user_id": subadmin_id, "event_id": math_event_id, "mark": "Б"},
     )
     assert set_subadm.status_code == 200
 
@@ -345,39 +374,33 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
         headers=ADMIN_HEADERS,
     )
     marks = board2.json()["marks"]
-    assert len(marks) == 2
-    assert {"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "N"} in marks
-    assert {"user_id": subadmin_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "B"} in marks
+    assert len(marks) == 3
+    assert {"user_id": student_id, "event_id": math_morning_id, "mark": "N"} in marks
+    assert {"user_id": student_id, "event_id": math_afternoon_id, "mark": "B"} in marks
+    assert {"user_id": subadmin_id, "event_id": math_event_id, "mark": "B"} in marks
 
-    clear = backend_client.put(
+    backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
-        json={"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": None},
+        json={"user_id": student_id, "event_id": math_morning_id, "mark": None},
     )
-    assert clear.status_code == 200
-
-    set_b = backend_client.put(
-        "/admin/attendance",
-        headers=ADMIN_HEADERS,
-        json={"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": "Б"},
-    )
-    assert set_b.status_code == 200
 
     with Session(backend_engine) as session:
         rows = session.exec(select(AttendanceMark).where(AttendanceMark.user_id == student_id)).all()
         assert len(rows) == 1
+        assert rows[0].event_id == math_afternoon_id
         assert rows[0].mark == "B"
 
     backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
-        json={"user_id": subadmin_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": None},
+        json={"user_id": subadmin_id, "event_id": math_event_id, "mark": None},
     )
 
     backend_client.put(
         "/admin/attendance",
         headers=ADMIN_HEADERS,
-        json={"user_id": student_id, "subject": "Math", "date": lesson_day.isoformat(), "mark": None},
+        json={"user_id": student_id, "event_id": math_afternoon_id, "mark": None},
     )
     assert backend_client.get(
         "/admin/attendance",
