@@ -440,3 +440,74 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
         params={"week_start": lesson_day.isoformat()},
         headers=ADMIN_HEADERS,
     ).json()["marks"] == []
+
+
+def test_analytics_dashboard(backend_client, backend_engine):
+    from app.security import hash_password
+
+    week_day = date(2026, 5, 19)
+    with Session(backend_engine) as session:
+        lesson = Event(
+            type="schedule",
+            subject="Math",
+            body="Lecture",
+            date=week_day,
+            time=time(10, 0),
+        )
+        hw = Event(
+            type="homework",
+            subject="Math",
+            body="HW1",
+            date=week_day,
+            semester="Второй семестр",
+        )
+        student = User(
+            last_name="Ana",
+            first_name="Lit",
+            login="ana_an",
+            password_hash=hash_password("x"),
+            is_admin=False,
+            is_owner=False,
+        )
+        session.add(lesson)
+        session.add(hw)
+        session.add(student)
+        session.commit()
+        session.refresh(lesson)
+        session.refresh(hw)
+        session.refresh(student)
+        lesson_id = lesson.id
+        hw_id = hw.id
+        student_id = student.id
+
+    denied = backend_client.get("/admin/analytics", params={"period": "week", "week_start": week_day.isoformat()})
+    assert denied.status_code in (401, 403)
+
+    resp = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": week_day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["period"] == "week"
+    assert data["kpi"]["lessons_in_period"] >= 1
+    assert len(data["students"]) >= 1
+    assert len(data["weekly_trend"]) == 8
+    assert "telegram" in data
+
+    backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": student_id, "event_id": lesson_id, "mark": "N"},
+    )
+    backend_client.post(f"/homework-completion/{hw_id}", headers=ADMIN_HEADERS)
+
+    resp2 = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": week_day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    kpi = resp2.json()["kpi"]
+    assert kpi["absent_marks"] >= 1
+    assert kpi["homework_completion_rate"] > 0

@@ -167,3 +167,62 @@ class AttendanceMarkSet(BaseModel):
         if m in ("Б", "B"):
             return "B"
         raise ValueError("mark must be N, B or empty")
+
+
+class AnalyticsKpi(BaseModel):
+    attendance_rate: float
+    homework_completion_rate: float
+    overdue_homework: int
+    lessons_in_period: int
+    absent_marks: int
+    sick_marks: int
+    attendance_slots: int
+    transfers: int
+
+
+class AnalyticsStudentRow(BaseModel):
+    user_id: int
+    name: str
+    attendance_rate: float
+    homework_done: int
+    homework_total: int
+    homework_rate: float
+    absent: int
+    sick: int
+
+
+class AnalyticsSubjectRow(BaseModel):
+    subject: str
+    absent: int
+    sick: int
+    homework_total: int
+    homework_done: int
+
+
+class AnalyticsWeeklyPoint(BaseModel):
+    week_start: date_type
+    attendance_rate: float
+    homework_rate: float
+
+
+class AnalyticsTelegramStats(BaseModel):
+    posts_attempted: int
+    posts_sent: int
+    posts_sent_rate: float
+    reminders_sent: int
+    reminders_pending: int
+    reminders_sent_rate: float
+
+
+class AnalyticsDashboard(BaseModel):
+    period: str
+    period_start: date_type
+    period_end: date_type
+    semester_filter: Optional[str] = None
+    kpi: AnalyticsKpi
+    students: List[AnalyticsStudentRow]
+    subjects_attendance: List[AnalyticsSubjectRow]
+    subjects_homework: List[AnalyticsSubjectRow]
+    weekly_trend: List[AnalyticsWeeklyPoint]
+    telegram: AnalyticsTelegramStats
+    users: List[UserPublic]

@@ -392,3 +392,217 @@ textarea{min-height:120px}
 .attendance-table-weekly .attendance-sticky-col {
   z-index: 4;
 }
+
+/* analytics dashboard */
+.analytics-card h2 { margin-top: 0 }
+.analytics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+.analytics-period-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.analytics-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.analytics-semester-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.analytics-period-caption {
+  margin: 16px 0 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.analytics-kpi-card {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  border: 1px solid #e8ecf4;
+}
+.analytics-kpi-blue { border-color: rgba(59, 130, 246, 0.2); background: linear-gradient(180deg, #fff, #f0f7ff) }
+.analytics-kpi-green { border-color: rgba(16, 185, 129, 0.2); background: linear-gradient(180deg, #fff, #f0fdf8) }
+.analytics-kpi-warn { border-color: rgba(245, 158, 11, 0.25); background: linear-gradient(180deg, #fff, #fffbeb) }
+.analytics-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0b1220;
+  line-height: 1.2;
+}
+.analytics-kpi-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.analytics-kpi-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  opacity: 0.85;
+}
+.analytics-section {
+  margin-bottom: 28px;
+}
+.analytics-section h3 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.analytics-section h4 {
+  font-size: 13px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.analytics-charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.analytics-chart-block {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #eef2ff;
+  background: #fafbff;
+}
+.analytics-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-height: 140px;
+  padding-top: 8px;
+}
+.analytics-bar-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.analytics-bar-value {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.analytics-bar-track {
+  width: 100%;
+  max-width: 36px;
+  height: 88px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: #eef2f8;
+  border-radius: 6px 6px 0 0;
+}
+.analytics-bar-fill {
+  width: 72%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.2s ease;
+}
+.analytics-bar-label {
+  font-size: 10px;
+  color: var(--muted);
+}
+.analytics-table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid #e8ecf4;
+}
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.analytics-table th,
+.analytics-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eef2f6;
+}
+.analytics-table thead th {
+  background: #f8fafc;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.analytics-table tbody th {
+  font-weight: 600;
+}
+.analytics-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.analytics-pill-blue { background: #eff6ff; color: #1d4ed8 }
+.analytics-pill-green { background: #ecfdf5; color: #047857 }
+.analytics-two-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+.analytics-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.analytics-rank-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f2f6;
+}
+.analytics-rank-list li:last-child { border-bottom: none }
+.analytics-rank-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.analytics-rank-subj {
+  flex: 1;
+  font-weight: 500;
+  min-width: 0;
+}
+.analytics-rank-stats {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.analytics-telegram-block {
+  padding: 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e8ecf4;
+}
+.analytics-telegram-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
