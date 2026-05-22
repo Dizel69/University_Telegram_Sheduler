@@ -336,6 +336,39 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     assert thursday_slots[0]["event_id"] != thursday_slots[1]["event_id"]
     assert all("Разметка" in s["label"] for s in thursday_slots)
 
+    control_day = date(2026, 5, 20)
+    with Session(backend_engine) as session:
+        session.add(
+            Event(
+                type="schedule",
+                subject="Физика",
+                body="Лекция",
+                date=control_day,
+                time=time(10, 0),
+            )
+        )
+        session.add(
+            Event(
+                type="exam_control",
+                subject="Физика",
+                body="Контрольная",
+                date=control_day,
+                time=time(10, 0),
+                lesson_type="control",
+            )
+        )
+        session.commit()
+
+    board_ctrl = backend_client.get(
+        "/admin/attendance",
+        params={"week_start": control_day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    ctrl_day = next(d for d in board_ctrl.json()["days"] if str(d["date"])[:10] == control_day.isoformat())
+    physics_slots = [s for s in ctrl_day["slots"] if "Физика" in s["label"]]
+    assert len(physics_slots) == 1
+    assert "контрольная" in physics_slots[0]["label"].lower()
+
     with Session(backend_engine) as session:
         math_ev = session.exec(select(Event).where(Event.date == lesson_day, Event.subject == "Math")).first()
         math_event_id = math_ev.id

@@ -33,9 +33,15 @@ def _event_subject(ev: Event) -> str:
 
 def _lesson_label(ev: Event) -> str:
     subj = _event_subject(ev) or "Предмет"
+    kind = canonical_event_type(ev.type or "")
+    tag = ""
+    if kind == "exam_control":
+        tag = " — экзамен" if (ev.lesson_type or "").lower() == "exam" else " — контрольная"
+    elif kind == "transfer":
+        tag = " — перенос"
     if ev.time:
-        return f"{subj} ({ev.time.strftime('%H:%M')})"
-    return subj
+        return f"{subj}{tag} ({ev.time.strftime('%H:%M')})"
+    return f"{subj}{tag}".strip()
 
 
 def _slot_sort_key(ev: Event) -> Tuple:
@@ -47,17 +53,39 @@ def _is_schedule_event(ev: Event) -> bool:
     return canonical_event_type(ev.type or "") in _SCHEDULE_TYPES
 
 
+def _attendance_events_for_day(events: List[Event]) -> List[Event]:
+    """
+    События дня для сетки посещаемости.
+
+    Если в этот день по предмету есть контрольная/экзамен, обычные пары (schedule/перенос)
+    того же предмета не показываем — иначе контрольная дублируется с регулярным занятием.
+    """
+    relevant = [ev for ev in events if _is_schedule_event(ev) and _event_subject(ev)]
+    exam_subjects = {
+        _event_subject(ev)
+        for ev in relevant
+        if canonical_event_type(ev.type or "") == "exam_control"
+    }
+    out: List[Event] = []
+    for ev in relevant:
+        subj = _event_subject(ev)
+        kind = canonical_event_type(ev.type or "")
+        if subj in exam_subjects and kind in ("schedule", "transfer"):
+            continue
+        out.append(ev)
+    out.sort(key=_slot_sort_key)
+    return out
+
+
 def _slots_for_date(session: Session, day: dt.date) -> List[AttendanceLessonSlot]:
     events = session.exec(select(Event).where(Event.date == day)).all()
-    schedule_events = [ev for ev in events if _is_schedule_event(ev) and _event_subject(ev)]
-    schedule_events.sort(key=_slot_sort_key)
     return [
         AttendanceLessonSlot(
             event_id=ev.id,
             subject=_event_subject(ev),
             label=_lesson_label(ev),
         )
-        for ev in schedule_events
+        for ev in _attendance_events_for_day(events)
     ]
 
 
