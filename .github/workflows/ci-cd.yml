@@ -26,6 +26,47 @@ jobs:
             echo "Commit does not start with docs, build will continue."
           fi
 
+  secrets_check:
+    name: Secrets / env sanity check
+    runs-on: ubuntu-latest
+    needs: parse_commit
+    if: ${{ needs.parse_commit.outputs.should_build == 'true' }}
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+    steps:
+      - name: Verify required deploy secrets are set
+        run: |
+          missing=""
+          for var in DEPLOY_HOST DEPLOY_USER DEPLOY_KEY DEPLOY_PATH; do
+            eval "val=\$$var"
+            if [ -z "$val" ]; then
+              missing="$missing $var"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing or empty GitHub secrets:$missing"
+            exit 1
+          fi
+          echo "All required deploy secrets are present."
+
+  compose_validate:
+    name: Docker Compose config validation
+    runs-on: ubuntu-latest
+    needs: parse_commit
+    if: ${{ needs.parse_commit.outputs.should_build == 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create CI env file
+        run: touch .env
+
+      - name: Validate compose configuration
+        run: docker compose config --quiet
+
   python_tests:
     name: Run Python tests
     runs-on: ubuntu-latest
@@ -58,7 +99,7 @@ jobs:
   docker_images:
     name: Build Docker images
     runs-on: ubuntu-latest
-    needs: [parse_commit, python_tests]
+    needs: [parse_commit, secrets_check, compose_validate, python_tests]
     if: ${{ needs.parse_commit.outputs.should_build == 'true' }}
     steps:
       - name: Checkout code
@@ -88,7 +129,7 @@ jobs:
           source: "."
           target: ${{ secrets.DEPLOY_PATH }}
 
-  build:
+  deploy:
     name: Build and restart on server
     runs-on: ubuntu-latest
     needs: [parse_commit, transfer]
@@ -108,23 +149,42 @@ jobs:
             docker compose up -d || exit 1
             docker ps || exit 1
 
-  # post:
-  #   name: Optional post-deploy commands
-  #   runs-on: ubuntu-latest
-  #   needs: build
-  #   steps:
-  #     - name: Run post-deploy script on server (if enabled)
-  #       uses: appleboy/ssh-action@v0.1.10
-  #       with:
-  #         host: ${{ secrets.DEPLOY_HOST }}
-  #         username: ${{ secrets.DEPLOY_USER }}
-  #         key: ${{ secrets.DEPLOY_KEY }}
-  #         command_timeout: '30m'
-  #         script: |
-  #           if [ "${{ secrets.RUN_POST }}" = "true" ]; then
-  #             cd ${{ secrets.DEPLOY_PATH }}
-  #             # example: run a one-off container task
-  #             docker compose up -d worker || true
-  #           else
-  #             echo "RUN_POST not enabled, skipping post-deploy commands"
-  #           fi
+  smoke_test:
+    name: Post-deploy smoke test
+    runs-on: ubuntu-latest
+    needs: [parse_commit, deploy]
+    if: ${{ needs.parse_commit.outputs.should_build == 'true' }}
+    steps:
+      - name: Check backend /metrics and bot /health
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            set -euo pipefail
+            cd ${{ secrets.DEPLOY_PATH }}
+
+            wait_for() {
+              local url="$1"
+              local label="$2"
+              local attempt
+              for attempt in $(seq 1 30); do
+                if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+                  echo "$label is up (attempt $attempt)"
+                  return 0
+                fi
+                sleep 2
+              done
+              echo "::error::$label did not become ready at $url"
+              return 1
+            }
+
+            wait_for "http://127.0.0.1:8000/metrics" "backend"
+            curl -fsS --max-time 10 "http://127.0.0.1:8000/metrics" | head -c 200
+            echo ""
+
+            wait_for "http://127.0.0.1:8081/health" "bot-service"
+            curl -fsS --max-time 10 "http://127.0.0.1:8081/health"
+            echo ""
+            echo "Smoke tests passed."
