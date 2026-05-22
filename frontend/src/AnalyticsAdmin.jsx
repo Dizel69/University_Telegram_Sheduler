@@ -92,9 +92,13 @@ export default function AnalyticsAdmin({ currentSemester }) {
     return { year: t.getFullYear(), month: t.getMonth() + 1 }
   })
   const [useSemesterFilter, setUseSemesterFilter] = useState(false)
+  const [filterUserId, setFilterUserId] = useState('')
+  const [filterSubject, setFilterSubject] = useState('')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const hasActiveFilters = Boolean(filterUserId || filterSubject)
 
   const periodLabel = useMemo(() => {
     if (!data) return ''
@@ -117,6 +121,8 @@ export default function AnalyticsAdmin({ currentSemester }) {
       params.month = monthYear.month
     }
     if (useSemesterFilter && currentSemester) params.semester = currentSemester
+    if (filterUserId) params.user_id = Number(filterUserId)
+    if (filterSubject) params.subject = filterSubject
     try {
       const { data: res } = await axios.get('/admin/analytics', { params })
       setData(res)
@@ -126,7 +132,27 @@ export default function AnalyticsAdmin({ currentSemester }) {
     } finally {
       setLoading(false)
     }
-  }, [period, weekMonday, monthYear, useSemesterFilter, currentSemester])
+  }, [period, weekMonday, monthYear, useSemesterFilter, currentSemester, filterUserId, filterSubject])
+
+  const filterUserLabel = useMemo(() => {
+    if (!filterUserId || !data?.users) return null
+    const u = data.users.find(x => String(x.id) === String(filterUserId))
+    if (!u) return null
+    return [u.last_name, u.first_name, u.middle_name].filter(Boolean).join(' ')
+  }, [filterUserId, data?.users])
+
+  const subjectOptions = useMemo(() => {
+    const fromApi = data?.available_subjects || []
+    if (filterSubject && !fromApi.includes(filterSubject)) {
+      return [filterSubject, ...fromApi].sort((a, b) => a.localeCompare(b, 'ru'))
+    }
+    return fromApi
+  }, [data?.available_subjects, filterSubject])
+
+  function resetFilters() {
+    setFilterUserId('')
+    setFilterSubject('')
+  }
 
   useEffect(() => {
     load()
@@ -228,6 +254,50 @@ export default function AnalyticsAdmin({ currentSemester }) {
         </button>
       </div>
 
+      <div className="analytics-filters-panel">
+        <h3 className="analytics-filters-title">Фильтры</h3>
+        <div className="analytics-filters-grid">
+          <label className="analytics-filter-field">
+            <span className="label">Студент</span>
+            <select
+              value={filterUserId}
+              onChange={e => setFilterUserId(e.target.value)}
+              disabled={loading && !data}
+            >
+              <option value="">Вся группа</option>
+              {(data?.users || []).map(u => (
+                <option key={u.id} value={String(u.id)}>
+                  {[u.last_name, u.first_name, u.middle_name].filter(Boolean).join(' ')}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="analytics-filter-field">
+            <span className="label">Предмет</span>
+            <select
+              value={filterSubject}
+              onChange={e => setFilterSubject(e.target.value)}
+              disabled={loading && !data}
+            >
+              <option value="">Все предметы</option>
+              {subjectOptions.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </label>
+          {hasActiveFilters ? (
+            <div className="analytics-filter-actions">
+              <button type="button" className="btn btn-sm" onClick={resetFilters} disabled={loading}>
+                Сбросить фильтры
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <p className="status analytics-filters-hint">
+          KPI, графики и топы пересчитываются по выбранным фильтрам. Таблица студентов показывает всех для сравнения.
+        </p>
+      </div>
+
       {loading && <div style={{ marginTop: 16 }}>Загрузка…</div>}
       {error && <div className="error" style={{ marginTop: 16 }}>{String(error)}</div>}
 
@@ -237,6 +307,12 @@ export default function AnalyticsAdmin({ currentSemester }) {
             Период: <strong>{periodLabel}</strong>
             {data.semester_filter ? (
               <> · фильтр ДЗ: <strong>{data.semester_filter}</strong></>
+            ) : null}
+            {filterUserLabel ? (
+              <> · студент: <strong>{filterUserLabel}</strong></>
+            ) : null}
+            {data.subject_filter ? (
+              <> · предмет: <strong>{data.subject_filter}</strong></>
             ) : null}
           </p>
 
@@ -250,7 +326,13 @@ export default function AnalyticsAdmin({ currentSemester }) {
             <KpiCard
               label="Выполнение ДЗ"
               value={pct(kpi?.homework_completion_rate)}
-              hint={kpi?.homework_completion_rate != null ? 'по группе' : null}
+              hint={
+                filterUserLabel
+                  ? filterUserLabel
+                  : data.subject_filter
+                    ? data.subject_filter
+                    : 'по группе'
+              }
               tone="green"
             />
             <KpiCard
@@ -308,7 +390,14 @@ export default function AnalyticsAdmin({ currentSemester }) {
                   </thead>
                   <tbody>
                     {students.map(s => (
-                      <tr key={s.user_id}>
+                      <tr
+                        key={s.user_id}
+                        className={
+                          filterUserId && String(s.user_id) === String(filterUserId)
+                            ? 'analytics-row-highlight'
+                            : ''
+                        }
+                      >
                         <th scope="row">{s.name}</th>
                         <td>
                           <span className="analytics-pill analytics-pill-blue">{pct(s.attendance_rate)}</span>

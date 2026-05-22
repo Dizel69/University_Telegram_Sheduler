@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from app import database
@@ -71,12 +71,40 @@ def _user_display_name(u: User) -> str:
     return " ".join(p for p in parts if p)
 
 
+def _normalize_subject(subject: Optional[str]) -> Optional[str]:
+    if subject is None:
+        return None
+    s = str(subject).strip()
+    return s if s else None
+
+
+def _subject_matches_name(name: str, subject_filter: Optional[str]) -> bool:
+    if not subject_filter:
+        return True
+    return name == subject_filter
+
+
+def _subjects_in_period(session: Session, start: dt.date, end: dt.date) -> List[str]:
+    events = session.exec(
+        select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
+    ).all()
+    names: Set[str] = set()
+    for ev in events:
+        canon = canonical_event_type(ev.type or "")
+        if canon in ("schedule", "exam_control", "transfer", "homework"):
+            subj = _event_subject(ev)
+            if subj:
+                names.add(subj)
+    return sorted(names)
+
+
 def _attendance_slots_in_range(
     session: Session,
     start: dt.date,
     end: dt.date,
-) -> List[Tuple[int, int, str]]:
-    """(event_id, user_id implicit later, subject) — one row per lesson slot."""
+    subject_filter: Optional[str] = None,
+) -> List[Tuple[int, str]]:
+    """(event_id, subject) — one row per lesson slot."""
     events = session.exec(
         select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
     ).all()
@@ -88,8 +116,15 @@ def _attendance_slots_in_range(
     for day in sorted(by_day.keys()):
         for ev in _attendance_events_for_day(by_day[day]):
             subj = _event_subject(ev) or "Без предмета"
-            slots.append((ev.id, subj))
+            if _subject_matches_name(subj, subject_filter):
+                slots.append((ev.id, subj))
     return slots
+
+
+def _filter_hw_by_subject(hw_events: List[Event], subject_filter: Optional[str]) -> List[Event]:
+    if not subject_filter:
+        return hw_events
+    return [ev for ev in hw_events if _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter)]
 
 
 def _marks_map(session: Session, start: dt.date, end: dt.date) -> Dict[Tuple[int, int], str]:
@@ -223,20 +258,22 @@ def _subject_homework(
 def _weekly_trend(
     session: Session,
     end_date: dt.date,
-    users: List[User],
+    user_ids: List[int],
     completions: Set[Tuple[int, int]],
+    subject_filter: Optional[str],
+    semester: Optional[str],
+    today: dt.date,
 ) -> List[AnalyticsWeeklyPoint]:
-    user_ids = [u.id for u in users]
     marks_all = _marks_map(session, dt.date(2000, 1, 1), end_date)
     points: List[AnalyticsWeeklyPoint] = []
     monday = _monday_week_start(end_date)
     for _ in range(_TREND_WEEKS):
         w_end = monday + timedelta(days=6)
-        slots = _attendance_slots_in_range(session, monday, w_end)
+        slots = _attendance_slots_in_range(session, monday, w_end, subject_filter)
         slot_ids = [s[0] for s in slots]
         att_rate, _, _, _ = _attendance_rate(slot_ids, user_ids, marks_all)
-        hw = _homework_events(session, monday, w_end, None)
-        hw_rate, _, _, _ = _homework_stats(hw, user_ids, completions, end_date)
+        hw = _filter_hw_by_subject(_homework_events(session, monday, w_end, semester), subject_filter)
+        hw_rate, _, _, _ = _homework_stats(hw, user_ids, completions, today)
         points.append(
             AnalyticsWeeklyPoint(
                 week_start=monday,
@@ -287,30 +324,61 @@ def get_analytics_dashboard(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None, ge=1, le=12),
     semester: Optional[str] = Query(None, description="Фильтр ДЗ по семестру"),
+    user_id: Optional[int] = Query(None, description="Фильтр по студенту"),
+    subject: Optional[str] = Query(None, description="Фильтр по предмету"),
     _admin=Depends(require_admin),
 ):
     today = dt.date.today()
     start, end, period_key = _period_bounds(period, week_start, year, month)
     semester_norm = normalize_semester_label(semester) if semester else None
+    subject_filter = _normalize_subject(subject)
 
     with Session(database.engine) as session:
         users = _student_users(session)
-        user_ids = [u.id for u in users]
+        available_subjects = _subjects_in_period(session, start, end)
+
+        if subject_filter and subject_filter not in available_subjects:
+            raise HTTPException(status_code=400, detail="Неизвестный предмет для выбранного периода")
+
+        filtered_user_ids = [u.id for u in users]
+        if user_id is not None:
+            u = session.get(User, user_id)
+            if not u:
+                raise HTTPException(status_code=404, detail="Пользователь не найден")
+            if u.is_owner:
+                raise HTTPException(status_code=400, detail="Фильтр по владельцу недоступен")
+            filtered_user_ids = [u.id]
+
         marks = _marks_map(session, start, end)
         completions = _completions_set(session)
 
-        slots = _attendance_slots_in_range(session, start, end)
+        slots = _attendance_slots_in_range(session, start, end, subject_filter)
         slot_ids = [s[0] for s in slots]
-        att_rate, absent, sick, att_total = _attendance_rate(slot_ids, user_ids, marks)
+        att_rate, absent, sick, att_total = _attendance_rate(slot_ids, filtered_user_ids, marks)
 
-        hw_events = _homework_events(session, start, end, semester_norm)
-        hw_rate, hw_done, hw_total, overdue = _homework_stats(hw_events, user_ids, completions, today)
+        hw_events = _filter_hw_by_subject(
+            _homework_events(session, start, end, semester_norm),
+            subject_filter,
+        )
+        hw_rate, hw_done, hw_total, overdue = _homework_stats(
+            hw_events, filtered_user_ids, completions, today
+        )
 
         all_events = session.exec(
             select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
         ).all()
-        lessons = sum(1 for ev in all_events if _is_schedule_event(ev))
-        transfers = sum(1 for ev in all_events if canonical_event_type(ev.type or "") == "transfer")
+        lessons = sum(
+            1
+            for ev in all_events
+            if _is_schedule_event(ev)
+            and _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter)
+        )
+        transfers = sum(
+            1
+            for ev in all_events
+            if canonical_event_type(ev.type or "") == "transfer"
+            and _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter)
+        )
 
         student_rows: List[AnalyticsStudentRow] = []
         for u in users:
@@ -341,17 +409,28 @@ def get_analytics_dashboard(
         )
 
         trend_end = end if period_key != "all" else today
-        weekly = _weekly_trend(session, trend_end, users, completions)
+        weekly = _weekly_trend(
+            session,
+            trend_end,
+            filtered_user_ids,
+            completions,
+            subject_filter,
+            semester_norm,
+            today,
+        )
 
         return AnalyticsDashboard(
             period=period_key,
             period_start=start,
             period_end=end,
             semester_filter=semester_norm,
+            user_filter=user_id,
+            subject_filter=subject_filter,
+            available_subjects=available_subjects,
             kpi=kpi,
             students=student_rows,
-            subjects_attendance=_subject_attendance(slots, user_ids, marks),
-            subjects_homework=_subject_homework(hw_events, user_ids, completions),
+            subjects_attendance=_subject_attendance(slots, filtered_user_ids, marks),
+            subjects_homework=_subject_homework(hw_events, filtered_user_ids, completions),
             weekly_trend=weekly,
             telegram=_telegram_stats(session, start, end),
             users=[UserPublic.from_orm(u) for u in users],

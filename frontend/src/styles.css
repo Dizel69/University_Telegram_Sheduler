@@ -402,6 +402,45 @@ textarea{min-height:120px}
   align-items: center;
   margin-top: 16px;
 }
+.analytics-filters-panel {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid #e8ecf4;
+  background: #f8fafc;
+}
+.analytics-filters-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.analytics-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.analytics-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.analytics-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 2px;
+}
+.analytics-filters-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+.analytics-row-highlight {
+  background: #eff6ff;
+}
+.analytics-row-highlight th,
+.analytics-row-highlight td {
+  background: #eff6ff;
+}
 .analytics-period-tabs {
   display: flex;
   gap: 6px;

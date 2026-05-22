@@ -219,6 +219,9 @@ class AnalyticsDashboard(BaseModel):
     period_start: date_type
     period_end: date_type
     semester_filter: Optional[str] = None
+    user_filter: Optional[int] = None
+    subject_filter: Optional[str] = None
+    available_subjects: List[str] = []
     kpi: AnalyticsKpi
     students: List[AnalyticsStudentRow]
     subjects_attendance: List[AnalyticsSubjectRow]

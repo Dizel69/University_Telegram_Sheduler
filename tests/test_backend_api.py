@@ -515,3 +515,28 @@ def test_analytics_dashboard(backend_client, backend_engine):
     kpi = resp2.json()["kpi"]
     assert kpi["absent_marks"] >= 1
     assert kpi["homework_completion_rate"] > 0
+
+    by_student = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": week_day.isoformat(), "user_id": student_id},
+        headers=ADMIN_HEADERS,
+    )
+    assert by_student.status_code == 200
+    assert by_student.json()["user_filter"] == student_id
+    assert by_student.json()["kpi"]["homework_completion_rate"] == 100.0
+
+    by_subject = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": week_day.isoformat(), "subject": "Math"},
+        headers=ADMIN_HEADERS,
+    )
+    assert by_subject.status_code == 200
+    assert by_subject.json()["subject_filter"] == "Math"
+    assert "Math" in by_subject.json()["available_subjects"]
+
+    bad_subject = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": week_day.isoformat(), "subject": "Несуществующий"},
+        headers=ADMIN_HEADERS,
+    )
+    assert bad_subject.status_code == 400
