@@ -501,7 +501,11 @@ def test_analytics_dashboard(backend_client, backend_engine):
         headers=ADMIN_HEADERS,
         json={"user_id": student_id, "event_id": lesson_id, "mark": "N"},
     )
-    backend_client.post(f"/homework-completion/{hw_id}", headers=ADMIN_HEADERS)
+    student_login = backend_client.post("/auth/login", json={"login": "ana_an", "password": "x"})
+    assert student_login.status_code == 200
+    student_headers = {"Authorization": f"Bearer {student_login.json()['access_token']}"}
+    hw_done = backend_client.post(f"/homework-completion/{hw_id}", headers=student_headers)
+    assert hw_done.status_code == 200
 
     resp2 = backend_client.get(
         "/admin/analytics",
