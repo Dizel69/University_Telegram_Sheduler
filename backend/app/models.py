@@ -79,3 +79,31 @@ class AttendanceMark(SQLModel, table=True):
     user_id: int = Field(foreign_key="app_user.id", index=True)
     event_id: int = Field(foreign_key="event.id", index=True)
     mark: str = Field(index=True)  # N | B
+
+
+class SubjectSetting(SQLModel, table=True):
+    """Настройки отображения предмета, найденного в событиях календаря."""
+
+    __tablename__ = "subject_setting"
+
+    __table_args__ = (UniqueConstraint("subject_key", name="uq_subject_setting_key"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    subject_key: str = Field(index=True)
+    display_name: str
+    is_visible: bool = Field(default=True)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+
+
+class TeacherSetting(SQLModel, table=True):
+    """Настройки отображения преподавателя, найденного в событиях календаря."""
+
+    __tablename__ = "teacher_setting"
+
+    __table_args__ = (UniqueConstraint("teacher_key", name="uq_teacher_setting_key"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    teacher_key: str = Field(index=True)
+    display_name: str
+    is_visible: bool = Field(default=True)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)

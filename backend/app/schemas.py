@@ -212,6 +212,12 @@ class AnalyticsTelegramStats(BaseModel):
     reminders_sent: int
     reminders_pending: int
     reminders_sent_rate: float
+    posts_pending: int = 0
+    reminders_due_now: int = 0
+    reminders_scheduled: int = 0
+    events_current_count: int = 0
+    posts_waiting_now: int = 0
+    reminders_waiting_now: int = 0
 
 
 class AnalyticsBreakdownItem(BaseModel):
@@ -292,3 +298,62 @@ class AnalyticsDashboard(BaseModel):
     homework_overview: AnalyticsHomeworkOverview
     attendance_overview: AnalyticsAttendanceOverview
     birthdays_upcoming: List[AnalyticsBirthdayItem]
+
+
+class SubjectAdminRow(BaseModel):
+    subject_key: str
+    display_name: str
+    is_visible: bool
+    raw_names: List[str]
+    events_total: int
+    schedule_count: int
+    homework_count: int
+    exam_control_count: int
+    transfer_count: int
+    announcement_count: int
+
+
+class SubjectAdminList(BaseModel):
+    subjects: List[SubjectAdminRow]
+
+
+class SubjectAdminUpdate(BaseModel):
+    subject_key: str
+    display_name: Optional[str] = None
+    is_visible: Optional[bool] = None
+    rename_events: bool = True
+
+
+class SubjectAdminUpdateResult(BaseModel):
+    ok: bool
+    subject: SubjectAdminRow
+    updated_events: int
+
+
+class TeacherAdminRow(BaseModel):
+    teacher_key: str
+    display_name: str
+    is_visible: bool
+    raw_names: List[str]
+    events_total: int
+    schedule_count: int
+    exam_control_count: int
+    transfer_count: int
+    subjects: List[str]
+
+
+class TeacherAdminList(BaseModel):
+    teachers: List[TeacherAdminRow]
+
+
+class TeacherAdminUpdate(BaseModel):
+    teacher_key: str
+    display_name: Optional[str] = None
+    is_visible: Optional[bool] = None
+    rename_events: bool = True
+
+
+class TeacherAdminUpdateResult(BaseModel):
+    ok: bool
+    teacher: TeacherAdminRow
+    updated_events: int

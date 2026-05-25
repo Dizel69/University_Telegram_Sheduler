@@ -2,7 +2,7 @@ from datetime import date, time, timedelta
 
 from sqlmodel import Session, select
 
-from app.models import AttendanceMark, Event, HomeworkCompletion, User
+from app.models import AttendanceMark, Event, HomeworkCompletion, SubjectSetting, TeacherSetting, User
 
 
 ADMIN_HEADERS = {"X-ADMIN-TOKEN": "test-admin-token"}
@@ -495,6 +495,7 @@ def test_analytics_dashboard(backend_client, backend_engine):
     assert len(data["students"]) >= 1
     assert len(data["weekly_trend"]) == 8
     assert "telegram" in data
+    assert "events_current_count" in data["telegram"]
     assert data["event_type_breakdown"]
     assert data["daily_load"]
     assert "homework_overview" in data
@@ -545,3 +546,130 @@ def test_analytics_dashboard(backend_client, backend_engine):
         headers=ADMIN_HEADERS,
     )
     assert bad_subject.status_code == 400
+
+
+def test_subjects_admin_rename_and_visibility(backend_client, backend_engine):
+    lesson_day = date(2026, 5, 19)
+    with Session(backend_engine) as session:
+        session.add(
+            Event(
+                type="schedule",
+                subject="Java  и Web-Программирование",
+                body="Lecture",
+                date=lesson_day,
+                time=time(10, 0),
+            )
+        )
+        session.add(
+            Event(
+                type="homework",
+                subject="Java и Web-Программирование",
+                body="HW",
+                date=lesson_day,
+            )
+        )
+        session.commit()
+
+    denied = backend_client.get("/admin/subjects")
+    assert denied.status_code in (401, 403)
+
+    response = backend_client.get("/admin/subjects", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    rows = response.json()["subjects"]
+    row = next(r for r in rows if r["display_name"] == "Java  и Web-Программирование")
+    assert row["events_total"] == 2
+    assert len(row["raw_names"]) == 2
+
+    update = backend_client.patch(
+        "/admin/subjects",
+        headers=ADMIN_HEADERS,
+        json={
+            "subject_key": row["subject_key"],
+            "display_name": "Java и Web",
+            "is_visible": False,
+            "rename_events": True,
+        },
+    )
+    assert update.status_code == 200
+    assert update.json()["updated_events"] == 2
+    assert update.json()["subject"]["display_name"] == "Java и Web"
+    assert update.json()["subject"]["is_visible"] is False
+
+    with Session(backend_engine) as session:
+        subjects = [ev.subject for ev in session.exec(select(Event)).all()]
+        assert subjects == ["Java и Web", "Java и Web"]
+        setting = session.exec(select(SubjectSetting)).first()
+        assert setting.subject_key == "java и web"
+        assert setting.is_visible is False
+
+    analytics = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": lesson_day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    assert "Java и Web" not in analytics.json()["available_subjects"]
+
+
+def test_teachers_admin_rename_and_visibility(backend_client, backend_engine):
+    lesson_day = date(2026, 5, 19)
+    with Session(backend_engine) as session:
+        session.add(
+            Event(
+                type="schedule",
+                subject="Math",
+                teacher="Ivanov  I.I.",
+                body="Lecture",
+                date=lesson_day,
+                time=time(10, 0),
+            )
+        )
+        session.add(
+            Event(
+                type="exam_control",
+                subject="Math",
+                teacher="Ivanov I.I.",
+                body="Control",
+                date=lesson_day,
+                time=time(12, 0),
+            )
+        )
+        session.commit()
+
+    denied = backend_client.get("/admin/teachers")
+    assert denied.status_code in (401, 403)
+
+    response = backend_client.get("/admin/teachers", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    row = next(r for r in response.json()["teachers"] if r["display_name"] == "Ivanov  I.I.")
+    assert row["events_total"] == 2
+    assert len(row["raw_names"]) == 2
+    assert row["subjects"] == ["Math"]
+
+    update = backend_client.patch(
+        "/admin/teachers",
+        headers=ADMIN_HEADERS,
+        json={
+            "teacher_key": row["teacher_key"],
+            "display_name": "Ivanov",
+            "is_visible": False,
+            "rename_events": True,
+        },
+    )
+    assert update.status_code == 200
+    assert update.json()["updated_events"] == 2
+    assert update.json()["teacher"]["display_name"] == "Ivanov"
+    assert update.json()["teacher"]["is_visible"] is False
+
+    with Session(backend_engine) as session:
+        teachers = [ev.teacher for ev in session.exec(select(Event)).all()]
+        assert teachers == ["Ivanov", "Ivanov"]
+        setting = session.exec(select(TeacherSetting)).first()
+        assert setting.teacher_key == "ivanov"
+        assert setting.is_visible is False
+
+    analytics = backend_client.get(
+        "/admin/analytics",
+        params={"period": "week", "week_start": lesson_day.isoformat()},
+        headers=ADMIN_HEADERS,
+    )
+    assert analytics.json()["teacher_workload"] == []

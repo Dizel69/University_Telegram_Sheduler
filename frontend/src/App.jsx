@@ -9,6 +9,7 @@ import HomeworkList from './HomeworkList'
 import UsersAdmin from './UsersAdmin'
 import AttendanceAdmin from './AttendanceAdmin'
 import AnalyticsAdmin from './AnalyticsAdmin'
+import SubjectsAdmin from './SubjectsAdmin'
 
 export default function App() {
   const [tab, setTab] = useState('calendar')
@@ -93,7 +94,7 @@ export default function App() {
 
   useEffect(() => {
     if (tab === 'users' && !showUsersTab) setTab('calendar')
-    if ((tab === 'create' || tab === 'list' || tab === 'attendance' || tab === 'analytics') && !showAdminTabs) setTab('calendar')
+    if ((tab === 'create' || tab === 'list' || tab === 'attendance' || tab === 'analytics' || tab === 'subjects') && !showAdminTabs) setTab('calendar')
   }, [tab, showUsersTab, showAdminTabs])
 
   const calendarIsAdmin = useMemo(() => Boolean(accountUser?.is_admin), [accountUser])
@@ -109,6 +110,7 @@ export default function App() {
               <button type="button" className={tab === 'list' ? 'tab active' : 'tab'} onClick={() => setTab('list')}>События</button>
               <button type="button" className={tab === 'attendance' ? 'tab active' : 'tab'} onClick={() => setTab('attendance')}>Посещаемость</button>
               <button type="button" className={tab === 'analytics' ? 'tab active' : 'tab'} onClick={() => setTab('analytics')}>Аналитика</button>
+              <button type="button" className={tab === 'subjects' ? 'tab active' : 'tab'} onClick={() => setTab('subjects')}>Списки</button>
             </>
           ) : null}
           {showUsersTab ? (
@@ -147,6 +149,7 @@ export default function App() {
         {tab === 'analytics' && showAdminTabs && (
           <AnalyticsAdmin currentSemester={currentSemester} />
         )}
+        {tab === 'subjects' && showAdminTabs && <SubjectsAdmin />}
         {tab === 'semester' && <Semester />}
       </main>
       <UserLogin />

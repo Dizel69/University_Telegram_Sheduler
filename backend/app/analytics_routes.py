@@ -1,7 +1,7 @@
 import datetime as dt
 from calendar import monthrange
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta, time as dt_time
 from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +33,7 @@ from app.schemas import (
     UserPublic,
 )
 from app.semester_utils import normalize_semester_label
+from app.subject_routes import hidden_teacher_names, visible_subject_names_for_period
 from app.type_utils import canonical_event_type
 
 router = APIRouter(tags=["analytics"])
@@ -92,17 +93,7 @@ def _subject_matches_name(name: str, subject_filter: Optional[str]) -> bool:
 
 
 def _subjects_in_period(session: Session, start: dt.date, end: dt.date) -> List[str]:
-    events = session.exec(
-        select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
-    ).all()
-    names: Set[str] = set()
-    for ev in events:
-        canon = canonical_event_type(ev.type or "")
-        if canon in ("schedule", "exam_control", "transfer", "homework"):
-            subj = _event_subject(ev)
-            if subj:
-                names.add(subj)
-    return sorted(names)
+    return visible_subject_names_for_period(session, start, end)
 
 
 def _attendance_slots_in_range(
@@ -378,13 +369,14 @@ def _subject_workload(
     return rows[:10]
 
 
-def _named_workload(events: List[Event], field: str) -> List[AnalyticsNamedCount]:
+def _named_workload(events: List[Event], field: str, hidden_names: Optional[Set[str]] = None) -> List[AnalyticsNamedCount]:
     counter: Dict[str, int] = defaultdict(int)
+    hidden = hidden_names or set()
     for ev in events:
         if not _is_schedule_event(ev):
             continue
         value = (getattr(ev, field, None) or "").strip()
-        if value:
+        if value and value not in hidden:
             counter[value] += 1
     rows = [AnalyticsNamedCount(name=name, count=count) for name, count in counter.items()]
     rows.sort(key=lambda r: r.count, reverse=True)
@@ -510,17 +502,42 @@ def _weekly_trend(
     return points
 
 
+def _event_boundary(ev: Event) -> Optional[datetime]:
+    if not ev.date:
+        return None
+    end_t = getattr(ev, "end_time", None) or ev.time or dt_time(23, 59, 59)
+    return datetime.combine(ev.date, end_t)
+
+
+def _is_current_event(ev: Event, now: datetime) -> bool:
+    boundary = _event_boundary(ev)
+    if not boundary:
+        return True
+    return boundary >= now
+
+
+def _remind_at(ev: Event) -> Optional[datetime]:
+    if not ev.date:
+        return None
+    event_time = ev.time if ev.time else dt_time.min
+    event_dt = datetime.combine(ev.date, event_time)
+    return event_dt - timedelta(hours=getattr(ev, "reminder_offset_hours", 24) or 24)
+
+
 def _telegram_stats(
     session: Session,
     start: dt.date,
     end: dt.date,
     subject_filter: Optional[str],
 ) -> AnalyticsTelegramStats:
-    events = session.exec(
+    now = datetime.utcnow()
+    events_period = session.exec(
         select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
     ).all()
-    post_attempted = post_sent = reminders_due = reminders_sent = 0
-    for ev in events:
+    all_events = session.exec(select(Event)).all()
+
+    post_attempted = post_sent = reminders_pending = reminders_sent = 0
+    for ev in events_period:
         if not _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter):
             continue
         canon = canonical_event_type(ev.type or "")
@@ -528,23 +545,52 @@ def _telegram_stats(
             post_attempted += 1
             if ev.sent_message_id:
                 post_sent += 1
+        if canon in ("homework", "exam_control"):
+            if getattr(ev, "reminder_sent", False):
+                reminders_sent += 1
+            else:
+                reminders_pending += 1
+
+    events_current = posts_waiting = reminders_waiting = reminders_due_now = reminders_scheduled = 0
+    for ev in all_events:
+        if (ev.source or "") == "manual":
+            continue
+        if not _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter):
+            continue
+        if not _is_current_event(ev, now):
+            continue
+
+        events_current += 1
+        canon = canonical_event_type(ev.type or "")
+        if canon in _POST_TYPES and (ev.source or "admin") == "admin" and not ev.sent_message_id:
+            posts_waiting += 1
         if canon in ("homework", "exam_control") and not getattr(ev, "reminder_sent", True):
-            reminders_due += 1
-        elif canon in ("homework", "exam_control") and getattr(ev, "reminder_sent", False):
-            reminders_sent += 1
+            reminders_waiting += 1
+            remind_at = _remind_at(ev)
+            if remind_at and remind_at <= now:
+                reminders_due_now += 1
+            else:
+                reminders_scheduled += 1
+
     sent_rate = round(100.0 * post_sent / post_attempted, 1) if post_attempted else 0.0
     reminder_rate = (
-        round(100.0 * reminders_sent / (reminders_sent + reminders_due), 1)
-        if (reminders_sent + reminders_due)
+        round(100.0 * reminders_sent / (reminders_sent + reminders_pending), 1)
+        if (reminders_sent + reminders_pending)
         else 0.0
     )
     return AnalyticsTelegramStats(
         posts_attempted=post_attempted,
         posts_sent=post_sent,
         posts_sent_rate=sent_rate,
+        posts_pending=max(post_attempted - post_sent, 0),
         reminders_sent=reminders_sent,
-        reminders_pending=reminders_due,
+        reminders_pending=reminders_pending,
         reminders_sent_rate=reminder_rate,
+        reminders_due_now=reminders_due_now,
+        reminders_scheduled=reminders_scheduled,
+        events_current_count=events_current,
+        posts_waiting_now=posts_waiting,
+        reminders_waiting_now=reminders_waiting,
     )
 
 
@@ -671,7 +717,7 @@ def get_analytics_dashboard(
             source_breakdown=_breakdown(source_counts),
             lesson_type_breakdown=_breakdown(lesson_type_counts),
             subject_workload=_subject_workload(filtered_events, slots, filtered_user_ids, marks),
-            teacher_workload=_named_workload(filtered_events, "teacher"),
+            teacher_workload=_named_workload(filtered_events, "teacher", hidden_teacher_names(session)),
             room_workload=_named_workload(filtered_events, "room"),
             daily_load=_daily_load(filtered_events, start, end, period_key),
             homework_overview=_homework_overview(hw_events, filtered_user_ids, completions, today),

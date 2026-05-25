@@ -15,6 +15,7 @@ from app.deps import require_admin, require_admin_token_header
 from app.account_routes import router as accounts_router
 from app.attendance_routes import router as attendance_router
 from app.analytics_routes import router as analytics_router
+from app.subject_routes import router as subject_router
 import httpx
 from typing import List, Optional
 import calendar as _calendar
@@ -52,6 +53,7 @@ app = FastAPI(title="Планировщик университета - Бэке�
 app.include_router(accounts_router)
 app.include_router(attendance_router)
 app.include_router(analytics_router)
+app.include_router(subject_router)
 
 HTTP_REQUESTS_TOTAL = Counter(
     "http_requests_total",

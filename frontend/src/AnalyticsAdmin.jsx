@@ -34,6 +34,13 @@ function formatDdMm(ymd) {
   return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}`
 }
 
+function formatMonthShort(ymd) {
+  const s = String(ymd).slice(0, 10)
+  const [, m] = s.split('-').map(Number)
+  const months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+  return months[m - 1] || s
+}
+
 function addDaysYmd(ymd, delta) {
   const [y, m, d] = ymd.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
@@ -185,17 +192,22 @@ function MiniBarChart({ points, field, color, max = 100 }) {
   )
 }
 
-function LoadStackChart({ points }) {
+function LoadStackChart({ points, period }) {
   const rows = points || []
   if (!rows.length) return <p className="status">Нет данных по нагрузке</p>
   const totals = rows.map(p => (p.lessons || 0) + (p.homework || 0) + (p.controls || 0) + (p.announcements || 0))
   const max = Math.max(...totals, 1)
+  const isMonthly = period === 'all'
+  const labelStep = isMonthly ? 1 : (rows.length <= 14 ? 1 : Math.max(1, Math.ceil(rows.length / 7)))
+
   return (
-    <div className="analytics-load-chart" role="img" aria-label="Нагрузка по дням">
+    <div className={`analytics-load-chart${isMonthly ? ' analytics-load-chart-monthly' : ''}`} role="img" aria-label="Нагрузка по дням">
       {rows.map((p, idx) => {
         const total = totals[idx]
         const h = Math.max(total ? Math.round((total / max) * 100) : 0, total ? 8 : 0)
         const date = String(p.date).slice(0, 10)
+        const showLabel = idx % labelStep === 0
+        const label = isMonthly ? formatMonthShort(date) : formatDdMm(date)
         return (
           <div className="analytics-load-col" key={date} title={`${date}: ${total}`}>
             <div className="analytics-load-stack" style={{ height: `${h}%` }}>
@@ -204,9 +216,7 @@ function LoadStackChart({ points }) {
               <span style={{ flex: p.controls || 0, background: '#f59e0b', display: p.controls ? undefined : 'none' }} />
               <span style={{ flex: p.announcements || 0, background: '#8b5cf6', display: p.announcements ? undefined : 'none' }} />
             </div>
-            <div className="analytics-bar-label">
-              {idx % Math.ceil(rows.length / 8 || 1) === 0 ? formatDdMm(date) : ''}
-            </div>
+            <div className="analytics-bar-label">{showLabel ? label : ''}</div>
           </div>
         )
       })}
@@ -533,7 +543,7 @@ export default function AnalyticsAdmin({ currentSemester }) {
               </div>
               <div className="analytics-chart-block analytics-chart-wide">
                 <h4>Нагрузка по дням / месяцам</h4>
-                <LoadStackChart points={dailyLoad} />
+                <LoadStackChart points={dailyLoad} period={data.period} />
                 <div className="analytics-load-legend">
                   <span><i style={{ background: '#3b82f6' }} /> пары</span>
                   <span><i style={{ background: '#10b981' }} /> ДЗ</span>
@@ -725,20 +735,32 @@ export default function AnalyticsAdmin({ currentSemester }) {
             <h3>Telegram</h3>
             <div className="analytics-telegram-grid">
               <div>
-                <strong>Публикации</strong>
+                <strong>За выбранный период</strong>
                 <p className="status">
-                  Отправлено {tg?.posts_sent ?? 0} из {tg?.posts_attempted ?? 0} ({pct(tg?.posts_sent_rate)})
+                  Посты: {tg?.posts_sent ?? 0} / {tg?.posts_attempted ?? 0} ({pct(tg?.posts_sent_rate)})
+                  {tg?.posts_pending > 0 ? ` · без message_id: ${tg.posts_pending}` : ''}
+                </p>
+                <p className="status">
+                  Напоминания ДЗ/контроль: отправлено {tg?.reminders_sent ?? 0}, не отправлено {tg?.reminders_pending ?? 0}
                 </p>
               </div>
               <div>
-                <strong>Напоминания</strong>
+                <strong>Сейчас (как во вкладке «События»)</strong>
                 <p className="status">
-                  Отправлено: {tg?.reminders_sent ?? 0}, ожидают: {tg?.reminders_pending ?? 0} ({pct(tg?.reminders_sent_rate)})
+                  Текущих событий: <strong>{tg?.events_current_count ?? 0}</strong>
+                </p>
+                <p className="status">
+                  Без поста в Telegram: {tg?.posts_waiting_now ?? 0}
+                </p>
+                <p className="status">
+                  Напоминаний в очереди: {tg?.reminders_waiting_now ?? 0}
+                  {' '}(пора отправить: {tg?.reminders_due_now ?? 0}, позже: {tg?.reminders_scheduled ?? 0})
                 </p>
               </div>
             </div>
             <p className="status" style={{ marginTop: 8, fontSize: 12 }}>
-              Учитываются события с датой в периоде и source=admin (посты через «Создать» / send).
+              «За период» — только события с датой внутри выбранного диапазона. «Сейчас» — все незавершённые события
+              (как во вкладке «События»), включая будущие даты. Расписание и объявления не считаются напоминаниями.
             </p>
           </section>
         </>
