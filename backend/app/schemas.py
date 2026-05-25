@@ -330,6 +330,18 @@ class SubjectAdminUpdateResult(BaseModel):
     updated_events: int
 
 
+class SubjectVariantUpdate(BaseModel):
+    subject_key: str
+    raw_name: str
+    display_name: str
+
+
+class SubjectVariantUpdateResult(BaseModel):
+    ok: bool
+    subject: SubjectAdminRow
+    updated_events: int
+
+
 class TeacherAdminRow(BaseModel):
     teacher_key: str
     display_name: str
@@ -354,6 +366,18 @@ class TeacherAdminUpdate(BaseModel):
 
 
 class TeacherAdminUpdateResult(BaseModel):
+    ok: bool
+    teacher: TeacherAdminRow
+    updated_events: int
+
+
+class TeacherVariantUpdate(BaseModel):
+    teacher_key: str
+    raw_name: str
+    display_name: str
+
+
+class TeacherVariantUpdateResult(BaseModel):
     ok: bool
     teacher: TeacherAdminRow
     updated_events: int

@@ -14,10 +14,14 @@ from app.schemas import (
     SubjectAdminRow,
     SubjectAdminUpdate,
     SubjectAdminUpdateResult,
+    SubjectVariantUpdate,
+    SubjectVariantUpdateResult,
     TeacherAdminList,
     TeacherAdminRow,
     TeacherAdminUpdate,
     TeacherAdminUpdateResult,
+    TeacherVariantUpdate,
+    TeacherVariantUpdateResult,
 )
 from app.type_utils import canonical_event_type
 
@@ -35,8 +39,16 @@ def clean_subject_name(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def raw_list_name(value: Optional[str]) -> str:
+    return str(value or "").replace("\u00a0", " ").strip()
+
+
 def event_subject_name(ev: Event) -> str:
     return clean_subject_name(ev.subject or ev.title)
+
+
+def event_subject_raw_name(ev: Event) -> str:
+    return raw_list_name(ev.subject or ev.title)
 
 
 def normalize_teacher_key(value: Optional[str]) -> str:
@@ -49,6 +61,10 @@ def clean_teacher_name(value: Optional[str]) -> str:
 
 def event_teacher_name(ev: Event) -> str:
     return clean_teacher_name(ev.teacher)
+
+
+def event_teacher_raw_name(ev: Event) -> str:
+    return raw_list_name(ev.teacher)
 
 
 def _subject_settings(session: Session) -> Dict[str, SubjectSetting]:
@@ -75,7 +91,7 @@ def _subject_groups(session: Session) -> Dict[str, dict]:
     )
 
     for ev in session.exec(select(Event)).all():
-        name = event_subject_name(ev)
+        name = event_subject_raw_name(ev)
         if not name:
             continue
         key = normalize_subject_key(name)
@@ -103,7 +119,7 @@ def _teacher_groups(session: Session) -> Dict[str, dict]:
     )
 
     for ev in session.exec(select(Event)).all():
-        name = event_teacher_name(ev)
+        name = event_teacher_raw_name(ev)
         if not name:
             continue
         key = normalize_teacher_key(name)
@@ -132,7 +148,7 @@ def _row_for_key(session: Session, subject_key: str) -> SubjectAdminRow:
 
     raw_names = sorted(group["names"].keys()) if group else []
     fallback_name = raw_names[0] if raw_names else (setting.display_name if setting else subject_key)
-    display_name = setting.display_name if setting else fallback_name
+    display_name = setting.display_name if setting else clean_subject_name(fallback_name)
     is_visible = setting.is_visible if setting else True
 
     return SubjectAdminRow(
@@ -160,7 +176,7 @@ def _teacher_row_for_key(session: Session, teacher_key: str) -> TeacherAdminRow:
 
     raw_names = sorted(group["names"].keys()) if group else []
     fallback_name = raw_names[0] if raw_names else (setting.display_name if setting else teacher_key)
-    display_name = setting.display_name if setting else fallback_name
+    display_name = setting.display_name if setting else clean_teacher_name(fallback_name)
     is_visible = setting.is_visible if setting else True
 
     return TeacherAdminRow(
@@ -275,6 +291,41 @@ def update_subject(payload: SubjectAdminUpdate, _admin=Depends(require_admin)):
         return SubjectAdminUpdateResult(ok=True, subject=subject, updated_events=updated_events)
 
 
+@router.patch("/admin/subjects/variant", response_model=SubjectVariantUpdateResult)
+def update_subject_variant(payload: SubjectVariantUpdate, _admin=Depends(require_admin)):
+    group_key = normalize_subject_key(payload.subject_key)
+    raw_name = raw_list_name(payload.raw_name)
+    next_name = clean_subject_name(payload.display_name)
+    if not group_key or not raw_name:
+        raise HTTPException(status_code=400, detail="Не указан вариант предмета")
+    if not next_name:
+        raise HTTPException(status_code=400, detail="Название предмета не может быть пустым")
+
+    target_key = normalize_subject_key(next_name)
+    updated_events = 0
+    with Session(database.engine) as session:
+        groups = _subject_groups(session)
+        if group_key not in groups:
+            raise HTTPException(status_code=404, detail="Предмет не найден")
+
+        for ev in session.exec(select(Event)).all():
+            if ev.subject and raw_list_name(ev.subject) == raw_name and normalize_subject_key(ev.subject) == group_key:
+                ev.subject = next_name
+                session.add(ev)
+                updated_events += 1
+            elif not ev.subject and ev.title and raw_list_name(ev.title) == raw_name and normalize_subject_key(ev.title) == group_key:
+                ev.title = next_name
+                session.add(ev)
+                updated_events += 1
+
+        if updated_events == 0:
+            raise HTTPException(status_code=404, detail="Вариант предмета не найден")
+
+        session.commit()
+        subject = _row_for_key(session, target_key)
+        return SubjectVariantUpdateResult(ok=True, subject=subject, updated_events=updated_events)
+
+
 @router.get("/admin/teachers", response_model=TeacherAdminList)
 def list_teachers(_admin=Depends(require_admin)):
     with Session(database.engine) as session:
@@ -340,6 +391,37 @@ def update_teacher(payload: TeacherAdminUpdate, _admin=Depends(require_admin)):
         session.commit()
         teacher = _teacher_row_for_key(session, target_key)
         return TeacherAdminUpdateResult(ok=True, teacher=teacher, updated_events=updated_events)
+
+
+@router.patch("/admin/teachers/variant", response_model=TeacherVariantUpdateResult)
+def update_teacher_variant(payload: TeacherVariantUpdate, _admin=Depends(require_admin)):
+    group_key = normalize_teacher_key(payload.teacher_key)
+    raw_name = raw_list_name(payload.raw_name)
+    next_name = clean_teacher_name(payload.display_name)
+    if not group_key or not raw_name:
+        raise HTTPException(status_code=400, detail="Не указан вариант преподавателя")
+    if not next_name:
+        raise HTTPException(status_code=400, detail="Имя преподавателя не может быть пустым")
+
+    target_key = normalize_teacher_key(next_name)
+    updated_events = 0
+    with Session(database.engine) as session:
+        groups = _teacher_groups(session)
+        if group_key not in groups:
+            raise HTTPException(status_code=404, detail="Преподаватель не найден")
+
+        for ev in session.exec(select(Event)).all():
+            if ev.teacher and raw_list_name(ev.teacher) == raw_name and normalize_teacher_key(ev.teacher) == group_key:
+                ev.teacher = next_name
+                session.add(ev)
+                updated_events += 1
+
+        if updated_events == 0:
+            raise HTTPException(status_code=404, detail="Вариант преподавателя не найден")
+
+        session.commit()
+        teacher = _teacher_row_for_key(session, target_key)
+        return TeacherVariantUpdateResult(ok=True, teacher=teacher, updated_events=updated_events)
 
 
 def visible_subject_names_for_period(session: Session, start, end) -> List[str]:

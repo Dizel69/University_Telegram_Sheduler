@@ -11,11 +11,17 @@ function countSummary(row) {
   return parts.join(' · ') || 'нет событий'
 }
 
+function variantKey(groupKey, rawName) {
+  return `${groupKey}\0${rawName}`
+}
+
 export default function SubjectsAdmin() {
   const [subjects, setSubjects] = useState([])
   const [teachers, setTeachers] = useState([])
   const [drafts, setDrafts] = useState({})
   const [teacherDrafts, setTeacherDrafts] = useState({})
+  const [variantDrafts, setVariantDrafts] = useState({})
+  const [teacherVariantDrafts, setTeacherVariantDrafts] = useState({})
   const [query, setQuery] = useState('')
   const [teacherQuery, setTeacherQuery] = useState('')
   const [showHidden, setShowHidden] = useState(true)
@@ -39,6 +45,12 @@ export default function SubjectsAdmin() {
       setTeachers(teachersList)
       setDrafts(Object.fromEntries(subjectsList.map(s => [s.subject_key, s.display_name])))
       setTeacherDrafts(Object.fromEntries(teachersList.map(t => [t.teacher_key, t.display_name])))
+      setVariantDrafts(Object.fromEntries(
+        subjectsList.flatMap(s => (s.raw_names || []).map(name => [variantKey(s.subject_key, name), name])),
+      ))
+      setTeacherVariantDrafts(Object.fromEntries(
+        teachersList.flatMap(t => (t.raw_names || []).map(name => [variantKey(t.teacher_key, name), name])),
+      ))
     } catch (e) {
       setError(e.response?.data?.detail || e.message || String(e))
     } finally {
@@ -167,12 +179,80 @@ export default function SubjectsAdmin() {
     }
   }
 
+  async function saveSubjectVariant(row, rawName) {
+    const key = variantKey(row.subject_key, rawName)
+    const nextName = (variantDrafts[key] || '').trim()
+    if (!nextName) {
+      setStatus('Название варианта не может быть пустым')
+      return
+    }
+
+    setSavingKey(`subject-variant:${key}`)
+    setStatus('')
+    setError(null)
+    try {
+      const { data } = await axios.patch('/admin/subjects/variant', {
+        subject_key: row.subject_key,
+        raw_name: rawName,
+        display_name: nextName,
+      })
+      await load()
+      setStatus(
+        data.updated_events > 0
+          ? `Вариант сохранён. Обновлено событий: ${data.updated_events}`
+          : 'Вариант сохранён',
+      )
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message || String(e))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveTeacherVariant(row, rawName) {
+    const key = variantKey(row.teacher_key, rawName)
+    const nextName = (teacherVariantDrafts[key] || '').trim()
+    if (!nextName) {
+      setStatus('Имя варианта не может быть пустым')
+      return
+    }
+
+    setSavingKey(`teacher-variant:${key}`)
+    setStatus('')
+    setError(null)
+    try {
+      const { data } = await axios.patch('/admin/teachers/variant', {
+        teacher_key: row.teacher_key,
+        raw_name: rawName,
+        display_name: nextName,
+      })
+      await load()
+      setStatus(
+        data.updated_events > 0
+          ? `Вариант сохранён. Обновлено событий: ${data.updated_events}`
+          : 'Вариант сохранён',
+      )
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message || String(e))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
   function changeDraft(key, value) {
     setDrafts(prev => ({ ...prev, [key]: value }))
   }
 
   function changeTeacherDraft(key, value) {
     setTeacherDrafts(prev => ({ ...prev, [key]: value }))
+  }
+
+  function changeVariantDraft(key, value) {
+    setVariantDrafts(prev => ({ ...prev, [key]: value }))
+  }
+
+  function changeTeacherVariantDraft(key, value) {
+    setTeacherVariantDrafts(prev => ({ ...prev, [key]: value }))
   }
 
   return (
@@ -262,16 +342,38 @@ export default function SubjectsAdmin() {
                       <div className="status subjects-count-summary">{countSummary(row)}</div>
                     </td>
                     <td>
-                      {(row.raw_names || []).length > 1 ? (
-                        <details>
-                          <summary>{row.raw_names.length} вариантов</summary>
-                          <ul className="subjects-variants">
-                            {row.raw_names.map(name => <li key={name}>{name}</li>)}
-                          </ul>
-                        </details>
-                      ) : (
-                        <span className="status">нет дублей</span>
-                      )}
+                      <details>
+                        <summary>
+                          {(row.raw_names || []).length > 1
+                            ? `${row.raw_names.length} вариантов`
+                            : '1 вариант'}
+                        </summary>
+                        <div className="subjects-variant-edit-list">
+                          {(row.raw_names || []).map(name => {
+                            const key = variantKey(row.subject_key, name)
+                            const value = variantDrafts[key] ?? name
+                            const variantBusy = savingKey === `subject-variant:${key}`
+                            return (
+                              <div className="subjects-variant-edit-row" key={name}>
+                                <span className="subjects-variant-original" title={name}>{name}</span>
+                                <input
+                                  value={value}
+                                  onChange={e => changeVariantDraft(key, e.target.value)}
+                                  disabled={variantBusy}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-sm"
+                                  disabled={variantBusy || value.trim() === name}
+                                  onClick={() => saveSubjectVariant(row, name)}
+                                >
+                                  {variantBusy ? '...' : 'Срастить'}
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </details>
                     </td>
                     <td>
                       <button
@@ -362,16 +464,38 @@ export default function SubjectsAdmin() {
                           )}
                         </td>
                         <td>
-                          {(row.raw_names || []).length > 1 ? (
-                            <details>
-                              <summary>{row.raw_names.length} вариантов</summary>
-                              <ul className="subjects-variants">
-                                {row.raw_names.map(name => <li key={name}>{name}</li>)}
-                              </ul>
-                            </details>
-                          ) : (
-                            <span className="status">нет дублей</span>
-                          )}
+                          <details>
+                            <summary>
+                              {(row.raw_names || []).length > 1
+                                ? `${row.raw_names.length} вариантов`
+                                : '1 вариант'}
+                            </summary>
+                            <div className="subjects-variant-edit-list">
+                              {(row.raw_names || []).map(name => {
+                                const key = variantKey(row.teacher_key, name)
+                                const value = teacherVariantDrafts[key] ?? name
+                                const variantBusy = savingKey === `teacher-variant:${key}`
+                                return (
+                                  <div className="subjects-variant-edit-row" key={name}>
+                                    <span className="subjects-variant-original" title={name}>{name}</span>
+                                    <input
+                                      value={value}
+                                      onChange={e => changeTeacherVariantDraft(key, e.target.value)}
+                                      disabled={variantBusy}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm"
+                                      disabled={variantBusy || value.trim() === name}
+                                      onClick={() => saveTeacherVariant(row, name)}
+                                    >
+                                      {variantBusy ? '...' : 'Срастить'}
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </details>
                         </td>
                         <td>
                           <button

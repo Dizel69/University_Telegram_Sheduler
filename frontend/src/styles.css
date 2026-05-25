@@ -942,6 +942,28 @@ textarea{min-height:120px}
 .subjects-variants li {
   margin: 3px 0;
 }
+.subjects-variant-edit-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 420px;
+}
+.subjects-variant-edit-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.subjects-variant-original {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subjects-variant-edit-row input {
+  min-width: 160px;
+}
 .subjects-tags {
   display: flex;
   flex-wrap: wrap;
