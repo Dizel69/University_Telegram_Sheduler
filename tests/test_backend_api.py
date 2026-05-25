@@ -578,7 +578,7 @@ def test_subjects_admin_rename_and_visibility(backend_client, backend_engine):
     rows = response.json()["subjects"]
     row = next(r for r in rows if r["display_name"] == "Java и Web-Программирование")
     assert row["events_total"] == 2
-    assert len(row["raw_names"]) == 2
+    assert row["raw_names"] == ["Java и Web-Программирование"]
 
     update = backend_client.patch(
         "/admin/subjects",
@@ -642,7 +642,7 @@ def test_teachers_admin_rename_and_visibility(backend_client, backend_engine):
     assert response.status_code == 200
     row = next(r for r in response.json()["teachers"] if r["display_name"] == "Ivanov I.I.")
     assert row["events_total"] == 2
-    assert len(row["raw_names"]) == 2
+    assert row["raw_names"] == ["Ivanov I.I."]
     assert row["subjects"] == ["Math"]
 
     update = backend_client.patch(
