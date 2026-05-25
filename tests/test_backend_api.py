@@ -495,6 +495,10 @@ def test_analytics_dashboard(backend_client, backend_engine):
     assert len(data["students"]) >= 1
     assert len(data["weekly_trend"]) == 8
     assert "telegram" in data
+    assert data["event_type_breakdown"]
+    assert data["daily_load"]
+    assert "homework_overview" in data
+    assert "attendance_overview" in data
 
     backend_client.put(
         "/admin/attendance",
@@ -533,6 +537,7 @@ def test_analytics_dashboard(backend_client, backend_engine):
     assert by_subject.status_code == 200
     assert by_subject.json()["subject_filter"] == "Math"
     assert "Math" in by_subject.json()["available_subjects"]
+    assert by_subject.json()["subject_workload"][0]["subject"] == "Math"
 
     bad_subject = backend_client.get(
         "/admin/analytics",

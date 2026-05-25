@@ -17,10 +17,17 @@ from app.attendance_routes import (
 from app.deps import require_admin
 from app.models import AttendanceMark, Event, HomeworkCompletion, User
 from app.schemas import (
+    AnalyticsAttendanceOverview,
     AnalyticsDashboard,
+    AnalyticsBirthdayItem,
+    AnalyticsBreakdownItem,
+    AnalyticsHomeworkOverview,
     AnalyticsKpi,
+    AnalyticsLoadPoint,
+    AnalyticsNamedCount,
     AnalyticsStudentRow,
     AnalyticsSubjectRow,
+    AnalyticsSubjectWorkloadRow,
     AnalyticsTelegramStats,
     AnalyticsWeeklyPoint,
     UserPublic,
@@ -255,6 +262,223 @@ def _subject_homework(
     return rows[:5]
 
 
+def _percent(part: int, total: int) -> float:
+    return round(100.0 * part / total, 1) if total else 0.0
+
+
+def _breakdown(counter: Dict[str, int]) -> List[AnalyticsBreakdownItem]:
+    total = sum(counter.values())
+    rows = [
+        AnalyticsBreakdownItem(label=label, count=count, percent=_percent(count, total))
+        for label, count in counter.items()
+        if count > 0
+    ]
+    rows.sort(key=lambda r: r.count, reverse=True)
+    return rows
+
+
+def _homework_overview(
+    hw_events: List[Event],
+    user_ids: List[int],
+    completions: Set[Tuple[int, int]],
+    today: dt.date,
+) -> AnalyticsHomeworkOverview:
+    rate, done, total_pairs, overdue = _homework_stats(hw_events, user_ids, completions, today)
+    return AnalyticsHomeworkOverview(
+        total_assignments=len(hw_events),
+        total_pairs=total_pairs,
+        done=done,
+        open=max(total_pairs - done, 0),
+        overdue=overdue,
+        completion_rate=rate,
+    )
+
+
+def _attendance_overview(
+    total: int,
+    absent: int,
+    sick: int,
+    rate: float,
+) -> AnalyticsAttendanceOverview:
+    return AnalyticsAttendanceOverview(
+        present=max(total - absent - sick, 0),
+        absent=absent,
+        sick=sick,
+        total=total,
+        attendance_rate=rate,
+    )
+
+
+def _filtered_events_by_subject(events: List[Event], subject_filter: Optional[str]) -> List[Event]:
+    if not subject_filter:
+        return events
+    return [
+        ev
+        for ev in events
+        if _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter)
+    ]
+
+
+def _subject_workload(
+    events: List[Event],
+    slots: List[Tuple[int, str]],
+    user_ids: List[int],
+    marks: Dict[Tuple[int, int], str],
+) -> List[AnalyticsSubjectWorkloadRow]:
+    by_subject: Dict[str, Dict[str, int]] = defaultdict(
+        lambda: {
+            "lessons": 0,
+            "homework": 0,
+            "exam_controls": 0,
+            "transfers": 0,
+            "absent": 0,
+            "sick": 0,
+        }
+    )
+    for ev in events:
+        subj = _event_subject(ev) or "Без предмета"
+        canon = canonical_event_type(ev.type or "")
+        if canon == "schedule":
+            by_subject[subj]["lessons"] += 1
+        elif canon == "homework":
+            by_subject[subj]["homework"] += 1
+        elif canon == "exam_control":
+            by_subject[subj]["exam_controls"] += 1
+        elif canon == "transfer":
+            by_subject[subj]["transfers"] += 1
+
+    for event_id, subj in slots:
+        for uid in user_ids:
+            mark = marks.get((uid, event_id))
+            if mark == "N":
+                by_subject[subj]["absent"] += 1
+            elif mark == "B":
+                by_subject[subj]["sick"] += 1
+
+    rows = [
+        AnalyticsSubjectWorkloadRow(
+            subject=subj,
+            lessons=v["lessons"],
+            homework=v["homework"],
+            exam_controls=v["exam_controls"],
+            transfers=v["transfers"],
+            absent=v["absent"],
+            sick=v["sick"],
+        )
+        for subj, v in by_subject.items()
+        if sum(v.values()) > 0
+    ]
+    rows.sort(
+        key=lambda r: (
+            r.lessons + r.homework + r.exam_controls + r.transfers,
+            r.absent + r.sick,
+        ),
+        reverse=True,
+    )
+    return rows[:10]
+
+
+def _named_workload(events: List[Event], field: str) -> List[AnalyticsNamedCount]:
+    counter: Dict[str, int] = defaultdict(int)
+    for ev in events:
+        if not _is_schedule_event(ev):
+            continue
+        value = (getattr(ev, field, None) or "").strip()
+        if value:
+            counter[value] += 1
+    rows = [AnalyticsNamedCount(name=name, count=count) for name, count in counter.items()]
+    rows.sort(key=lambda r: r.count, reverse=True)
+    return rows[:8]
+
+
+def _daily_load(
+    events: List[Event],
+    start: dt.date,
+    end: dt.date,
+    period_key: str,
+) -> List[AnalyticsLoadPoint]:
+    if period_key == "all":
+        month_start = dt.date(end.year, end.month, 1)
+        buckets = []
+        for i in range(11, -1, -1):
+            y = month_start.year
+            m = month_start.month - i
+            while m <= 0:
+                m += 12
+                y -= 1
+            buckets.append(dt.date(y, m, 1))
+        data = {d: {"lessons": 0, "homework": 0, "controls": 0, "announcements": 0} for d in buckets}
+        for ev in events:
+            if not ev.date or ev.date < buckets[0] or ev.date > end:
+                continue
+            bucket = dt.date(ev.date.year, ev.date.month, 1)
+            if bucket not in data:
+                continue
+            _add_load_point(data[bucket], ev)
+    else:
+        data = {
+            start + timedelta(days=i): {"lessons": 0, "homework": 0, "controls": 0, "announcements": 0}
+            for i in range((end - start).days + 1)
+        }
+        for ev in events:
+            if ev.date in data:
+                _add_load_point(data[ev.date], ev)
+
+    return [
+        AnalyticsLoadPoint(
+            date=d,
+            lessons=v["lessons"],
+            homework=v["homework"],
+            controls=v["controls"],
+            announcements=v["announcements"],
+        )
+        for d, v in sorted(data.items())
+    ]
+
+
+def _add_load_point(row: Dict[str, int], ev: Event) -> None:
+    canon = canonical_event_type(ev.type or "")
+    if canon in ("schedule", "transfer"):
+        row["lessons"] += 1
+    elif canon == "homework":
+        row["homework"] += 1
+    elif canon == "exam_control":
+        row["controls"] += 1
+    elif canon == "announcement":
+        row["announcements"] += 1
+
+
+def _upcoming_birthdays(users: List[User], today: dt.date) -> List[AnalyticsBirthdayItem]:
+    out: List[AnalyticsBirthdayItem] = []
+    for user in users:
+        birth_date = getattr(user, "birth_date", None)
+        if not birth_date:
+            continue
+        birthday = _birthday_on_year_safe(birth_date.month, birth_date.day, today.year)
+        if birthday < today:
+            birthday = _birthday_on_year_safe(birth_date.month, birth_date.day, today.year + 1)
+        days_left = (birthday - today).days
+        if days_left > 60:
+            continue
+        out.append(
+            AnalyticsBirthdayItem(
+                user_id=user.id,
+                name=_user_display_name(user),
+                date=birthday,
+                days_left=days_left,
+            )
+        )
+    out.sort(key=lambda r: r.days_left)
+    return out
+
+
+def _birthday_on_year_safe(month: int, day: int, year: int) -> dt.date:
+    try:
+        return dt.date(year, month, day)
+    except ValueError:
+        return dt.date(year, 2, 28)
+
+
 def _weekly_trend(
     session: Session,
     end_date: dt.date,
@@ -286,12 +510,19 @@ def _weekly_trend(
     return points
 
 
-def _telegram_stats(session: Session, start: dt.date, end: dt.date) -> AnalyticsTelegramStats:
+def _telegram_stats(
+    session: Session,
+    start: dt.date,
+    end: dt.date,
+    subject_filter: Optional[str],
+) -> AnalyticsTelegramStats:
     events = session.exec(
         select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
     ).all()
     post_attempted = post_sent = reminders_due = reminders_sent = 0
     for ev in events:
+        if not _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter):
+            continue
         canon = canonical_event_type(ev.type or "")
         if canon in _POST_TYPES and (ev.source or "admin") == "admin":
             post_attempted += 1
@@ -367,18 +598,20 @@ def get_analytics_dashboard(
         all_events = session.exec(
             select(Event).where(Event.date != None, Event.date >= start, Event.date <= end)  # noqa: E711
         ).all()
-        lessons = sum(
-            1
-            for ev in all_events
-            if _is_schedule_event(ev)
-            and _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter)
-        )
-        transfers = sum(
-            1
-            for ev in all_events
-            if canonical_event_type(ev.type or "") == "transfer"
-            and _subject_matches_name(_event_subject(ev) or "Без предмета", subject_filter)
-        )
+        filtered_events = _filtered_events_by_subject(all_events, subject_filter)
+        lessons = sum(1 for ev in filtered_events if _is_schedule_event(ev))
+        transfers = sum(1 for ev in filtered_events if canonical_event_type(ev.type or "") == "transfer")
+
+        event_type_counts: Dict[str, int] = defaultdict(int)
+        source_counts: Dict[str, int] = defaultdict(int)
+        lesson_type_counts: Dict[str, int] = defaultdict(int)
+        for ev in filtered_events:
+            canon = canonical_event_type(ev.type or "")
+            event_type_counts[canon] += 1
+            source_counts[getattr(ev, "source", None) or "admin"] += 1
+            lesson_type = (getattr(ev, "lesson_type", None) or "").strip()
+            if lesson_type:
+                lesson_type_counts[lesson_type] += 1
 
         student_rows: List[AnalyticsStudentRow] = []
         for u in users:
@@ -432,6 +665,16 @@ def get_analytics_dashboard(
             subjects_attendance=_subject_attendance(slots, filtered_user_ids, marks),
             subjects_homework=_subject_homework(hw_events, filtered_user_ids, completions),
             weekly_trend=weekly,
-            telegram=_telegram_stats(session, start, end),
+            telegram=_telegram_stats(session, start, end, subject_filter),
             users=[UserPublic.from_orm(u) for u in users],
+            event_type_breakdown=_breakdown(event_type_counts),
+            source_breakdown=_breakdown(source_counts),
+            lesson_type_breakdown=_breakdown(lesson_type_counts),
+            subject_workload=_subject_workload(filtered_events, slots, filtered_user_ids, marks),
+            teacher_workload=_named_workload(filtered_events, "teacher"),
+            room_workload=_named_workload(filtered_events, "room"),
+            daily_load=_daily_load(filtered_events, start, end, period_key),
+            homework_overview=_homework_overview(hw_events, filtered_user_ids, completions, today),
+            attendance_overview=_attendance_overview(att_total, absent, sick, att_rate),
+            birthdays_upcoming=_upcoming_birthdays(users, today),
         )

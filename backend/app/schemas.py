@@ -214,6 +214,59 @@ class AnalyticsTelegramStats(BaseModel):
     reminders_sent_rate: float
 
 
+class AnalyticsBreakdownItem(BaseModel):
+    label: str
+    count: int
+    percent: float
+
+
+class AnalyticsSubjectWorkloadRow(BaseModel):
+    subject: str
+    lessons: int
+    homework: int
+    exam_controls: int
+    transfers: int
+    absent: int
+    sick: int
+
+
+class AnalyticsNamedCount(BaseModel):
+    name: str
+    count: int
+
+
+class AnalyticsLoadPoint(BaseModel):
+    date: date_type
+    lessons: int
+    homework: int
+    controls: int
+    announcements: int
+
+
+class AnalyticsHomeworkOverview(BaseModel):
+    total_assignments: int
+    total_pairs: int
+    done: int
+    open: int
+    overdue: int
+    completion_rate: float
+
+
+class AnalyticsAttendanceOverview(BaseModel):
+    present: int
+    absent: int
+    sick: int
+    total: int
+    attendance_rate: float
+
+
+class AnalyticsBirthdayItem(BaseModel):
+    user_id: int
+    name: str
+    date: date_type
+    days_left: int
+
+
 class AnalyticsDashboard(BaseModel):
     period: str
     period_start: date_type
@@ -229,3 +282,13 @@ class AnalyticsDashboard(BaseModel):
     weekly_trend: List[AnalyticsWeeklyPoint]
     telegram: AnalyticsTelegramStats
     users: List[UserPublic]
+    event_type_breakdown: List[AnalyticsBreakdownItem]
+    source_breakdown: List[AnalyticsBreakdownItem]
+    lesson_type_breakdown: List[AnalyticsBreakdownItem]
+    subject_workload: List[AnalyticsSubjectWorkloadRow]
+    teacher_workload: List[AnalyticsNamedCount]
+    room_workload: List[AnalyticsNamedCount]
+    daily_load: List[AnalyticsLoadPoint]
+    homework_overview: AnalyticsHomeworkOverview
+    attendance_overview: AnalyticsAttendanceOverview
+    birthdays_upcoming: List[AnalyticsBirthdayItem]

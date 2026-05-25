@@ -46,12 +46,113 @@ function pct(n) {
   return `${Number(n).toFixed(1)}%`
 }
 
+const EVENT_LABELS = {
+  schedule: 'Пары',
+  homework: 'ДЗ',
+  exam_control: 'Контрольные/экзамены',
+  announcement: 'Объявления',
+  transfer: 'Переносы',
+  birthday: 'Дни рождения',
+}
+
+const SOURCE_LABELS = {
+  admin: 'Через отправку',
+  manual: 'Вручную в календаре',
+  birthday: 'Дни рождения',
+}
+
+const LESSON_TYPE_LABELS = {
+  lecture: 'Лекции',
+  practice: 'Практики',
+  exam: 'Экзамены',
+  control: 'Контрольные',
+}
+
+const ATTENDANCE_LABELS = {
+  present: 'Присутствие',
+  absent: 'Н',
+  sick: 'Б',
+}
+
+const HOMEWORK_STATUS_LABELS = {
+  done: 'Сдано',
+  overdue: 'Просрочено',
+  open: 'В работе',
+}
+
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6']
+
+function labelOf(value, map) {
+  return map?.[value] || value || 'Не указано'
+}
+
 function KpiCard({ label, value, hint, tone }) {
   return (
     <div className={`analytics-kpi-card${tone ? ` analytics-kpi-${tone}` : ''}`}>
       <div className="analytics-kpi-value">{value}</div>
       <div className="analytics-kpi-label">{label}</div>
       {hint ? <div className="analytics-kpi-hint">{hint}</div> : null}
+    </div>
+  )
+}
+
+function HorizontalBarChart({ items, valueKey = 'count', labelKey = 'label', labelMap, emptyText = 'Нет данных' }) {
+  const rows = (items || []).filter(item => (item[valueKey] || 0) > 0)
+  if (!rows.length) return <p className="status">{emptyText}</p>
+  const max = Math.max(...rows.map(item => item[valueKey] || 0), 1)
+  return (
+    <div className="analytics-horizontal-bars">
+      {rows.map((item, idx) => {
+        const value = item[valueKey] || 0
+        return (
+          <div className="analytics-hbar-row" key={`${item[labelKey]}-${idx}`}>
+            <div className="analytics-hbar-label">{labelOf(item[labelKey], labelMap)}</div>
+            <div className="analytics-hbar-track">
+              <div
+                className="analytics-hbar-fill"
+                style={{ width: `${Math.max(4, Math.round((value / max) * 100))}%`, background: CHART_COLORS[idx % CHART_COLORS.length] }}
+              />
+            </div>
+            <div className="analytics-hbar-value">{value}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DonutChart({ items, labelMap, emptyText = 'Нет данных' }) {
+  const rows = (items || []).filter(item => (item.count || 0) > 0)
+  const total = rows.reduce((sum, item) => sum + (item.count || 0), 0)
+  if (!total) return <p className="status">{emptyText}</p>
+
+  let cursor = 0
+  const stops = rows.map((item, idx) => {
+    const start = cursor
+    const size = ((item.count || 0) / total) * 360
+    cursor += size
+    const color = CHART_COLORS[idx % CHART_COLORS.length]
+    return `${color} ${start}deg ${cursor}deg`
+  }).join(', ')
+
+  return (
+    <div className="analytics-donut-wrap">
+      <div className="analytics-donut" style={{ background: `conic-gradient(${stops})` }}>
+        <div className="analytics-donut-center">
+          <strong>{total}</strong>
+          <span>всего</span>
+        </div>
+      </div>
+      <ul className="analytics-donut-legend">
+        {rows.map((item, idx) => (
+          <li key={`${item.label}-${idx}`}>
+            <span className="analytics-legend-dot" style={{ background: CHART_COLORS[idx % CHART_COLORS.length] }} />
+            <span>{labelOf(item.label, labelMap)}</span>
+            <strong>{item.count}</strong>
+            <span className="status">{pct(item.percent)}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -77,6 +178,35 @@ function MiniBarChart({ points, field, color, max = 100 }) {
               />
             </div>
             <div className="analytics-bar-label">{formatDdMm(ws)}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function LoadStackChart({ points }) {
+  const rows = points || []
+  if (!rows.length) return <p className="status">Нет данных по нагрузке</p>
+  const totals = rows.map(p => (p.lessons || 0) + (p.homework || 0) + (p.controls || 0) + (p.announcements || 0))
+  const max = Math.max(...totals, 1)
+  return (
+    <div className="analytics-load-chart" role="img" aria-label="Нагрузка по дням">
+      {rows.map((p, idx) => {
+        const total = totals[idx]
+        const h = Math.max(total ? Math.round((total / max) * 100) : 0, total ? 8 : 0)
+        const date = String(p.date).slice(0, 10)
+        return (
+          <div className="analytics-load-col" key={date} title={`${date}: ${total}`}>
+            <div className="analytics-load-stack" style={{ height: `${h}%` }}>
+              <span style={{ flex: p.lessons || 0, background: '#3b82f6', display: p.lessons ? undefined : 'none' }} />
+              <span style={{ flex: p.homework || 0, background: '#10b981', display: p.homework ? undefined : 'none' }} />
+              <span style={{ flex: p.controls || 0, background: '#f59e0b', display: p.controls ? undefined : 'none' }} />
+              <span style={{ flex: p.announcements || 0, background: '#8b5cf6', display: p.announcements ? undefined : 'none' }} />
+            </div>
+            <div className="analytics-bar-label">
+              {idx % Math.ceil(rows.length / 8 || 1) === 0 ? formatDdMm(date) : ''}
+            </div>
           </div>
         )
       })}
@@ -182,6 +312,34 @@ export default function AnalyticsAdmin({ currentSemester }) {
   const subjHw = data?.subjects_homework || []
   const trend = data?.weekly_trend || []
   const tg = data?.telegram
+  const eventTypeBreakdown = data?.event_type_breakdown || []
+  const sourceBreakdown = data?.source_breakdown || []
+  const lessonTypeBreakdown = data?.lesson_type_breakdown || []
+  const subjectWorkload = data?.subject_workload || []
+  const teacherWorkload = data?.teacher_workload || []
+  const roomWorkload = data?.room_workload || []
+  const dailyLoad = data?.daily_load || []
+  const hwOverview = data?.homework_overview
+  const attOverview = data?.attendance_overview
+  const birthdays = data?.birthdays_upcoming || []
+  const attendanceBreakdown = attOverview
+    ? [
+        { label: 'present', count: attOverview.present, percent: attOverview.total ? (attOverview.present / attOverview.total) * 100 : 0 },
+        { label: 'absent', count: attOverview.absent, percent: attOverview.total ? (attOverview.absent / attOverview.total) * 100 : 0 },
+        { label: 'sick', count: attOverview.sick, percent: attOverview.total ? (attOverview.sick / attOverview.total) * 100 : 0 },
+      ]
+    : []
+  const homeworkBreakdown = hwOverview
+    ? [
+        { label: 'done', count: hwOverview.done, percent: hwOverview.total_pairs ? (hwOverview.done / hwOverview.total_pairs) * 100 : 0 },
+        { label: 'overdue', count: hwOverview.overdue, percent: hwOverview.total_pairs ? (hwOverview.overdue / hwOverview.total_pairs) * 100 : 0 },
+        {
+          label: 'open',
+          count: Math.max((hwOverview.open || 0) - (hwOverview.overdue || 0), 0),
+          percent: hwOverview.total_pairs ? (Math.max((hwOverview.open || 0) - (hwOverview.overdue || 0), 0) / hwOverview.total_pairs) * 100 : 0,
+        },
+      ]
+    : []
 
   return (
     <div className="card analytics-card">
@@ -359,6 +517,56 @@ export default function AnalyticsAdmin({ currentSemester }) {
           </div>
 
           <section className="analytics-section">
+            <h3>Графики по всем данным</h3>
+            <div className="analytics-chart-grid">
+              <div className="analytics-chart-block">
+                <h4>Типы событий</h4>
+                <DonutChart items={eventTypeBreakdown} labelMap={EVENT_LABELS} />
+              </div>
+              <div className="analytics-chart-block">
+                <h4>Посещаемость</h4>
+                <DonutChart items={attendanceBreakdown} labelMap={ATTENDANCE_LABELS} emptyText="Нет пар за период" />
+              </div>
+              <div className="analytics-chart-block">
+                <h4>Статус домашних заданий</h4>
+                <DonutChart items={homeworkBreakdown} labelMap={HOMEWORK_STATUS_LABELS} emptyText="Нет ДЗ за период" />
+              </div>
+              <div className="analytics-chart-block analytics-chart-wide">
+                <h4>Нагрузка по дням / месяцам</h4>
+                <LoadStackChart points={dailyLoad} />
+                <div className="analytics-load-legend">
+                  <span><i style={{ background: '#3b82f6' }} /> пары</span>
+                  <span><i style={{ background: '#10b981' }} /> ДЗ</span>
+                  <span><i style={{ background: '#f59e0b' }} /> контроль</span>
+                  <span><i style={{ background: '#8b5cf6' }} /> объявления</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="analytics-section">
+            <h3>Распределения</h3>
+            <div className="analytics-chart-grid">
+              <div className="analytics-chart-block">
+                <h4>Источники событий</h4>
+                <DonutChart items={sourceBreakdown} labelMap={SOURCE_LABELS} />
+              </div>
+              <div className="analytics-chart-block">
+                <h4>Типы занятий</h4>
+                <HorizontalBarChart items={lessonTypeBreakdown} labelMap={LESSON_TYPE_LABELS} emptyText="Типы занятий не указаны" />
+              </div>
+              <div className="analytics-chart-block">
+                <h4>Преподаватели по нагрузке</h4>
+                <HorizontalBarChart items={teacherWorkload} labelKey="name" emptyText="Преподаватели не указаны" />
+              </div>
+              <div className="analytics-chart-block">
+                <h4>Аудитории по нагрузке</h4>
+                <HorizontalBarChart items={roomWorkload} labelKey="name" emptyText="Аудитории не указаны" />
+              </div>
+            </div>
+          </section>
+
+          <section className="analytics-section">
             <h3>Динамика за 8 недель</h3>
             <div className="analytics-charts-row">
               <div className="analytics-chart-block">
@@ -417,6 +625,42 @@ export default function AnalyticsAdmin({ currentSemester }) {
             )}
           </section>
 
+          <section className="analytics-section">
+            <h3>Предметы подробно</h3>
+            {subjectWorkload.length === 0 ? (
+              <p className="status">Нет предметных данных за период.</p>
+            ) : (
+              <div className="analytics-table-wrap">
+                <table className="analytics-table">
+                  <thead>
+                    <tr>
+                      <th>Предмет</th>
+                      <th>Пары</th>
+                      <th>ДЗ</th>
+                      <th>Контроль</th>
+                      <th>Переносы</th>
+                      <th>Н</th>
+                      <th>Б</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subjectWorkload.map(row => (
+                      <tr key={row.subject}>
+                        <th scope="row">{row.subject}</th>
+                        <td>{row.lessons}</td>
+                        <td>{row.homework}</td>
+                        <td>{row.exam_controls}</td>
+                        <td>{row.transfers}</td>
+                        <td>{row.absent}</td>
+                        <td>{row.sick}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
           <div className="analytics-two-cols">
             <section className="analytics-section">
               <h3>Топ пропусков по предметам</h3>
@@ -459,6 +703,23 @@ export default function AnalyticsAdmin({ currentSemester }) {
               )}
             </section>
           </div>
+
+          {birthdays.length > 0 ? (
+            <section className="analytics-section analytics-birthday-block">
+              <h3>Ближайшие дни рождения</h3>
+              <div className="analytics-birthday-list">
+                {birthdays.map(item => (
+                  <div className="analytics-birthday-item" key={item.user_id}>
+                    <strong>{item.name}</strong>
+                    <span>{formatDdMm(item.date)}</span>
+                    <span className="status">
+                      {item.days_left === 0 ? 'сегодня' : `через ${item.days_left} дн.`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="analytics-section analytics-telegram-block">
             <h3>Telegram</h3>
