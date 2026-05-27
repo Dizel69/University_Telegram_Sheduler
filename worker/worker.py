@@ -127,6 +127,26 @@ def check_and_send():
                     "thread_id": ev.get("thread_id"),
                     "text": text
                 }
+                photos = ev.get("photo_urls") or []
+                if photos:
+                    payload["photos"] = photos
+                attachments = ev.get("attachments") or []
+                doc_urls = []
+                photo_urls = []
+                for item in attachments:
+                    if not isinstance(item, dict):
+                        continue
+                    url = str(item.get("url") or "").strip()
+                    if not url:
+                        continue
+                    if str(item.get("kind") or "").lower() == "photo":
+                        photo_urls.append(url)
+                    else:
+                        doc_urls.append(url)
+                if photo_urls:
+                    payload["photos"] = list(dict.fromkeys((payload.get("photos") or []) + photo_urls))
+                if doc_urls:
+                    payload["documents"] = list(dict.fromkeys(doc_urls))
                 try:
                     resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
                     resp.raise_for_status()

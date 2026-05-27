@@ -97,6 +97,8 @@ def test_check_and_send_sends_reminder_and_marks_sent(monkeypatch):
             "date": "2026-05-20",
             "room": "101",
             "teacher": "Teacher",
+            "photo_urls": ["https://example.com/1.jpg"],
+            "attachments": [{"url": "https://example.com/book.pdf", "kind": "document"}],
             "chat_id": 123,
             "thread_id": 456,
         }
@@ -109,6 +111,8 @@ def test_check_and_send_sends_reminder_and_marks_sent(monkeypatch):
     assert client.post_calls[0]["url"] == "http://bot-service.test/send"
     assert client.post_calls[0]["json"]["chat_id"] == 123
     assert client.post_calls[0]["json"]["thread_id"] == 456
+    assert client.post_calls[0]["json"]["photos"] == ["https://example.com/1.jpg"]
+    assert client.post_calls[0]["json"]["documents"] == ["https://example.com/book.pdf"]
     assert "Task" in client.post_calls[0]["json"]["text"]
     assert client.post_calls[1] == {
         "url": "http://backend.test/events/10/mark_reminder_sent",

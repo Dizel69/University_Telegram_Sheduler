@@ -116,6 +116,8 @@ class SendRequest(BaseModel):
     chat_id: int
     thread_id: int | None = None
     text: str
+    photos: list[str] | None = None
+    documents: list[str] | None = None
 
 
 class CreateTopicRequest(BaseModel):
@@ -129,11 +131,45 @@ async def send_message(req: SendRequest):
     """Отправляет сообщение в Telegram и возвращает ID сообщения."""
     try:
         logger.info("POST /send payload: %s", req.dict())
-        payload: dict[str, object] = {"chat_id": req.chat_id, "text": req.text}
-        if req.thread_id is not None:
-            payload["message_thread_id"] = req.thread_id
+        photos = [str(p).strip() for p in (req.photos or []) if str(p).strip()]
+        documents = [str(p).strip() for p in (req.documents or []) if str(p).strip()]
+        if len(photos) > 10:
+            raise HTTPException(status_code=400, detail="Telegram supports up to 10 photos in media group")
 
-        body = await _telegram_call("sendMessage", payload)
+        body: dict = {"ok": True, "result": {}}
+        if photos:
+            if len(photos) == 1:
+                payload: dict[str, object] = {"chat_id": req.chat_id, "photo": photos[0], "caption": req.text}
+                if req.thread_id is not None:
+                    payload["message_thread_id"] = req.thread_id
+                body = await _telegram_call("sendPhoto", payload)
+            else:
+                media: list[dict[str, str]] = []
+                for idx, photo in enumerate(photos):
+                    item: dict[str, str] = {"type": "photo", "media": photo}
+                    if idx == 0 and req.text:
+                        item["caption"] = req.text
+                    media.append(item)
+                payload = {"chat_id": req.chat_id, "media": media}
+                if req.thread_id is not None:
+                    payload["message_thread_id"] = req.thread_id
+                body = await _telegram_call("sendMediaGroup", payload)
+        elif not documents:
+            payload = {"chat_id": req.chat_id, "text": req.text}
+            if req.thread_id is not None:
+                payload["message_thread_id"] = req.thread_id
+            body = await _telegram_call("sendMessage", payload)
+
+        if documents:
+            for idx, document in enumerate(documents):
+                payload_doc: dict[str, object] = {"chat_id": req.chat_id, "document": document}
+                if req.thread_id is not None:
+                    payload_doc["message_thread_id"] = req.thread_id
+                if not photos and idx == 0 and req.text:
+                    payload_doc["caption"] = req.text
+                doc_body = await _telegram_call("sendDocument", payload_doc)
+                if idx == 0 and not photos:
+                    body = doc_body
 
         if not body.get("ok"):
             logger.warning("Telegram API error payload: %s", body)
@@ -142,8 +178,12 @@ async def send_message(req: SendRequest):
                 detail=f"Telegram API error: {body}",
             )
 
-        msg = body.get("result") or {}
-        message_id = msg.get("message_id")
+        result_obj = body.get("result") or {}
+        if isinstance(result_obj, list):
+            first = result_obj[0] if result_obj else {}
+            message_id = first.get("message_id")
+        else:
+            message_id = result_obj.get("message_id")
         logger.info("Telegram send OK: message_id=%s chat_id=%s", message_id, req.chat_id)
         return {"ok": True, "message_id": message_id}
     except HTTPException:

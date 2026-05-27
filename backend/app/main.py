@@ -1,10 +1,14 @@
 import os
 import time as _time
-from fastapi import FastAPI, HTTPException, Depends
+import uuid
+import mimetypes
+from pathlib import Path as _Path
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+from fastapi.staticfiles import StaticFiles
 from app.database import init_db
 from app.schemas import EventCreate, EventPublic
 from app.models import Event, User
@@ -28,8 +32,10 @@ BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 HOST = os.getenv("HOST")
 # FRONTEND_URL может быть задан явно; если нет и HOST установлен, собираем URL из HOST:PORT
 FRONTEND_URL = os.getenv("FRONTEND_URL") or (f"http://{HOST}:3000" if HOST else "http://127.0.0.1:3000")
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL") or (f"http://{HOST}:8000" if HOST else "http://127.0.0.1:8000")
 DEFAULT_CHAT_ID = os.getenv("DEFAULT_CHAT_ID", None)
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+UPLOADS_DIR = os.getenv("UPLOADS_DIR", "./uploads")
 
 # Опциональные переопределения чатов по типам событий
 # (установи в .env если хочешь маршрутизировать сообщения в разные чаты)
@@ -51,6 +57,8 @@ TYPE_HASHTAG = {
 }
 
 app = FastAPI(title="Планировщик университета - Бэкенд")
+_Path(UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 app.include_router(accounts_router)
 app.include_router(attendance_router)
@@ -236,6 +244,69 @@ def _build_telegram_message_text(ev) -> str:
     return "\n".join([p for p in parts if p is not None and p != ""])
 
 
+def _clean_photo_urls(value) -> list[str]:
+    if not value:
+        return []
+    out = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            out.append(text)
+    return out
+
+
+def _clean_attachments(value) -> list[dict]:
+    if not value:
+        return []
+    out = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url:
+            continue
+        kind = str(item.get("kind") or "document").strip().lower()
+        if kind not in {"photo", "document"}:
+            kind = "document"
+        name = str(item.get("name") or "").strip()
+        mime = str(item.get("mime") or "").strip()
+        out.append({"url": url, "kind": kind, "name": name or None, "mime": mime or None})
+    return out
+
+
+def _media_payload_for_bot(ev) -> tuple[list[str], list[str]]:
+    photos = _clean_photo_urls(getattr(ev, "photo_urls", None))
+    attachments = _clean_attachments(getattr(ev, "attachments", None))
+    for row in attachments:
+        if row["kind"] == "photo":
+            photos.append(row["url"])
+    documents = [row["url"] for row in attachments if row["kind"] != "photo"]
+    # убираем дубликаты, сохраняя порядок
+    photos = list(dict.fromkeys(photos))
+    documents = list(dict.fromkeys(documents))
+    return photos, documents
+
+
+@app.post("/files/upload")
+async def upload_file(file: UploadFile = File(...), admin_ok: bool = Depends(require_admin)):
+    safe_name = _Path(file.filename or "file.bin").name
+    suffix = _Path(safe_name).suffix
+    stored_name = f"{uuid.uuid4().hex}{suffix}"
+    target = _Path(UPLOADS_DIR) / stored_name
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="empty file")
+    target.write_bytes(content)
+    mime = file.content_type or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    kind = "photo" if str(mime).lower().startswith("image/") else "document"
+    return {
+        "url": f"{BACKEND_PUBLIC_URL}/uploads/{stored_name}",
+        "kind": kind,
+        "name": safe_name,
+        "mime": mime,
+    }
+
+
 @app.get('/admin/validate')
 def admin_validate(admin_ok: bool = Depends(require_admin_token_header)):
     """Лёгкий эндпоинт для проверки админ-токена при входе с фронтенда."""
@@ -292,11 +363,16 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
     target_thread = _resolve_thread_id(created)
 
     # Отправляем на bot-service — логируем исходящий payload и ответ
+    photos, documents = _media_payload_for_bot(created)
     payload = {
         "chat_id": target_chat,
         "thread_id": target_thread,
-        "text": text
+        "text": text,
     }
+    if photos:
+        payload["photos"] = photos
+    if documents:
+        payload["documents"] = documents
     print("DEBUG: исходящий запрос к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
@@ -373,6 +449,8 @@ def public_events():
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
             'semester': normalize_semester_label(getattr(ev, 'semester', None)),
+            'photo_urls': _clean_photo_urls(getattr(ev, 'photo_urls', None)),
+            'attachments': _clean_attachments(getattr(ev, 'attachments', None)),
             'chat_id': ev.chat_id,
             'topic_thread_id': ev.topic_thread_id,
             'sent_message_id': getattr(ev, 'sent_message_id', None),
@@ -590,6 +668,8 @@ def events_due_reminders():
             "room": getattr(ev, 'room', None),
             "teacher": getattr(ev, 'teacher', None),
             "lesson_type": getattr(ev, "lesson_type", None),
+            "photo_urls": _clean_photo_urls(getattr(ev, "photo_urls", None)),
+            "attachments": _clean_attachments(getattr(ev, "attachments", None)),
             # return resolved chat/thread so worker can post into correct topic
             "chat_id": _resolve_chat_id(ev),
             "thread_id": _resolve_thread_id(ev)
@@ -634,6 +714,8 @@ def calendar_view(start: str | None = None, end: str | None = None, type: str | 
             'series_id': getattr(ev, 'series_id', None),
             'lesson_type': getattr(ev, 'lesson_type', None),
             'semester': normalize_semester_label(getattr(ev, 'semester', None)),
+            'photo_urls': _clean_photo_urls(getattr(ev, 'photo_urls', None)),
+            'attachments': _clean_attachments(getattr(ev, 'attachments', None)),
             'chat_id': ev.chat_id,
             'thread_id': ev.topic_thread_id,
             'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
@@ -711,6 +793,8 @@ class EventUpdate(BaseModel):
     lesson_type: Optional[str] = None  # exam / control для exam_control; lecture / practice для schedule
     reminder_offset_hours: Optional[int] = None
     semester: Optional[str] = None  # для homework
+    photo_urls: Optional[List[str]] = None
+    attachments: Optional[List[dict]] = None
 
     @validator('semester', pre=True)
     def _normalize_semester(cls, v):
@@ -764,7 +848,12 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
 
     # Отправляем в bot-service
     # Отправляем в bot-service — debug outgoing payload and response
+    photos, documents = _media_payload_for_bot(ev)
     payload = {"chat_id": chat_id, "thread_id": thread_id, "text": text}
+    if photos:
+        payload["photos"] = photos
+    if documents:
+        payload["documents"] = documents
     print("DEBUG: send_now исходящий к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:

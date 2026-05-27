@@ -128,6 +128,18 @@ def test_birthdays_today_returns_full_name_and_age(backend_client, backend_engin
     assert data["birthdays"][0]["age"] == 20
 
 
+def test_upload_file_returns_public_url(backend_client):
+    response = backend_client.post(
+        "/files/upload",
+        headers=ADMIN_HEADERS,
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["kind"] == "document"
+    assert data["url"].startswith("http://127.0.0.1:8000/uploads/")
+
+
 def test_auth_me_and_homework_completion_flow(backend_client, backend_engine):
     token = _login_admin(backend_client)
     auth_headers = {"Authorization": f"Bearer {token}"}

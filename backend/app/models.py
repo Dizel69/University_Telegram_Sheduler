@@ -2,7 +2,7 @@ from typing import Optional
 import datetime as dt
 
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, BigInteger, UniqueConstraint
+from sqlalchemy import Column, BigInteger, UniqueConstraint, JSON
 
 
 class Event(SQLModel, table=True):
@@ -27,6 +27,8 @@ class Event(SQLModel, table=True):
     lesson_type: Optional[str] = Field(default=None)
     # Семестр (произвольная метка, как в настройках «Текущий семестр») — для домашних заданий
     semester: Optional[str] = Field(default=None)
+    photo_urls: Optional[list[str]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    attachments: Optional[list[dict]] = Field(default=None, sa_column=Column(JSON, nullable=True))
 
     chat_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     topic_thread_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))

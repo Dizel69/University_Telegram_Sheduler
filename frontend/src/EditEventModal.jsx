@@ -26,6 +26,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
   )
   const [applySeries, setApplySeries] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [photoUrlsText, setPhotoUrlsText] = useState((ev.photo_urls || []).join('\n'))
 
   async function doSave() {
     setSaving(true)
@@ -50,6 +51,11 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
       if (type === 'homework' || type === 'exam_control') {
         payload.reminder_offset_hours = Number.isFinite(Number(reminderOffset)) ? Number(reminderOffset) : 24
       }
+      const photoUrls = photoUrlsText
+        .split('\n')
+        .map(v => v.trim())
+        .filter(Boolean)
+      payload.photo_urls = photoUrls.length ? photoUrls : null
       if (type === 'homework') {
         payload.semester = semester.trim() ? semester.trim() : null
       }
@@ -168,6 +174,12 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
 
           <label className="label">Подробности</label>
           <textarea value={body} onChange={e => setBody(e.target.value)} />
+          <label className="label">Фото (ссылки, по одной в строке)</label>
+          <textarea
+            value={photoUrlsText}
+            onChange={e => setPhotoUrlsText(e.target.value)}
+            placeholder={"https://.../photo1.jpg\nhttps://.../photo2.jpg"}
+          />
 
           <div className="actions-wrap" style={{ marginTop: 8, alignItems: 'center' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>

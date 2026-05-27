@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 
@@ -19,6 +19,10 @@ export default function EventForm({ onCreated }) {
   const [saveOnly, setSaveOnly] = useState(false)
   const [lessonType, setLessonType] = useState('lecture')
   const [examKind, setExamKind] = useState('control')
+  const [photoUrlsText, setPhotoUrlsText] = useState('')
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
 
   function homeworkSemesterFromFormDate() {
     const d = (date || '').trim()
@@ -48,6 +52,13 @@ export default function EventForm({ onCreated }) {
     }
 
     try {
+      const photoUrls = photoUrlsText
+        .split('\n')
+        .map(v => v.trim())
+        .filter(Boolean)
+      const uploadPhotos = attachments.filter(a => a.kind === 'photo').map(a => a.url)
+      const uploadFiles = attachments.filter(a => a.kind !== 'photo')
+
       // Handle repeat series
       if (repeat === 'none') {
         const payload = {
@@ -68,6 +79,8 @@ export default function EventForm({ onCreated }) {
         if (teacher) payload.teacher = teacher
         if (type === 'schedule') payload.lesson_type = lessonType
         if (type === 'exam_control') payload.lesson_type = examKind
+        if (photoUrls.length || uploadPhotos.length) payload.photo_urls = [...photoUrls, ...uploadPhotos]
+        if (uploadFiles.length) payload.attachments = uploadFiles
 
         let res
         if (saveOnly) {
@@ -91,6 +104,8 @@ export default function EventForm({ onCreated }) {
         setReminder(24)
         setLessonType('lecture')
         setExamKind('control')
+        setPhotoUrlsText('')
+        setAttachments([])
         // Для schedule не переходить на вкладку События
         if (onCreated && type !== 'schedule') onCreated(res.data)
         return
@@ -133,6 +148,8 @@ export default function EventForm({ onCreated }) {
         if (type === 'homework') {
           payload.semester = getSemesterForDate(d) || null
         }
+        if (photoUrls.length || uploadPhotos.length) payload.photo_urls = [...photoUrls, ...uploadPhotos]
+        if (uploadFiles.length) payload.attachments = uploadFiles
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
         created.push(res.data)
@@ -151,6 +168,8 @@ export default function EventForm({ onCreated }) {
       setReminder(24)
       setLessonType('lecture')
       setExamKind('control')
+      setPhotoUrlsText('')
+      setAttachments([])
       // Для schedule не переходить на вкладку События
       if (onCreated && created.length && type !== 'schedule') onCreated(created[0])
 
@@ -159,6 +178,32 @@ export default function EventForm({ onCreated }) {
       const serverData = err.response?.data
       const msg = serverData?.detail ?? serverData ?? err.message
       setStatus('Ошибка: ' + (typeof msg === 'object' ? JSON.stringify(msg) : msg))
+    }
+  }
+
+  async function uploadSelectedFiles(e) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setUploading(true)
+    try {
+      const uploaded = []
+      for (const f of files) {
+        const formData = new FormData()
+        formData.append('file', f)
+        const res = await axios.post('/files/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        uploaded.push(res.data)
+      }
+      setAttachments(prev => [...prev, ...uploaded])
+      setStatus(`Загружено файлов: ${uploaded.length}`)
+    } catch (err) {
+      const serverData = err.response?.data
+      const msg = serverData?.detail ?? serverData ?? err.message
+      setStatus('Ошибка загрузки: ' + (typeof msg === 'object' ? JSON.stringify(msg) : msg))
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -338,12 +383,53 @@ export default function EventForm({ onCreated }) {
 
           <label className="label">Сообщение</label>
           <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Текст сообщения — можно использовать #хэштеги" />
+          <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              title="Прикрепить файл"
+            >
+              📎 {uploading ? 'Загрузка...' : 'Прикрепить файл'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={uploadSelectedFiles}
+              style={{display:'none'}}
+            />
+            {!!attachments.length && <span style={{fontSize:12, opacity:0.8}}>Вложений: {attachments.length}</span>}
+          </div>
+          {!!attachments.length && (
+            <div style={{marginTop:8, display:'grid', gap:6}}>
+              {attachments.map((a, idx) => (
+                <div key={`${a.url}-${idx}`} style={{display:'flex', justifyContent:'space-between', gap:8}}>
+                  <span style={{fontSize:13}}>{a.kind === 'photo' ? '🖼️' : '📄'} {a.name || a.url}</span>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="label">Фото (ссылки, по одной в строке)</label>
+          <textarea
+            value={photoUrlsText}
+            onChange={e => setPhotoUrlsText(e.target.value)}
+            placeholder={"https://.../photo1.jpg\nhttps://.../photo2.jpg"}
+          />
         </>
       )}
 
       <div className="form-actions">
         <button className="btn btn-primary" type="submit">Отправить сейчас</button>
-        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setStatus('') }}>Сброс</button>
+        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setPhotoUrlsText(''); setAttachments([]); setStatus('') }}>Сброс</button>
         <div className="status">{status}</div>
       </div>
     </form>

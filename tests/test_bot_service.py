@@ -29,6 +29,71 @@ def test_send_message_maps_thread_id_and_message_id(monkeypatch):
     assert response.json() == {"ok": True, "message_id": 99}
 
 
+def test_send_message_with_single_photo_uses_send_photo(monkeypatch):
+    async def fake_telegram_call(method, payload):
+        assert method == "sendPhoto"
+        assert payload["chat_id"] == 123
+        assert payload["photo"] == "https://example.com/a.jpg"
+        assert payload["caption"] == "hello"
+        return {"ok": True, "result": {"message_id": 101}}
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post(
+        "/send",
+        json={"chat_id": 123, "text": "hello", "photos": ["https://example.com/a.jpg"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "message_id": 101}
+
+
+def test_send_message_with_multiple_photos_uses_media_group(monkeypatch):
+    async def fake_telegram_call(method, payload):
+        assert method == "sendMediaGroup"
+        assert payload["chat_id"] == 123
+        assert len(payload["media"]) == 2
+        assert payload["media"][0]["caption"] == "hello"
+        return {"ok": True, "result": [{"message_id": 201}, {"message_id": 202}]}
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post(
+        "/send",
+        json={
+            "chat_id": 123,
+            "text": "hello",
+            "photos": ["https://example.com/a.jpg", "https://example.com/b.jpg"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "message_id": 201}
+
+
+def test_send_message_with_document_uses_send_document(monkeypatch):
+    calls = []
+
+    async def fake_telegram_call(method, payload):
+        calls.append((method, payload))
+        return {"ok": True, "result": {"message_id": 303}}
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post(
+        "/send",
+        json={"chat_id": 123, "text": "book", "documents": ["https://example.com/book.pdf"]},
+    )
+
+    assert response.status_code == 200
+    assert calls[0][0] == "sendDocument"
+    assert calls[0][1]["document"] == "https://example.com/book.pdf"
+    assert calls[0][1]["caption"] == "book"
+
+
 def test_send_message_returns_502_for_telegram_error(monkeypatch):
     async def fake_telegram_call(method, payload):
         return {"ok": False, "description": "chat not found"}

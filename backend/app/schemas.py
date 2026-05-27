@@ -19,6 +19,8 @@ class EventCreate(BaseModel):
     series_id: Optional[str] = None  # ID серии для повторяющихся событий
     lesson_type: Optional[str] = None  # Тип урока (лекция/практика)
     semester: Optional[str] = None  # Семестр (в основном для homework)
+    photo_urls: Optional[List[str]] = None
+    attachments: Optional[List[dict]] = None
     chat_id: Optional[int] = None  # ID чата Telegram
     topic_thread_id: Optional[int] = None  # ID темы/потока
     reminder_offset_hours: int = 24  # Смещение напоминания в часах
@@ -65,6 +67,8 @@ class EventPublic(BaseModel):
     series_id: Optional[str] = None
     lesson_type: Optional[str] = None
     semester: Optional[str] = None
+    photo_urls: Optional[List[str]] = None
+    attachments: Optional[List[dict]] = None
     chat_id: Optional[int] = None
     topic_thread_id: Optional[int] = None
     sent_message_id: Optional[int] = None
