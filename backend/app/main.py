@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from app.database import init_db
 from app.schemas import EventCreate, EventPublic
-from app.models import Event
+from app.models import Event, User
 from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
 from app.type_utils import canonical_event_type
 from app.semester_utils import normalize_semester_label
@@ -41,6 +41,8 @@ CHAT_ID_ANNOUNCEMENTS = os.getenv("CHAT_ID_ANNOUNCEMENTS")
 THREAD_ID_SCHEDULE = os.getenv("THREAD_ID_SCHEDULE")
 THREAD_ID_HOMEWORK = os.getenv("THREAD_ID_HOMEWORK")
 THREAD_ID_ANNOUNCEMENTS = os.getenv("THREAD_ID_ANNOUNCEMENTS")
+THREAD_ID_GENERAL = os.getenv("THREAD_ID_GENERAL")
+CHAT_ID_GENERAL = os.getenv("CHAT_ID_GENERAL")
 
 TYPE_HASHTAG = {
     'schedule': '#Расписание',
@@ -148,6 +150,28 @@ def _resolve_thread_id(ev_obj):
     except Exception:
         pass
     return None
+
+
+def _resolve_birthday_target():
+    chat_id = None
+    thread_id = None
+    try:
+        if CHAT_ID_GENERAL:
+            chat_id = int(CHAT_ID_GENERAL)
+        elif CHAT_ID_ANNOUNCEMENTS:
+            chat_id = int(CHAT_ID_ANNOUNCEMENTS)
+        elif DEFAULT_CHAT_ID:
+            chat_id = int(DEFAULT_CHAT_ID)
+    except Exception:
+        chat_id = None
+    try:
+        if THREAD_ID_GENERAL:
+            thread_id = int(THREAD_ID_GENERAL)
+        elif THREAD_ID_ANNOUNCEMENTS:
+            thread_id = int(THREAD_ID_ANNOUNCEMENTS)
+    except Exception:
+        thread_id = None
+    return chat_id, thread_id
 
 
 def _build_telegram_message_text(ev) -> str:
@@ -429,6 +453,19 @@ def _birthday_on_year(month: int, day: int, year: int) -> date | None:
         return None
 
 
+def _full_name(user: User) -> str:
+    return " ".join(part for part in [user.last_name, user.first_name, user.middle_name] if part).strip()
+
+
+def _birthday_age(today: date, birth_date: date) -> int:
+    age = today.year - birth_date.year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        # Для 29 февраля, когда отмечаем 28-го в невисокосный год, возраст увеличиваем.
+        if not (birth_date.month == 2 and birth_date.day == 29 and today.month == 2 and today.day == 28):
+            age -= 1
+    return age
+
+
 def _birthday_calendar_events(start: str | None, end: str | None) -> list[dict]:
     """
     Виртуальные события дней рождения из профилей пользователей.
@@ -485,6 +522,42 @@ def _birthday_calendar_events(start: str | None, end: str | None) -> list[dict]:
                 "source": "birthday",
             })
     return out
+
+
+@app.get("/birthdays/today")
+def birthdays_today():
+    from sqlmodel import Session, select
+    from app.database import engine
+
+    today = date.today()
+    chat_id, thread_id = _resolve_birthday_target()
+
+    out = []
+    with Session(engine) as session:
+        users = session.exec(
+            select(User)
+            .where(User.birth_date != None)
+            .order_by(User.last_name, User.first_name)
+        ).all()
+
+    for user in users:
+        birth_date = getattr(user, "birth_date", None)
+        if not birth_date:
+            continue
+        bday_this_year = _birthday_on_year(birth_date.month, birth_date.day, today.year)
+        if bday_this_year != today:
+            continue
+        out.append({
+            "user_id": user.id,
+            "full_name": _full_name(user),
+            "age": _birthday_age(today, birth_date),
+        })
+
+    return {
+        "chat_id": chat_id,
+        "thread_id": thread_id,
+        "birthdays": out,
+    }
 
 
 @app.delete("/events/{event_id}")

@@ -19,9 +19,10 @@ class FakeResponse:
 class FakeClient:
     instances = []
 
-    def __init__(self, events=None, fail_event_ids=None):
+    def __init__(self, events=None, fail_event_ids=None, birthday_payload=None):
         self.events = events or []
         self.fail_event_ids = set(fail_event_ids or [])
+        self.birthday_payload = birthday_payload or {"chat_id": None, "thread_id": None, "birthdays": []}
         self.get_calls = []
         self.post_calls = []
         FakeClient.instances.append(self)
@@ -34,6 +35,8 @@ class FakeClient:
 
     def get(self, url, timeout):
         self.get_calls.append({"url": url, "timeout": timeout})
+        if url.endswith("/birthdays/today"):
+            return FakeResponse(self.birthday_payload)
         return FakeResponse(self.events)
 
     def post(self, url, json=None, timeout=None):
@@ -45,11 +48,11 @@ class FakeClient:
         return FakeResponse({"ok": True})
 
 
-def _install_fake_client(monkeypatch, events, fail_event_ids=None):
+def _install_fake_client(monkeypatch, events, fail_event_ids=None, birthday_payload=None):
     FakeClient.instances = []
 
     def factory():
-        return FakeClient(events=events, fail_event_ids=fail_event_ids)
+        return FakeClient(events=events, fail_event_ids=fail_event_ids, birthday_payload=birthday_payload)
 
     monkeypatch.setattr(worker.httpx, "Client", factory)
 
@@ -157,3 +160,41 @@ def test_check_and_send_continues_after_one_event_fails(monkeypatch):
         "http://backend.test/events/13/mark_reminder_sent",
     ]
     assert "#Контрольная_работа" in client.post_calls[1]["json"]["text"]
+
+
+def test_check_and_send_sends_birthday_greetings_at_configured_time(monkeypatch):
+    class _FakeDateTime:
+        @classmethod
+        def utcnow(cls):
+            return cls.now()
+
+        @classmethod
+        def now(cls):
+            return _RealDateTime(2026, 5, 27, 0, 10, 0)
+
+    from datetime import datetime as _RealDateTime
+
+    _install_fake_client(
+        monkeypatch,
+        events=[],
+        birthday_payload={
+            "chat_id": 321,
+            "thread_id": 654,
+            "birthdays": [
+                {"full_name": "Иванов Иван Иванович", "age": 20},
+            ],
+        },
+    )
+    monkeypatch.setattr(worker, "datetime", _FakeDateTime)
+    monkeypatch.setattr(worker, "BIRTHDAY_GREETING_TIME", "00:10")
+    monkeypatch.setattr(worker, "_last_birthday_greeting_date", None)
+
+    worker.check_and_send()
+
+    client = FakeClient.instances[0]
+    birthday_send = client.post_calls[0]
+    assert birthday_send["url"] == "http://bot-service.test/send"
+    assert birthday_send["json"]["chat_id"] == 321
+    assert birthday_send["json"]["thread_id"] == 654
+    assert "Сегодня День рождения у Иванов Иван Иванович." in birthday_send["json"]["text"]
+    assert "Исполняется 20 лет." in birthday_send["json"]["text"]

@@ -102,6 +102,32 @@ def test_due_reminders_and_mark_sent(backend_client, backend_engine):
     assert backend_client.post("/events/9999/mark_reminder_sent").status_code == 404
 
 
+def test_birthdays_today_returns_full_name_and_age(backend_client, backend_engine):
+    today = date.today()
+    with Session(backend_engine) as session:
+        session.add(
+            User(
+                last_name="Иванов",
+                first_name="Иван",
+                middle_name="Иванович",
+                birth_date=date(today.year - 20, today.month, today.day),
+                login="birthday-user",
+                password_hash="hash",
+                is_admin=False,
+            )
+        )
+        session.commit()
+
+    response = backend_client.get("/birthdays/today")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["chat_id"] == 100500
+    assert data["thread_id"] is None
+    assert len(data["birthdays"]) == 1
+    assert data["birthdays"][0]["full_name"] == "Иванов Иван Иванович"
+    assert data["birthdays"][0]["age"] == 20
+
+
 def test_auth_me_and_homework_completion_flow(backend_client, backend_engine):
     token = _login_admin(backend_client)
     auth_headers = {"Authorization": f"Bearer {token}"}
