@@ -177,6 +177,7 @@ def test_create_and_send_uses_bot_service_and_stores_message_id(backend_client, 
             "subject": "General",
             "body": "Important update",
             "date": "2026-05-21",
+            "time": "10:15",
             "chat_id": 222,
             "topic_thread_id": 333,
         },
@@ -190,7 +191,7 @@ def test_create_and_send_uses_bot_service_and_stores_message_id(backend_client, 
             "json": {
                 "chat_id": 222,
                 "thread_id": 333,
-                "text": "#Объявление\n#General\nImportant update\nСсылка в календаре: http://127.0.0.1:3000/calendar/m15/event/1",
+                "text": "#Объявление\n#General\nImportant update\nВремя: 10:15\nСсылка в календаре: http://127.0.0.1:3000/calendar/m15/event/1",
             },
             "timeout": 10.0,
         }
@@ -198,6 +199,55 @@ def test_create_and_send_uses_bot_service_and_stores_message_id(backend_client, 
 
     with Session(backend_engine) as session:
         assert session.get(Event, event_id).sent_message_id == 777
+
+
+def test_create_and_send_exam_control_includes_time(backend_client, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = backend_client.post(
+        "/events/send",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "exam_control",
+            "lesson_type": "exam",
+            "subject": "Math",
+            "body": "Bring ID",
+            "date": "2026-05-21",
+            "time": "12:40",
+            "chat_id": 222,
+        },
+    )
+
+    assert response.status_code == 200
+    sent_text = _FakeAsyncClient.calls[0]["json"]["text"]
+    assert "Время: 12:40" in sent_text
+
+
+def test_create_and_send_transfer_includes_time(backend_client, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = backend_client.post(
+        "/events/send",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "transfer",
+            "subject": "General",
+            "body": "Перенос пары на другое время",
+            "date": "2026-05-21",
+            "time": "08:05",
+            "chat_id": 222,
+        },
+    )
+
+    assert response.status_code == 200
+    sent_text = _FakeAsyncClient.calls[0]["json"]["text"]
+    assert "Время: 08:05" in sent_text
 
 
 def test_owner_user_management(backend_client):

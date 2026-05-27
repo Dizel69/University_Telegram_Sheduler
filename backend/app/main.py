@@ -158,6 +158,22 @@ def _build_telegram_message_text(ev) -> str:
     link = f"{FRONTEND_URL}/calendar/m15/event/{getattr(ev, 'id', 0)}"
     canon = canonical_event_type(getattr(ev, "type", "") or "")
 
+    def _format_event_time(value) -> str | None:
+        if value is None:
+            return None
+        if hasattr(value, "strftime"):
+            return value.strftime("%H:%M")
+        text = str(value).strip()
+        if not text:
+            return None
+        parts = text.split(":")
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+        return text
+
+    formatted_time = _format_event_time(getattr(ev, "time", None))
+    include_time = canon in {"announcement", "exam_control", "transfer"} and formatted_time is not None
+
     if canon == "exam_control":
         lines = []
         lt = getattr(ev, "lesson_type", None)
@@ -174,6 +190,8 @@ def _build_telegram_message_text(ev) -> str:
         body = (getattr(ev, "body", None) or "").strip()
         if body:
             lines.append(body)
+        if include_time:
+            lines.append(f"Время: {formatted_time}")
         lines.append("")
         lines.append(f"Ссылка в календаре: {link}")
         return "\n".join(lines)
@@ -187,6 +205,8 @@ def _build_telegram_message_text(ev) -> str:
         parts.append(f"Аудитория: {ev.room}")
     if getattr(ev, "teacher", None):
         parts.append(f"Преподаватель: {ev.teacher}")
+    if include_time:
+        parts.append(f"Время: {formatted_time}")
     parts.append("")
     parts.append(f"Ссылка в календаре: {link}")
     return "\n".join([p for p in parts if p is not None and p != ""])
