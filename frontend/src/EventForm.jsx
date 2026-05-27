@@ -209,8 +209,14 @@ export default function EventForm({ onCreated }) {
       setStatus(`Загружено файлов: ${uploaded.length}`)
     } catch (err) {
       const serverData = err.response?.data
-      const msg = serverData?.detail ?? serverData ?? err.message
-      setStatus('Ошибка загрузки: ' + (typeof msg === 'object' ? JSON.stringify(msg) : msg))
+      const detail = serverData?.detail
+      let msg
+      if (Array.isArray(detail)) msg = detail.map(x => x?.msg || JSON.stringify(x)).join('; ')
+      else msg = detail ?? serverData ?? err.message
+      const suffix = typeof msg === 'object' ? JSON.stringify(msg) : String(msg || '')
+      const code = err.response?.status ? `HTTP ${err.response.status}: ` : ''
+      setStatus(`Ошибка загрузки: ${code}${suffix || 'неизвестная ошибка'}`)
+      console.error('Upload failed', err.response?.status, serverData || err.message)
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''

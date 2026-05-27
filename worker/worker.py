@@ -133,20 +133,37 @@ def check_and_send():
                 attachments = ev.get("attachments") or []
                 doc_urls = []
                 photo_urls = []
+                local_files = []
                 for item in attachments:
                     if not isinstance(item, dict):
                         continue
                     url = str(item.get("url") or "").strip()
+                    storage_key = str(item.get("storage_key") or "").strip()
+                    kind = str(item.get("kind") or "").lower()
                     if not url:
+                        if storage_key:
+                            local_files.append({
+                                "kind": kind if kind in ("photo", "document") else "document",
+                                "path": f"/uploads/{storage_key}",
+                                "name": item.get("name"),
+                            })
                         continue
-                    if str(item.get("kind") or "").lower() == "photo":
+                    if kind == "photo":
                         photo_urls.append(url)
                     else:
                         doc_urls.append(url)
+                    if storage_key:
+                        local_files.append({
+                            "kind": kind if kind in ("photo", "document") else "document",
+                            "path": f"/uploads/{storage_key}",
+                            "name": item.get("name"),
+                        })
                 if photo_urls:
                     payload["photos"] = list(dict.fromkeys((payload.get("photos") or []) + photo_urls))
                 if doc_urls:
                     payload["documents"] = list(dict.fromkeys(doc_urls))
+                if local_files:
+                    payload["local_files"] = local_files
                 try:
                     resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
                     resp.raise_for_status()

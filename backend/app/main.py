@@ -291,21 +291,35 @@ def _clean_attachments(value) -> list[dict]:
             kind = "document"
         name = str(item.get("name") or "").strip()
         mime = str(item.get("mime") or "").strip()
-        out.append({"url": url, "kind": kind, "name": name or None, "mime": mime or None})
+        storage_key = str(item.get("storage_key") or "").strip()
+        out.append({
+            "url": url,
+            "kind": kind,
+            "name": name or None,
+            "mime": mime or None,
+            "storage_key": storage_key or None,
+        })
     return out
 
 
-def _media_payload_for_bot(ev) -> tuple[list[str], list[str]]:
+def _media_payload_for_bot(ev) -> tuple[list[str], list[str], list[dict]]:
     photos = _clean_photo_urls(getattr(ev, "photo_urls", None))
     attachments = _clean_attachments(getattr(ev, "attachments", None))
+    local_files = []
     for row in attachments:
         if row["kind"] == "photo":
             photos.append(row["url"])
+        if row.get("storage_key"):
+            local_files.append({
+                "kind": row["kind"],
+                "path": f"/uploads/{row['storage_key']}",
+                "name": row.get("name"),
+            })
     documents = [row["url"] for row in attachments if row["kind"] != "photo"]
     # убираем дубликаты, сохраняя порядок
     photos = list(dict.fromkeys(photos))
     documents = list(dict.fromkeys(documents))
-    return photos, documents
+    return photos, documents, local_files
 
 
 class FileUploadRequest(BaseModel):
@@ -316,6 +330,7 @@ class FileUploadRequest(BaseModel):
 
 @app.post("/files/upload")
 async def upload_file(payload: FileUploadRequest, admin_ok: bool = Depends(require_admin)):
+    print("DEBUG: /files/upload filename=", payload.filename, "content_type=", payload.content_type)
     safe_name = _Path(payload.filename or "file.bin").name
     suffix = _Path(safe_name).suffix
     stored_name = f"{uuid.uuid4().hex}{suffix}"
@@ -334,6 +349,7 @@ async def upload_file(payload: FileUploadRequest, admin_ok: bool = Depends(requi
         "kind": kind,
         "name": safe_name,
         "mime": mime,
+        "storage_key": stored_name,
     }
 
 
@@ -393,7 +409,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
     target_thread = _resolve_thread_id(created)
 
     # Отправляем на bot-service — логируем исходящий payload и ответ
-    photos, documents = _media_payload_for_bot(created)
+    photos, documents, local_files = _media_payload_for_bot(created)
     payload = {
         "chat_id": target_chat,
         "thread_id": target_thread,
@@ -403,6 +419,8 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
         payload["photos"] = photos
     if documents:
         payload["documents"] = documents
+    if local_files:
+        payload["local_files"] = local_files
     print("DEBUG: исходящий запрос к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
@@ -878,12 +896,14 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
 
     # Отправляем в bot-service
     # Отправляем в bot-service — debug outgoing payload and response
-    photos, documents = _media_payload_for_bot(ev)
+    photos, documents, local_files = _media_payload_for_bot(ev)
     payload = {"chat_id": chat_id, "thread_id": thread_id, "text": text}
     if photos:
         payload["photos"] = photos
     if documents:
         payload["documents"] = documents
+    if local_files:
+        payload["local_files"] = local_files
     print("DEBUG: send_now исходящий к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:

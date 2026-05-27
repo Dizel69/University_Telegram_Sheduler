@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import subprocess
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -111,6 +112,50 @@ async def _telegram_call(method: str, payload: dict) -> dict:
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
 
+async def _telegram_call_multipart(method: str, fields: dict[str, object], file_field: str, file_path: str) -> dict:
+    url = f"{API_BASE}/{method}"
+    route_variants = [
+        {"name": "ipv6-resolve", "family_flag": "-6", "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]", "connect_timeout": "4", "max_time": "12"},
+        {"name": "ipv4-resolve", "family_flag": "-4", "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}", "connect_timeout": "15", "max_time": "40"},
+        {"name": "system-dns", "family_flag": None, "resolve": None, "connect_timeout": "8", "max_time": "25"},
+    ]
+
+    last_error = "unknown error"
+    for round_idx in range(1, 4):
+        for route in route_variants:
+            cmd = [
+                "curl",
+                "-sS",
+                "--connect-timeout", route["connect_timeout"],
+                "--max-time", route["max_time"],
+                "-X", "POST", url,
+            ]
+            if route["family_flag"] is not None:
+                cmd.append(route["family_flag"])
+            if route["resolve"] is not None:
+                cmd.extend(["--resolve", route["resolve"]])
+            for k, v in fields.items():
+                if v is None:
+                    continue
+                cmd.extend(["-F", f"{k}={v}"])
+            cmd.extend(["-F", f"{file_field}=@{file_path}"])
+
+            result = await _run_curl(cmd)
+            if result.returncode != 0:
+                last_error = (
+                    f"round={round_idx} route={route['name']} rc={result.returncode} err={result.stderr.strip()}"
+                )
+                logger.warning("Telegram multipart curl failed: %s", last_error)
+                continue
+            try:
+                return json.loads(result.stdout)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
+        if round_idx < 3:
+            await asyncio.sleep(round_idx)
+    raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
+
+
 class SendRequest(BaseModel):
     """Запрос на отправку сообщения."""
     chat_id: int
@@ -118,6 +163,7 @@ class SendRequest(BaseModel):
     text: str
     photos: list[str] | None = None
     documents: list[str] | None = None
+    local_files: list[dict] | None = None
 
 
 class CreateTopicRequest(BaseModel):
@@ -133,6 +179,7 @@ async def send_message(req: SendRequest):
         logger.info("POST /send payload: %s", req.dict())
         photos = [str(p).strip() for p in (req.photos or []) if str(p).strip()]
         documents = [str(p).strip() for p in (req.documents or []) if str(p).strip()]
+        local_files = [x for x in (req.local_files or []) if isinstance(x, dict)]
         if len(photos) > 10:
             raise HTTPException(status_code=400, detail="Telegram supports up to 10 photos in media group")
 
@@ -170,6 +217,38 @@ async def send_message(req: SendRequest):
                 doc_body = await _telegram_call("sendDocument", payload_doc)
                 if idx == 0 and not photos:
                     body = doc_body
+
+        local_photo_paths = []
+        local_doc_paths = []
+        for row in local_files:
+            path = str(row.get("path") or "").strip()
+            kind = str(row.get("kind") or "document").strip().lower()
+            if not path or not Path(path).exists():
+                continue
+            if kind == "photo":
+                local_photo_paths.append(path)
+            else:
+                local_doc_paths.append(path)
+
+        for idx, path in enumerate(local_photo_paths):
+            fields: dict[str, object] = {"chat_id": req.chat_id}
+            if req.thread_id is not None:
+                fields["message_thread_id"] = req.thread_id
+            if idx == 0 and req.text:
+                fields["caption"] = req.text
+            photo_body = await _telegram_call_multipart("sendPhoto", fields, "photo", path)
+            if idx == 0 and not photos and not documents:
+                body = photo_body
+
+        for idx, path in enumerate(local_doc_paths):
+            fields = {"chat_id": req.chat_id}
+            if req.thread_id is not None:
+                fields["message_thread_id"] = req.thread_id
+            if idx == 0 and req.text and not photos and not documents and not local_photo_paths:
+                fields["caption"] = req.text
+            doc_body = await _telegram_call_multipart("sendDocument", fields, "document", path)
+            if idx == 0 and not photos and not documents and not local_photo_paths:
+                body = doc_body
 
         if not body.get("ok"):
             logger.warning("Telegram API error payload: %s", body)

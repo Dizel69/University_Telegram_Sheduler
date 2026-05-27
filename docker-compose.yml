@@ -51,6 +51,7 @@ services:
     network_mode: host
     volumes:
       - ./bot:/app
+      - ./backend/uploads:/uploads:ro
 
   # Worker для отправки напоминаний
   worker:
