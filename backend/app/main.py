@@ -2,8 +2,9 @@ import os
 import time as _time
 import uuid
 import mimetypes
+import base64
 from pathlib import Path as _Path
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Path
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -25,7 +26,7 @@ from typing import List, Optional
 import calendar as _calendar
 from datetime import datetime, date, time
 from pydantic import BaseModel, validator
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, REGISTRY, generate_latest, CONTENT_TYPE_LATEST
 
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 # IP или имя хоста для сервисов при развёртывании (пример: 185.28.85.183)
@@ -65,12 +66,32 @@ app.include_router(attendance_router)
 app.include_router(analytics_router)
 app.include_router(subject_router)
 
-HTTP_REQUESTS_TOTAL = Counter(
+def _metric_get_or_create_counter(name: str, documentation: str, labels: list[str]):
+    try:
+        return Counter(name, documentation, labels)
+    except ValueError:
+        existing = REGISTRY._names_to_collectors.get(name)  # type: ignore[attr-defined]
+        if existing is None:
+            raise
+        return existing
+
+
+def _metric_get_or_create_histogram(name: str, documentation: str, labels: list[str]):
+    try:
+        return Histogram(name, documentation, labels)
+    except ValueError:
+        existing = REGISTRY._names_to_collectors.get(name)  # type: ignore[attr-defined]
+        if existing is None:
+            raise
+        return existing
+
+
+HTTP_REQUESTS_TOTAL = _metric_get_or_create_counter(
     "http_requests_total",
     "Total number of HTTP requests",
     ["method", "path", "status_code"],
 )
-HTTP_REQUEST_DURATION_SECONDS = Histogram(
+HTTP_REQUEST_DURATION_SECONDS = _metric_get_or_create_histogram(
     "http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "path"],
@@ -287,17 +308,26 @@ def _media_payload_for_bot(ev) -> tuple[list[str], list[str]]:
     return photos, documents
 
 
+class FileUploadRequest(BaseModel):
+    filename: str
+    content_base64: str
+    content_type: Optional[str] = None
+
+
 @app.post("/files/upload")
-async def upload_file(file: UploadFile = File(...), admin_ok: bool = Depends(require_admin)):
-    safe_name = _Path(file.filename or "file.bin").name
+async def upload_file(payload: FileUploadRequest, admin_ok: bool = Depends(require_admin)):
+    safe_name = _Path(payload.filename or "file.bin").name
     suffix = _Path(safe_name).suffix
     stored_name = f"{uuid.uuid4().hex}{suffix}"
     target = _Path(UPLOADS_DIR) / stored_name
-    content = await file.read()
+    try:
+        content = base64.b64decode(payload.content_base64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid base64 file content")
     if not content:
         raise HTTPException(status_code=400, detail="empty file")
     target.write_bytes(content)
-    mime = file.content_type or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    mime = payload.content_type or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
     kind = "photo" if str(mime).lower().startswith("image/") else "document"
     return {
         "url": f"{BACKEND_PUBLIC_URL}/uploads/{stored_name}",

@@ -129,10 +129,13 @@ def test_birthdays_today_returns_full_name_and_age(backend_client, backend_engin
 
 
 def test_upload_file_returns_public_url(backend_client):
+    import base64
+
+    content = base64.b64encode(b"hello").decode("ascii")
     response = backend_client.post(
         "/files/upload",
         headers=ADMIN_HEADERS,
-        files={"file": ("notes.txt", b"hello", "text/plain")},
+        json={"filename": "notes.txt", "content_base64": content, "content_type": "text/plain"},
     )
     assert response.status_code == 200
     data = response.json()

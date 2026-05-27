@@ -188,10 +188,20 @@ export default function EventForm({ onCreated }) {
     try {
       const uploaded = []
       for (const f of files) {
-        const formData = new FormData()
-        formData.append('file', f)
-        const res = await axios.post('/files/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+        const contentBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = String(reader.result || '')
+            const commaIdx = result.indexOf(',')
+            resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result)
+          }
+          reader.onerror = () => reject(reader.error || new Error('file read failed'))
+          reader.readAsDataURL(f)
+        })
+        const res = await axios.post('/files/upload', {
+          filename: f.name,
+          content_base64: contentBase64,
+          content_type: f.type || null,
         })
         uploaded.push(res.data)
       }
