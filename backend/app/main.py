@@ -303,19 +303,23 @@ def _clean_attachments(value) -> list[dict]:
 
 
 def _media_payload_for_bot(ev) -> tuple[list[str], list[str], list[dict]]:
+    # Внешние URL-фото (введённые вручную ссылки) отправляем по URL,
+    # а загруженные через форму файлы (со storage_key) — бинарником через bot-service.
     photos = _clean_photo_urls(getattr(ev, "photo_urls", None))
     attachments = _clean_attachments(getattr(ev, "attachments", None))
+    documents = []
     local_files = []
     for row in attachments:
-        if row["kind"] == "photo":
-            photos.append(row["url"])
         if row.get("storage_key"):
             local_files.append({
                 "kind": row["kind"],
                 "path": f"/uploads/{row['storage_key']}",
                 "name": row.get("name"),
             })
-    documents = [row["url"] for row in attachments if row["kind"] != "photo"]
+        elif row["kind"] == "photo":
+            photos.append(row["url"])
+        else:
+            documents.append(row["url"])
     # убираем дубликаты, сохраняя порядок
     photos = list(dict.fromkeys(photos))
     documents = list(dict.fromkeys(documents))

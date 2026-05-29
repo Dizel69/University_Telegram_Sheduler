@@ -56,8 +56,6 @@ export default function EventForm({ onCreated }) {
         .split('\n')
         .map(v => v.trim())
         .filter(Boolean)
-      const uploadPhotos = attachments.filter(a => a.kind === 'photo').map(a => a.url)
-      const uploadFiles = attachments.filter(a => a.kind !== 'photo')
 
       // Handle repeat series
       if (repeat === 'none') {
@@ -79,8 +77,8 @@ export default function EventForm({ onCreated }) {
         if (teacher) payload.teacher = teacher
         if (type === 'schedule') payload.lesson_type = lessonType
         if (type === 'exam_control') payload.lesson_type = examKind
-        if (photoUrls.length || uploadPhotos.length) payload.photo_urls = [...photoUrls, ...uploadPhotos]
-        if (uploadFiles.length) payload.attachments = uploadFiles
+        if (photoUrls.length) payload.photo_urls = photoUrls
+        if (attachments.length) payload.attachments = attachments
 
         let res
         if (saveOnly) {
@@ -148,8 +146,8 @@ export default function EventForm({ onCreated }) {
         if (type === 'homework') {
           payload.semester = getSemesterForDate(d) || null
         }
-        if (photoUrls.length || uploadPhotos.length) payload.photo_urls = [...photoUrls, ...uploadPhotos]
-        if (uploadFiles.length) payload.attachments = uploadFiles
+        if (photoUrls.length) payload.photo_urls = photoUrls
+        if (attachments.length) payload.attachments = attachments
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
         created.push(res.data)
