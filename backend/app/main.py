@@ -446,7 +446,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
             message_id = data.get('message_id')
             if not message_id and target_thread is not None:
                 print('DEBUG: не получен message_id; повтор без thread_id')
-                payload2 = {"chat_id": target_chat, "text": text}
+                payload2 = {k: v for k, v in payload.items() if k != "thread_id"}
                 try:
                     resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=10.0)
                     try:
@@ -927,7 +927,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
             message_id = data.get('message_id')
             if not message_id and thread_id is not None:
                 print('DEBUG: send_now не получен message_id; повтор без thread_id')
-                payload2 = {"chat_id": chat_id, "text": text}
+                payload2 = {k: v for k, v in payload.items() if k != "thread_id"}
                 try:
                     resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=15.0)
                     try:

@@ -1,0 +1,101 @@
+root@dungeon-akoya17881:~/tvsu# docker compose logs backend --since 30m | grep -E "files/upload|исходящий|bot-service|local_files|event/195" | tail -50
+backend-1  | DEBUG: /files/upload filename= Вопросы-1.pdf content_type= application/pdf
+backend-1  | INFO:     172.18.0.8:51354 - "POST /files/upload HTTP/1.1" 200 OK
+backend-1  | DEBUG: /files/upload filename= Снимок экрана от 2026-05-29 16-17-47.png content_type= image/png
+backend-1  | INFO:     172.18.0.8:50406 - "POST /files/upload HTTP/1.1" 200 OK
+backend-1  | DEBUG: исходящий запрос к bot-service: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '#Объявление\n#test\ntest\nАудитория: 123\nПреподаватель: G\nВремя: 11:11\nСсылка в календаре: http://185.28.85.183:3000/calendar/m15/event/195', 'local_files': [{'kind': 'document', 'path': '/uploads/a7a6d8eca3e7400490e1346b9e6ccc40.pdf', 'name': 'Вопросы-1.pdf'}, {'kind': 'photo', 'path': '/uploads/1739244436274ec3b6a9928c4e991ace.png', 'name': 'Снимок экрана от 2026-05-29 16-17-47.png'}]}
+backend-1  | DEBUG: ответ bot-service: 502 {"detail":"Telegram API error: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}"}
+backend-1  | DEBUG: bot-service response (retry): 200 {"ok":true,"message_id":1633}
+root@dungeon-akoya17881:~/tvsu# docker compose logs bot --since 30m | tail -60
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram send OK: message_id=1633 chat_id=-1002997084266
+bot-1  | INFO:     172.18.0.5:46230 - "POST /send HTTP/1.1" 200 OK
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-23) — Показ программ по Методам Математической Лингвистики (-)\nПреподаватель: Карлов Борис Николаевич\nПоказ программ по Методам Математической Лингвистики', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:49942 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-26) — Вторая волна сдачи программ (304)\nПреподаватель: Карлов Борис Николаевич\nВторая волна сдачи программ по Методам Математической Лингвистики', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:     172.18.0.9:49942 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-30) — Переписывание контрольных работ по Методам Математической лингвистики (304)\nПреподаватель: Карлов Борис Николаевич\nОриентировочное время переписывания контрольных работ', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:49942 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-30) — test (123)\nПреподаватель: G\ntest', 'photos': ['http://185.28.85.183:8000/uploads/1739244436274ec3b6a9928c4e991ace.png'], 'documents': ['http://185.28.85.183:8000/uploads/a7a6d8eca3e7400490e1346b9e6ccc40.pdf'], 'local_files': [{'kind': 'document', 'path': '/uploads/a7a6d8eca3e7400490e1346b9e6ccc40.pdf', 'name': 'Вопросы-1.pdf'}, {'kind': 'photo', 'path': '/uploads/1739244436274ec3b6a9928c4e991ace.png', 'name': 'Снимок экрана от 2026-05-29 16-17-47.png'}]}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:49942 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-23) — Показ программ по Методам Математической Лингвистики (-)\nПреподаватель: Карлов Борис Николаевич\nПоказ программ по Методам Математической Лингвистики', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:34790 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-26) — Вторая волна сдачи программ (304)\nПреподаватель: Карлов Борис Николаевич\nВторая волна сдачи программ по Методам Математической Лингвистики', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:34790 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-30) — Переписывание контрольных работ по Методам Математической лингвистики (304)\nПреподаватель: Карлов Борис Николаевич\nОриентировочное время переписывания контрольных работ', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:34790 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-23) — Показ программ по Методам Математической Лингвистики (-)\nПреподаватель: Карлов Борис Николаевич\nПоказ программ по Методам Математической Лингвистики', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:41004 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-26) — Вторая волна сдачи программ (304)\nПреподаватель: Карлов Борис Николаевич\nВторая волна сдачи программ по Методам Математической Лингвистики', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram curl failed: round=1 route=ipv6-resolve rc=28 err=curl: (28) Connection timed out after 4002 milliseconds
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv4-resolve
+bot-1  | INFO:bot-service:POST /send payload: {'chat_id': -1002997084266, 'thread_id': 1, 'text': '⏰ Напоминание: завтра (2026-05-30) — Переписывание контрольных работ по Методам Математической лингвистики (304)\nПреподаватель: Карлов Борис Николаевич\nОриентировочное время переписывания контрольных работ', 'photos': None, 'documents': None, 'local_files': None}
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=ipv6-resolve
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=ipv6-resolve
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | INFO:     172.18.0.9:53020 - "POST /send HTTP/1.1" 502 Bad Gateway
+bot-1  | WARNING:bot-service:Telegram curl failed: round=1 route=ipv4-resolve rc=28 err=curl: (28) Connection timed out after 15002 milliseconds
+bot-1  | INFO:bot-service:Telegram curl try round=1 route=system-dns
+bot-1  | INFO:bot-service:Telegram curl success round=1 route=system-dns
+bot-1  | WARNING:bot-service:Telegram API error payload: {'ok': False, 'error_code': 400, 'description': 'Bad Request: message thread not found'}
+bot-1  | WARNING:  Invalid HTTP request received.
+root@dungeon-akoya17881:~/tvsu# ls -la backend/uploads | tail -20
+total 196
+drwxr-xr-x 2 1001 1001   4096 May 29 20:19 .
+drwxr-xr-x 4 1001 1001   4096 May 29 20:06 ..
+-rw-r--r-- 1 root root 143095 May 29 20:19 1739244436274ec3b6a9928c4e991ace.png
+-rw-r--r-- 1 1001 1001      5 May 29 20:06 a297d90b6acc4f8a97399f9a47dfa312.txt
+-rw-r--r-- 1 root root  43624 May 29 20:19 a7a6d8eca3e7400490e1346b9e6ccc40.pdf
+root@dungeon-akoya17881:~/tvsu# ls -la backend/uploads | tail -20
+total 196
+drwxr-xr-x 2 1001 1001   4096 May 29 20:19 .
+drwxr-xr-x 4 1001 1001   4096 May 29 20:06 ..
+-rw-r--r-- 1 root root 143095 May 29 20:19 1739244436274ec3b6a9928c4e991ace.png
+-rw-r--r-- 1 1001 1001      5 May 29 20:06 a297d90b6acc4f8a97399f9a47dfa312.txt
+-rw-r--r-- 1 root root  43624 May 29 20:19 a7a6d8eca3e7400490e1346b9e6ccc40.pdf
+root@dungeon-akoya17881:~/tvsu# docker compose config | grep -A3 -E "uploads"
+docker compose ps
+        source: /root/tvsu/backend/uploads
+        target: /uploads
+        read_only: true
+        bind: {}
+  cadvisor:
+NAME                   IMAGE                              COMMAND                  SERVICE         CREATED          STATUS                    PORTS
+tvsu-backend-1         tvsu-backend                       "uvicorn app.main:ap…"   backend         15 minutes ago   Up 15 minutes (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+tvsu-bot-1             tvsu-bot                           "uvicorn bot_service…"   bot             15 minutes ago   Up 15 minutes             
+tvsu-cadvisor-1        gcr.io/cadvisor/cadvisor:v0.49.1   "/usr/bin/cadvisor -…"   cadvisor        15 minutes ago   Up 15 minutes (healthy)   0.0.0.0:8082->8080/tcp, [::]:8082->8080/tcp
+tvsu-frontend-1        tvsu-frontend                      "docker-entrypoint.s…"   frontend        15 minutes ago   Up 15 minutes             0.0.0.0:3000->5173/tcp, [::]:3000->5173/tcp
+tvsu-grafana-1         grafana/grafana:11.2.2             "/run.sh"                grafana         15 minutes ago   Up 15 minutes             0.0.0.0:3001->3000/tcp, [::]:3001->3000/tcp
+tvsu-node-exporter-1   prom/node-exporter:v1.8.2          "/bin/node_exporter …"   node-exporter   15 minutes ago   Up 15 minutes             0.0.0.0:9100->9100/tcp, [::]:9100->9100/tcp
+tvsu-postgres-1        postgres:15                        "docker-entrypoint.s…"   postgres        15 minutes ago   Up 15 minutes             5432/tcp
+tvsu-prometheus-1      prom/prometheus:v2.55.1            "/bin/prometheus --c…"   prometheus      15 minutes ago   Up 15 minutes             0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+tvsu-redis-1           redis:7                            "docker-entrypoint.s…"   redis           15 minutes ago   Up 15 minutes             6379/tcp
+tvsu-worker-1          tvsu-worker                        "python worker.py"       worker          15 minutes ago   Up 15 minutes             
