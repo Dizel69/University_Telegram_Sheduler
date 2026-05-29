@@ -19,7 +19,6 @@ export default function EventForm({ onCreated }) {
   const [saveOnly, setSaveOnly] = useState(false)
   const [lessonType, setLessonType] = useState('lecture')
   const [examKind, setExamKind] = useState('control')
-  const [photoUrlsText, setPhotoUrlsText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
@@ -52,11 +51,6 @@ export default function EventForm({ onCreated }) {
     }
 
     try {
-      const photoUrls = photoUrlsText
-        .split('\n')
-        .map(v => v.trim())
-        .filter(Boolean)
-
       // Handle repeat series
       if (repeat === 'none') {
         const payload = {
@@ -77,7 +71,6 @@ export default function EventForm({ onCreated }) {
         if (teacher) payload.teacher = teacher
         if (type === 'schedule') payload.lesson_type = lessonType
         if (type === 'exam_control') payload.lesson_type = examKind
-        if (photoUrls.length) payload.photo_urls = photoUrls
         if (attachments.length) payload.attachments = attachments
 
         let res
@@ -102,7 +95,6 @@ export default function EventForm({ onCreated }) {
         setReminder(24)
         setLessonType('lecture')
         setExamKind('control')
-        setPhotoUrlsText('')
         setAttachments([])
         // Для schedule не переходить на вкладку События
         if (onCreated && type !== 'schedule') onCreated(res.data)
@@ -146,7 +138,6 @@ export default function EventForm({ onCreated }) {
         if (type === 'homework') {
           payload.semester = getSemesterForDate(d) || null
         }
-        if (photoUrls.length) payload.photo_urls = photoUrls
         if (attachments.length) payload.attachments = attachments
         payload.source = 'manual'
         const res = await axios.post('/events', payload)
@@ -166,7 +157,6 @@ export default function EventForm({ onCreated }) {
       setReminder(24)
       setLessonType('lecture')
       setExamKind('control')
-      setPhotoUrlsText('')
       setAttachments([])
       // Для schedule не переходить на вкладку События
       if (onCreated && created.length && type !== 'schedule') onCreated(created[0])
@@ -432,18 +422,12 @@ export default function EventForm({ onCreated }) {
               ))}
             </div>
           )}
-          <label className="label">Фото (ссылки, по одной в строке)</label>
-          <textarea
-            value={photoUrlsText}
-            onChange={e => setPhotoUrlsText(e.target.value)}
-            placeholder={"https://.../photo1.jpg\nhttps://.../photo2.jpg"}
-          />
         </>
       )}
 
       <div className="form-actions">
         <button className="btn btn-primary" type="submit">Отправить сейчас</button>
-        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setPhotoUrlsText(''); setAttachments([]); setStatus('') }}>Сброс</button>
+        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setAttachments([]); setStatus('') }}>Сброс</button>
         <div className="status">{status}</div>
       </div>
     </form>

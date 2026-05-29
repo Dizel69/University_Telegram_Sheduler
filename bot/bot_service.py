@@ -112,7 +112,7 @@ async def _telegram_call(method: str, payload: dict) -> dict:
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
 
-async def _telegram_call_multipart(method: str, fields: dict[str, object], file_field: str, file_path: str) -> dict:
+async def _telegram_call_multipart(method: str, fields: dict[str, object], file_field: str, file_path: str, filename: str | None = None) -> dict:
     url = f"{API_BASE}/{method}"
     route_variants = [
         {"name": "ipv6-resolve", "family_flag": "-6", "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]", "connect_timeout": "4", "max_time": "12"},
@@ -138,7 +138,13 @@ async def _telegram_call_multipart(method: str, fields: dict[str, object], file_
                 if v is None:
                     continue
                 cmd.extend(["-F", f"{k}={v}"])
-            cmd.extend(["-F", f"{file_field}=@{file_path}"])
+            # Сохраняем оригинальное имя файла (иначе Telegram возьмёт имя из storage_key).
+            # curl: запятые/точки с запятой в имени экранируем, чтобы не сломать синтаксис -F.
+            file_spec = f"{file_field}=@{file_path}"
+            if filename:
+                safe = filename.replace("\\", "_").replace('"', "_").replace(";", "_").replace(",", "_")
+                file_spec += f";filename={safe}"
+            cmd.extend(["-F", file_spec])
 
             result = await _run_curl(cmd)
             if result.returncode != 0:
@@ -223,30 +229,31 @@ async def send_message(req: SendRequest):
         for row in local_files:
             path = str(row.get("path") or "").strip()
             kind = str(row.get("kind") or "document").strip().lower()
+            name = str(row.get("name") or "").strip() or None
             if not path or not Path(path).exists():
                 continue
             if kind == "photo":
-                local_photo_paths.append(path)
+                local_photo_paths.append((path, name))
             else:
-                local_doc_paths.append(path)
+                local_doc_paths.append((path, name))
 
-        for idx, path in enumerate(local_photo_paths):
+        for idx, (path, name) in enumerate(local_photo_paths):
             fields: dict[str, object] = {"chat_id": req.chat_id}
             if req.thread_id is not None:
                 fields["message_thread_id"] = req.thread_id
             if idx == 0 and req.text:
                 fields["caption"] = req.text
-            photo_body = await _telegram_call_multipart("sendPhoto", fields, "photo", path)
+            photo_body = await _telegram_call_multipart("sendPhoto", fields, "photo", path, filename=name)
             if idx == 0 and not photos and not documents:
                 body = photo_body
 
-        for idx, path in enumerate(local_doc_paths):
+        for idx, (path, name) in enumerate(local_doc_paths):
             fields = {"chat_id": req.chat_id}
             if req.thread_id is not None:
                 fields["message_thread_id"] = req.thread_id
             if idx == 0 and req.text and not photos and not documents and not local_photo_paths:
                 fields["caption"] = req.text
-            doc_body = await _telegram_call_multipart("sendDocument", fields, "document", path)
+            doc_body = await _telegram_call_multipart("sendDocument", fields, "document", path, filename=name)
             if idx == 0 and not photos and not documents and not local_photo_paths:
                 body = doc_body
 
