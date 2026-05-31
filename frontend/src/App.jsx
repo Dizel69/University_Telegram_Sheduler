@@ -10,6 +10,7 @@ import UsersAdmin from './UsersAdmin'
 import AttendanceAdmin from './AttendanceAdmin'
 import AnalyticsAdmin from './AnalyticsAdmin'
 import SubjectsAdmin from './SubjectsAdmin'
+import ThemeToggle from './ThemeToggle'
 
 export default function App() {
   const [tab, setTab] = useState('calendar')
@@ -120,6 +121,7 @@ export default function App() {
           <button type="button" className={tab === 'homework' ? 'tab active' : 'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
         </nav>
         <div className="topbar-auth">
+          <ThemeToggle />
           {accountUser ? (
             <div className="login-auth">
               <span style={{ fontSize: 12, opacity: 0.85 }}>

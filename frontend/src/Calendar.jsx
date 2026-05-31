@@ -146,7 +146,7 @@ function RangeHighlightColorModal({ range, color, onColorChange, stitch, onStitc
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>Цвет выделения</h3>
-        <p style={{ fontSize: 14, color: '#374151', marginTop: 8 }}>
+        <p className="legend-label" style={{ fontSize: 14, marginTop: 8 }}>
           От <strong>{range.start}</strong> до <strong>{range.end}</strong> — подсветятся все дни между этими датами включительно (порядок нажатий не важен). Выберите цвет — на сетке он будет показан бледным.
         </p>
         <label className="label">Цвет</label>
@@ -451,34 +451,34 @@ export default function Calendar({ isAdmin = false }) {
       <div className="calendar-legend">
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#ef4444',borderRadius:3,display:'inline-block'}}></span>
-          <span style={{fontSize:13,color:'#374151'}}>Перенос</span>
+          <span className="legend-label">Перенос</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#f97316',borderRadius:3,display:'inline-block'}}></span>
-          <span style={{fontSize:13,color:'#374151'}}>Контрольная / экзамен</span>
+          <span className="legend-label">Контрольная / экзамен</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#a78bfa',borderRadius:3,display:'inline-block'}}></span>
-          <span style={{fontSize:13,color:'#374151'}}>Домашняя работа</span>
+          <span className="legend-label">Домашняя работа</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#60a5fa',borderRadius:3,display:'inline-block'}}></span>
-          <span style={{fontSize:13,color:'#374151'}}>Расписание</span>
+          <span className="legend-label">Расписание</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#34d399',borderRadius:3,display:'inline-block'}}></span>
-          <span style={{fontSize:13,color:'#374151'}}>Объявление</span>
+          <span className="legend-label">Объявление</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#facc15',borderRadius:3,display:'inline-block'}}></span>
-          <span style={{fontSize:13,color:'#374151'}}>День рождения</span>
+          <span className="legend-label">День рождения</span>
         </div>
       </div>
       {loadError && (
-        <div className="card" style={{marginTop:12,borderLeft:'4px solid #ef4444',padding:12,background:'#fff8f8'}}>
-          <div style={{fontWeight:700,color:'#b91c1c'}}>Не удалось загрузить события</div>
-          <div style={{marginTop:6,color:'#374151',fontSize:13}}>Причина: {loadError}</div>
-          <div style={{marginTop:8,fontSize:13,color:'#374151'}}>Проверьте доступность бэкенда или временно отключите VPN.</div>
+        <div className="card alert-error-card">
+          <div className="alert-error-title">Не удалось загрузить события</div>
+          <div className="alert-error-body">Причина: {loadError}</div>
+          <div className="alert-error-body" style={{ marginTop: 8 }}>Проверьте доступность бэкенда или временно отключите VPN.</div>
           <div style={{marginTop:8,display:'flex',gap:8}}>
             <button className="btn" onClick={() => load()}>Повторить</button>
             <button className="btn" onClick={() => window.open(`${backendBase()}/calendar`,'_blank')}>Открыть /calendar</button>

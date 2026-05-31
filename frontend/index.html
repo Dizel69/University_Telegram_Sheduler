@@ -5,11 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Планировщик Университета Telegram — Администратор</title>
+    <script>
+      (function () {
+        var k = 'app-theme';
+        var s = localStorage.getItem(k);
+        var t =
+          s === 'light' || s === 'dark'
+            ? s
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
     <style>
       /* Пока не подгрузился JS/React — без белого экрана */
       html {
         height: 100%;
-        background: #0c1220;
+        background: #f6f7fb;
+      }
+      html[data-theme="dark"] {
+        background: #0f1419;
       }
       body {
         margin: 0;
@@ -32,9 +48,27 @@
         position: absolute;
         inset: 0;
         background:
+          radial-gradient(ellipse 120% 80% at 50% -20%, rgba(59, 130, 246, 0.2), transparent 55%),
+          linear-gradient(165deg, #f0f4ff 0%, #f6f7fb 50%, #eef2ff 100%);
+      }
+      html[data-theme="dark"] .app-boot-bg {
+        background:
           radial-gradient(ellipse 120% 80% at 50% -30%, rgba(34, 158, 217, 0.45), transparent 55%),
           radial-gradient(ellipse 60% 40% at 100% 100%, rgba(59, 130, 246, 0.2), transparent 50%),
           linear-gradient(160deg, #0a0f1a 0%, #111b2e 35%, #152238 70%, #0c1220 100%);
+      }
+      html[data-theme="light"] .app-boot {
+        color: #334155;
+      }
+      html[data-theme="light"] .app-boot-label {
+        color: rgba(51, 65, 85, 0.9);
+      }
+      html[data-theme="light"] .app-boot-sub {
+        color: rgba(100, 116, 139, 0.95);
+      }
+      html[data-theme="light"] .app-boot-spinner {
+        border-color: rgba(59, 130, 246, 0.15);
+        border-top-color: #3b82f6;
       }
       .app-boot-bg::after {
         content: "";

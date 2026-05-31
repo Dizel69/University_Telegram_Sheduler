@@ -18,10 +18,10 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="card" style={{borderLeft: '4px solid #ef4444', padding: 12, background: '#fff8f8'}}>
-          <div style={{fontWeight:700,color:'#b91c1c'}}>Ошибка в интерфейсе</div>
-          <div style={{marginTop:6,color:'#374151',fontSize:13}}>{String(this.state.error)}</div>
-          <div style={{marginTop:8,fontSize:13,color:'#374151'}}>Откройте консоль (F12) и проверьте логи ошибок.</div>
+        <div className="card alert-error-card">
+          <div className="alert-error-title">Ошибка в интерфейсе</div>
+          <div className="alert-error-body">{String(this.state.error)}</div>
+          <div className="alert-error-body" style={{ marginTop: 8 }}>Откройте консоль (F12) и проверьте логи ошибок.</div>
         </div>
       )
     }

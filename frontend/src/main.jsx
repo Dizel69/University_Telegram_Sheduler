@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import axios from 'axios'
 import App from './App'
 import './styles.css'
+import { initTheme } from './theme'
+
+initTheme()
 
 const userTok = localStorage.getItem('user_token')
 if (userTok) {

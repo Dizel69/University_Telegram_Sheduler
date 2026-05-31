@@ -164,7 +164,7 @@ export default function EventsList({ highlightId, isAdmin = false }) {
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <div style={{width:12,height:12,background:eventColor(ev),borderRadius:3}}></div>
                 <div className="event-title">{ev.title || ev.subject || ev.type}</div>
-                <div style={{fontSize:12,opacity:0.8,marginLeft:8,color:'#374151'}}>{typeLabel(ev.type)}</div>
+                <div className="legend-label" style={{fontSize:12,opacity:0.8,marginLeft:8}}>{typeLabel(ev.type)}</div>
               </div>
               <div className="event-meta">{ev.date ? ev.date : ''} {ev.time ? ev.time : ''}</div>
             </div>
