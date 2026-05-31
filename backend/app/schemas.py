@@ -385,3 +385,18 @@ class TeacherVariantUpdateResult(BaseModel):
     ok: bool
     teacher: TeacherAdminRow
     updated_events: int
+
+
+class CalendarDayRangeHighlightPublic(BaseModel):
+    id: int
+    start: str
+    end: str
+    color: str
+    stitch: bool = True
+
+
+class CalendarDayRangeHighlightIn(BaseModel):
+    start: str
+    end: str
+    color: str
+    stitch: bool = True

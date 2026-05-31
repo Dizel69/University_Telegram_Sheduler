@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import EditEventModal from './EditEventModal'
@@ -81,7 +81,26 @@ function monthLabel(year, month) {
   return new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long' }).format(new Date(Date.UTC(year, month, 1)))
 }
 
-const RANGE_HIGHLIGHTS_KEY = 'calendarDayRangeHighlights'
+/** Устаревший ключ localStorage — один раз переносим на сервер у админа. */
+const RANGE_HIGHLIGHTS_LEGACY_KEY = 'calendarDayRangeHighlights'
+
+function mapHighlightFromApi(row) {
+  return {
+    start: row.start,
+    end: row.end,
+    color: row.color,
+    stitch: row.stitch !== false,
+  }
+}
+
+function mapHighlightToApi(row) {
+  return {
+    start: row.start,
+    end: row.end,
+    color: row.color,
+    stitch: row.stitch !== false,
+  }
+}
 
 /** Бледный фон для заливки диапазона (hex вида #rrggbb). */
 function highlightPaleBackground(hex, alpha = 0.22) {
@@ -122,9 +141,9 @@ function rangeWantsStitch(r) {
   return Boolean(r) && r.stitch !== false
 }
 
-function readRangeHighlightsFromStorage() {
+function readLegacyRangeHighlightsFromStorage() {
   try {
-    const raw = localStorage.getItem(RANGE_HIGHLIGHTS_KEY)
+    const raw = localStorage.getItem(RANGE_HIGHLIGHTS_LEGACY_KEY)
     const p = raw ? JSON.parse(raw) : []
     if (!Array.isArray(p)) return []
     return p.filter(
@@ -203,7 +222,8 @@ export default function Calendar({ isAdmin = false }) {
   const [pendingHighlightColor, setPendingHighlightColor] = useState('#94a3b8')
   /** Сшивать соседние дни визуально (ползунок в модалке цвета). */
   const [pendingStitchDays, setPendingStitchDays] = useState(true)
-  const [rangeHighlights, setRangeHighlights] = useState(readRangeHighlightsFromStorage)
+  const [rangeHighlights, setRangeHighlights] = useState([])
+  const rangeHighlightsSkipSaveRef = useRef(true)
   const [addDate, setAddDate] = useState(null) // 'YYYY-MM-DD' for add-event modal
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState(null)
@@ -267,13 +287,61 @@ export default function Calendar({ isAdmin = false }) {
     }
   }, [editing])
 
+  async function persistRangeHighlights(list) {
+    if (!isAdmin) return
+    await axios.put(
+      '/calendar/day-range-highlights',
+      list.map(mapHighlightToApi),
+      { headers: bearerAuthHeaders() },
+    )
+  }
+
   useEffect(() => {
-    try {
-      localStorage.setItem(RANGE_HIGHLIGHTS_KEY, JSON.stringify(rangeHighlights))
-    } catch {
-      /* ignore */
+    let cancelled = false
+    async function loadRangeHighlights() {
+      try {
+        const { data } = await axios.get('/calendar/day-range-highlights')
+        if (cancelled) return
+        let list = (data || []).map(mapHighlightFromApi)
+        if (!list.length && isAdmin) {
+          const legacy = readLegacyRangeHighlightsFromStorage()
+          if (legacy.length) {
+            await axios.put(
+              '/calendar/day-range-highlights',
+              legacy.map(mapHighlightToApi),
+              { headers: bearerAuthHeaders() },
+            )
+            try {
+              localStorage.removeItem(RANGE_HIGHLIGHTS_LEGACY_KEY)
+            } catch {
+              /* ignore */
+            }
+            list = legacy.map((x) => ({ ...x, stitch: x.stitch !== false }))
+          }
+        }
+        rangeHighlightsSkipSaveRef.current = true
+        setRangeHighlights(list)
+      } catch (e) {
+        console.error('Не удалось загрузить заливки календаря', e)
+      }
     }
-  }, [rangeHighlights])
+    loadRangeHighlights()
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (rangeHighlightsSkipSaveRef.current) {
+      rangeHighlightsSkipSaveRef.current = false
+      return
+    }
+    if (!isAdmin) return
+    persistRangeHighlights(rangeHighlights).catch((e) => {
+      console.error('Не удалось сохранить заливки календаря', e)
+      alert('Не удалось сохранить подсветку дней на сервере')
+    })
+  }, [rangeHighlights, isAdmin])
 
   // PDF parser removed — no external parser service used
 
@@ -366,7 +434,7 @@ export default function Calendar({ isAdmin = false }) {
 
   function clearAllRangeHighlights() {
     if (!rangeHighlights.length) return
-    if (!confirm('Убрать все цветные заливки дней с календаря?')) return
+    if (!confirm('Убрать все цветные заливки дней с календаря? (для всех пользователей)')) return
     setRangeHighlights([])
   }
 

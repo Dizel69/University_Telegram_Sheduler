@@ -109,3 +109,16 @@ class TeacherSetting(SQLModel, table=True):
     display_name: str
     is_visible: bool = Field(default=True)
     updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+
+
+class CalendarDayRangeHighlight(SQLModel, table=True):
+    """Цветовая заливка диапазона дней в публичном календаре (общая для всех клиентов)."""
+
+    __tablename__ = "calendar_day_range_highlight"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    start_date: dt.date = Field(index=True)
+    end_date: dt.date = Field(index=True)
+    color: str = Field(max_length=16)
+    stitch: bool = Field(default=True)
+    sort_order: int = Field(default=0, index=True)

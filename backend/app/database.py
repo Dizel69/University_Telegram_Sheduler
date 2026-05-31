@@ -19,7 +19,15 @@ def init_db() -> None:
     Вызывается при старте приложения.
     """
     # Регистрация моделей для metadata
-    from app.models import AttendanceMark, Event, HomeworkCompletion, SubjectSetting, TeacherSetting, User  # noqa: F401
+    from app.models import (  # noqa: F401
+        AttendanceMark,
+        CalendarDayRangeHighlight,
+        Event,
+        HomeworkCompletion,
+        SubjectSetting,
+        TeacherSetting,
+        User,
+    )
 
     SQLModel.metadata.create_all(engine)
     seed_owner_if_needed()
