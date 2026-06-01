@@ -199,10 +199,22 @@ class CreateTopicRequest(BaseModel):
     name: str
 
 
+def _effective_thread_id(thread_id: int | None) -> int | None:
+    """General (1) нельзя передавать в API — omit для постинга в General."""
+    if thread_id is None:
+        return None
+    try:
+        tid = int(thread_id)
+    except (TypeError, ValueError):
+        return None
+    return None if tid == 1 else tid
+
+
 @app.post("/send")
 async def send_message(req: SendRequest):
     """Отправляет сообщение в Telegram и возвращает ID сообщения."""
     try:
+        thread_id = _effective_thread_id(req.thread_id)
         logger.info("POST /send payload: %s", req.dict())
         photos = [str(p).strip() for p in (req.photos or []) if str(p).strip()]
         documents = [str(p).strip() for p in (req.documents or []) if str(p).strip()]
@@ -214,8 +226,8 @@ async def send_message(req: SendRequest):
         if photos:
             if len(photos) == 1:
                 payload: dict[str, object] = {"chat_id": req.chat_id, "photo": photos[0], "caption": req.text}
-                if req.thread_id is not None:
-                    payload["message_thread_id"] = req.thread_id
+                if thread_id is not None:
+                    payload["message_thread_id"] = thread_id
                 body = await _telegram_call("sendPhoto", payload)
             else:
                 media: list[dict[str, str]] = []
@@ -225,20 +237,20 @@ async def send_message(req: SendRequest):
                         item["caption"] = req.text
                     media.append(item)
                 payload = {"chat_id": req.chat_id, "media": media}
-                if req.thread_id is not None:
-                    payload["message_thread_id"] = req.thread_id
+                if thread_id is not None:
+                    payload["message_thread_id"] = thread_id
                 body = await _telegram_call("sendMediaGroup", payload)
         elif not documents:
             payload = {"chat_id": req.chat_id, "text": req.text}
-            if req.thread_id is not None:
-                payload["message_thread_id"] = req.thread_id
+            if thread_id is not None:
+                payload["message_thread_id"] = thread_id
             body = await _telegram_call("sendMessage", payload)
 
         if documents:
             for idx, document in enumerate(documents):
                 payload_doc: dict[str, object] = {"chat_id": req.chat_id, "document": document}
-                if req.thread_id is not None:
-                    payload_doc["message_thread_id"] = req.thread_id
+                if thread_id is not None:
+                    payload_doc["message_thread_id"] = thread_id
                 if not photos and idx == 0 and req.text:
                     payload_doc["caption"] = req.text
                 doc_body = await _telegram_call("sendDocument", payload_doc)
@@ -260,8 +272,8 @@ async def send_message(req: SendRequest):
 
         for idx, (path, name) in enumerate(local_photo_paths):
             fields: dict[str, object] = {"chat_id": req.chat_id}
-            if req.thread_id is not None:
-                fields["message_thread_id"] = req.thread_id
+            if thread_id is not None:
+                fields["message_thread_id"] = thread_id
             if idx == 0 and req.text:
                 fields["caption"] = req.text
             photo_body = await _telegram_call_multipart("sendPhoto", fields, "photo", path, filename=name)
@@ -270,8 +282,8 @@ async def send_message(req: SendRequest):
 
         for idx, (path, name) in enumerate(local_doc_paths):
             fields = {"chat_id": req.chat_id}
-            if req.thread_id is not None:
-                fields["message_thread_id"] = req.thread_id
+            if thread_id is not None:
+                fields["message_thread_id"] = thread_id
             if idx == 0 and req.text and not photos and not documents and not local_photo_paths:
                 fields["caption"] = req.text
             doc_body = await _telegram_call_multipart("sendDocument", fields, "document", path, filename=name)

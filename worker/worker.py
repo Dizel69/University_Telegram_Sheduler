@@ -199,10 +199,21 @@ def check_and_send():
                 try:
                     resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
                     resp.raise_for_status()
-                    # Помечаем как отправленное
                     client.post(f"{BACKEND_URL}/events/{ev.get('id')}/mark_reminder_sent", timeout=5.0)
                     WORKER_REMINDERS_SENT.inc()
                 except Exception as e:
+                    thread_id = payload.get("thread_id")
+                    if thread_id is not None:
+                        payload_retry = {k: v for k, v in payload.items() if k != "thread_id"}
+                        try:
+                            resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload_retry, timeout=10.0)
+                            resp.raise_for_status()
+                            client.post(f"{BACKEND_URL}/events/{ev.get('id')}/mark_reminder_sent", timeout=5.0)
+                            WORKER_REMINDERS_SENT.inc()
+                            print("⚠️ Worker: напоминание отправлено без thread_id для события", ev.get("id"))
+                            continue
+                        except Exception:
+                            pass
                     WORKER_REMINDERS_FAILED.inc()
                     print("❌ Worker: ошибка отправки напоминания для события", ev.get("id"), e)
     except Exception as e:

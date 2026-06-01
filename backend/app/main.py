@@ -237,20 +237,36 @@ def _resolve_chat_id(ev_obj):
     return None
 
 
+def _normalize_thread_id_for_api(thread_id):
+    """
+    General (id=1) в форумах Telegram нельзя передавать как message_thread_id —
+    API вернёт «message thread not found». Для General нужно omit параметра.
+    """
+    if thread_id is None:
+        return None
+    try:
+        tid = int(thread_id)
+    except (TypeError, ValueError):
+        return None
+    if tid == 1:
+        return None
+    return tid
+
+
 def _resolve_thread_id(ev_obj):
     """
     Определяет тему/поток (message_thread_id) для события:
     предпочитаем явный event.topic_thread_id, затем переменные среды по типам, иначе None.
     """
     if getattr(ev_obj, "topic_thread_id", None):
-        return ev_obj.topic_thread_id
+        return _normalize_thread_id_for_api(ev_obj.topic_thread_id)
     try:
         if ev_obj.type in ('schedule', 'exam_control') and THREAD_ID_SCHEDULE:
-            return int(THREAD_ID_SCHEDULE)
+            return _normalize_thread_id_for_api(int(THREAD_ID_SCHEDULE))
         if ev_obj.type == 'homework' and THREAD_ID_HOMEWORK:
-            return int(THREAD_ID_HOMEWORK)
+            return _normalize_thread_id_for_api(int(THREAD_ID_HOMEWORK))
         if ev_obj.type == 'announcement' and THREAD_ID_ANNOUNCEMENTS:
-            return int(THREAD_ID_ANNOUNCEMENTS)
+            return _normalize_thread_id_for_api(int(THREAD_ID_ANNOUNCEMENTS))
     except Exception:
         pass
     return None
@@ -270,9 +286,9 @@ def _resolve_birthday_target():
         chat_id = None
     try:
         if THREAD_ID_GENERAL:
-            thread_id = int(THREAD_ID_GENERAL)
+            thread_id = _normalize_thread_id_for_api(int(THREAD_ID_GENERAL))
         elif THREAD_ID_ANNOUNCEMENTS:
-            thread_id = int(THREAD_ID_ANNOUNCEMENTS)
+            thread_id = _normalize_thread_id_for_api(int(THREAD_ID_ANNOUNCEMENTS))
     except Exception:
         thread_id = None
     return chat_id, thread_id
