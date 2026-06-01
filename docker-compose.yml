@@ -27,7 +27,7 @@ services:
 
   # Postgres exporter (DB metrics for Prometheus)
   postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-m15db}?sslmode=disable"
