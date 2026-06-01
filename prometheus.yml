@@ -14,6 +14,12 @@ scrape_configs:
         labels:
           service: backend
 
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          service: database
+
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]

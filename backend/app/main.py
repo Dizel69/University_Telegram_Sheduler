@@ -100,6 +100,79 @@ HTTP_REQUEST_DURATION_SECONDS = _metric_get_or_create_histogram(
 )
 
 
+class AppBusinessMetricsCollector:
+    """Собирает прикладные метрики из БД на каждый scrape Prometheus.
+
+    Все запросы обёрнуты в try/except, чтобы недоступность БД не ломала /metrics.
+    """
+
+    def collect(self):
+        from prometheus_client.core import GaugeMetricFamily
+        from sqlalchemy import text
+        from app.database import engine
+
+        events_by_type = GaugeMetricFamily(
+            "app_events", "Количество событий по типу", labels=["type"]
+        )
+        reminders_pending = GaugeMetricFamily(
+            "app_reminders_pending", "События, ожидающие отправки напоминания"
+        )
+        reminders_sent = GaugeMetricFamily(
+            "app_reminders_sent", "События с уже отправленным напоминанием"
+        )
+        users_total = GaugeMetricFamily("app_users", "Количество пользователей приложения")
+        upcoming_7d = GaugeMetricFamily(
+            "app_events_upcoming_7d", "События, запланированные на ближайшие 7 дней"
+        )
+        events_total = GaugeMetricFamily("app_events_total", "Всего событий")
+
+        try:
+            with engine.connect() as conn:
+                total = 0
+                for row in conn.execute(
+                    text("SELECT COALESCE(type, 'unknown') AS t, COUNT(*) FROM event GROUP BY type")
+                ):
+                    events_by_type.add_metric([str(row[0])], float(row[1]))
+                    total += int(row[1])
+                events_total.add_metric([], float(total))
+
+                pending = conn.execute(
+                    text("SELECT COUNT(*) FROM event WHERE reminder_sent = false")
+                ).scalar() or 0
+                reminders_pending.add_metric([], float(pending))
+
+                sent = conn.execute(
+                    text("SELECT COUNT(*) FROM event WHERE reminder_sent = true")
+                ).scalar() or 0
+                reminders_sent.add_metric([], float(sent))
+
+                users = conn.execute(text("SELECT COUNT(*) FROM app_user")).scalar() or 0
+                users_total.add_metric([], float(users))
+
+                upcoming = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM event "
+                        "WHERE date >= CURRENT_DATE AND date <= CURRENT_DATE + INTERVAL '7 days'"
+                    )
+                ).scalar() or 0
+                upcoming_7d.add_metric([], float(upcoming))
+        except Exception:
+            pass
+
+        yield events_total
+        yield events_by_type
+        yield reminders_pending
+        yield reminders_sent
+        yield users_total
+        yield upcoming_7d
+
+
+try:
+    REGISTRY.register(AppBusinessMetricsCollector())
+except ValueError:
+    pass
+
+
 class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if request.url.path == "/metrics":

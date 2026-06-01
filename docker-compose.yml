@@ -9,6 +9,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-m15db}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-m15db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     networks:
       - appnet
 
@@ -16,6 +22,21 @@ services:
   redis:
     image: redis:7
     restart: unless-stopped
+    networks:
+      - appnet
+
+  # Postgres exporter (DB metrics for Prometheus)
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-m15db}?sslmode=disable"
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9187:9187"
     networks:
       - appnet
 
@@ -30,6 +51,11 @@ services:
       BOT_SERVICE_URL: http://host.docker.internal:8081
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:
@@ -103,6 +129,7 @@ services:
       - backend
       - cadvisor
       - node-exporter
+      - postgres-exporter
     networks:
       - appnet
 
