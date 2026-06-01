@@ -11,7 +11,15 @@ def test_health_and_metrics_routes():
     client = TestClient(bot_service.app)
 
     assert client.get("/health").json() == {"ok": True}
-    assert client.get("/metrics").json() == {"ok": False, "detail": "metrics_not_implemented"}
+
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+    assert "text/plain" in metrics.headers["content-type"]
+    body = metrics.text
+    assert "telegram_messages_sent_total" in body
+    assert "telegram_send_errors_total" in body
+    assert "telegram_unreachable_total" in body
+    assert "telegram_request_duration_seconds" in body
 
 
 def test_send_message_maps_thread_id_and_message_id(monkeypatch):
