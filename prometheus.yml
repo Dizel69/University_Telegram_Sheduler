@@ -20,6 +20,58 @@ scrape_configs:
         labels:
           service: database
 
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+        labels:
+          service: cache
+
+  - job_name: "bot"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8081"]
+        labels:
+          service: bot
+
+  - job_name: "worker"
+    static_configs:
+      - targets: ["worker:9101"]
+        labels:
+          service: worker
+
+  # Внешняя доступность по HTTP (через blackbox-exporter)
+  - job_name: "blackbox-http"
+    metrics_path: /probe
+    params:
+      module: ["http_2xx"]
+    static_configs:
+      - targets:
+          - http://backend:8000/metrics
+          - http://frontend:5173
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Доступность Telegram + срок действия TLS-сертификата
+  - job_name: "blackbox-telegram"
+    metrics_path: /probe
+    params:
+      module: ["http_tls"]
+    static_configs:
+      - targets:
+          - https://api.telegram.org
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]

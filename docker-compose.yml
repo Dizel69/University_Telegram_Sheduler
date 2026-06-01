@@ -25,6 +25,19 @@ services:
     networks:
       - appnet
 
+  # Redis exporter (Redis metrics for Prometheus)
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    depends_on:
+      - redis
+    ports:
+      - "9121:9121"
+    networks:
+      - appnet
+
   # Postgres exporter (DB metrics for Prometheus)
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -125,11 +138,15 @@ services:
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - backend
       - cadvisor
       - node-exporter
       - postgres-exporter
+      - redis-exporter
+      - blackbox-exporter
     networks:
       - appnet
 
@@ -156,6 +173,10 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     restart: unless-stopped
     privileged: true
+    # Docker Engine на сервере требует API >= 1.44; без этого Docker-фактори
+    # cAdvisor не регистрируется и контейнеры остаются без label `name`.
+    environment:
+      - DOCKER_API_VERSION=1.44
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:
@@ -165,6 +186,19 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
       - "8082:8080"
+    networks:
+      - appnet
+
+  # blackbox-exporter (внешняя доступность по HTTP/TCP + срок SSL)
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+    volumes:
+      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    ports:
+      - "9115:9115"
     networks:
       - appnet
 

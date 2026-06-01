@@ -3,12 +3,29 @@ import json
 import logging
 import os
 import subprocess
+import time as _time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from starlette.responses import Response
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
+
+# Prometheus-метрики бота
+TELEGRAM_MESSAGES_SENT = Counter(
+    "telegram_messages_sent_total", "Успешные вызовы Telegram API (транспорт)"
+)
+TELEGRAM_SEND_ERRORS = Counter(
+    "telegram_send_errors_total", "Ошибки при отправке через бот-сервис"
+)
+TELEGRAM_UNREACHABLE = Counter(
+    "telegram_unreachable_total", "Случаи, когда Telegram API был недоступен"
+)
+TELEGRAM_REQUEST_DURATION = Histogram(
+    "telegram_request_duration_seconds", "Длительность вызова Telegram API"
+)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
@@ -64,6 +81,7 @@ async def _telegram_call(method: str, payload: dict) -> dict:
 
     last_error = "unknown error"
     max_rounds = 3
+    _started = _time.perf_counter()
     for round_idx in range(1, max_rounds + 1):
         for route in route_variants:
             cmd = [
@@ -103,12 +121,15 @@ async def _telegram_call(method: str, payload: dict) -> dict:
                 raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
 
             logger.info("Telegram curl success round=%s route=%s", round_idx, route["name"])
+            TELEGRAM_MESSAGES_SENT.inc()
+            TELEGRAM_REQUEST_DURATION.observe(_time.perf_counter() - _started)
             return body
 
         # Пауза между раундами — даём сети "подышать"
         if round_idx < max_rounds:
             await asyncio.sleep(round_idx)
 
+    TELEGRAM_UNREACHABLE.inc()
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
 
@@ -273,9 +294,11 @@ async def send_message(req: SendRequest):
         logger.info("Telegram send OK: message_id=%s chat_id=%s", message_id, req.chat_id)
         return {"ok": True, "message_id": message_id}
     except HTTPException:
+        TELEGRAM_SEND_ERRORS.inc()
         raise
     except Exception as e:
         # Не логируем URL (там BOT_TOKEN), поэтому только тип/текст исключения.
+        TELEGRAM_SEND_ERRORS.inc()
         logger.exception("Unexpected send failure: %s", type(e).__name__)
         raise HTTPException(status_code=500, detail="Unexpected bot-service error")
 
@@ -321,5 +344,4 @@ async def health():
 
 @app.get("/metrics")
 async def metrics():
-    # Не поддерживает Prometheus-метрики, но явный ответ уменьшает шум от 404.
-    return {"ok": False, "detail": "metrics_not_implemented"}
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -1,15 +1,42 @@
 import os
+import time as _time
 import httpx
 from apscheduler.schedulers.blocking import BlockingScheduler
 from datetime import datetime
+from prometheus_client import start_http_server, Counter, Gauge
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "60"))
 BIRTHDAY_GREETING_TIME = os.getenv("BIRTHDAY_GREETING_TIME", "00:10")
+METRICS_PORT = int(os.getenv("WORKER_METRICS_PORT", "9101"))
+TELEGRAM_PROBE_URL = os.getenv("TELEGRAM_PROBE_URL", "https://api.telegram.org")
+
+# Prometheus-метрики воркера
+WORKER_RUNS = Counter("worker_runs_total", "Количество циклов опроса воркера")
+WORKER_REMINDERS_SENT = Counter("worker_reminders_sent_total", "Успешно отправленные напоминания")
+WORKER_REMINDERS_FAILED = Counter("worker_reminders_failed_total", "Неуспешные отправки напоминаний")
+WORKER_BIRTHDAYS_SENT = Counter("worker_birthday_greetings_sent_total", "Отправленные поздравления с днём рождения")
+WORKER_LAST_RUN = Gauge("worker_last_run_timestamp_seconds", "Время последнего цикла (unixtime)")
+WORKER_DUE_REMINDERS = Gauge("worker_due_reminders", "Сколько напоминаний были к отправке в последнем цикле")
+TELEGRAM_REACHABLE = Gauge("worker_telegram_reachable", "Доступен ли Telegram из воркера (1 — да, 0 — нет)")
+TELEGRAM_PROBE_LATENCY = Gauge("worker_telegram_probe_seconds", "Время отклика проверки доступности Telegram")
 
 scheduler = BlockingScheduler()
 _last_birthday_greeting_date = None
+
+
+def _probe_telegram():
+    """Проверяет, доступен ли Telegram напрямую из воркера, и пишет gauge."""
+    started = _time.perf_counter()
+    try:
+        resp = httpx.get(TELEGRAM_PROBE_URL, timeout=5.0)
+        TELEGRAM_REACHABLE.set(1 if resp.status_code < 500 else 0)
+    except Exception as e:
+        print("⚠️ Worker: Telegram недоступен:", e)
+        TELEGRAM_REACHABLE.set(0)
+    finally:
+        TELEGRAM_PROBE_LATENCY.set(_time.perf_counter() - started)
 
 
 def _age_word(age: int) -> str:
@@ -63,6 +90,7 @@ def _send_birthday_greetings(client: httpx.Client):
         }
         resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
         resp.raise_for_status()
+        WORKER_BIRTHDAYS_SENT.inc()
 
     _last_birthday_greeting_date = today
 
@@ -91,6 +119,9 @@ def _format_exam_control_reminder(ev: dict, date) -> str:
 def check_and_send():
     """Проверяет и отправляет напоминания о предстоящих событиях."""
     print(datetime.utcnow().isoformat(), "Worker: проверка напоминаний")
+    WORKER_RUNS.inc()
+    WORKER_LAST_RUN.set(_time.time())
+    _probe_telegram()
     try:
         with httpx.Client() as client:
             try:
@@ -100,6 +131,7 @@ def check_and_send():
             r = client.get(f"{BACKEND_URL}/events/due_reminders", timeout=10.0)
             r.raise_for_status()
             events = r.json()
+            WORKER_DUE_REMINDERS.set(len(events) if isinstance(events, list) else 0)
             for ev in events:
                 date = ev.get("date")
                 ev_type = (ev.get("type") or "").lower()
@@ -169,11 +201,16 @@ def check_and_send():
                     resp.raise_for_status()
                     # Помечаем как отправленное
                     client.post(f"{BACKEND_URL}/events/{ev.get('id')}/mark_reminder_sent", timeout=5.0)
+                    WORKER_REMINDERS_SENT.inc()
                 except Exception as e:
+                    WORKER_REMINDERS_FAILED.inc()
                     print("❌ Worker: ошибка отправки напоминания для события", ev.get("id"), e)
     except Exception as e:
         print("⚠️ Проверка Worker не удалась:", e)
 
 if __name__ == '__main__':
+    start_http_server(METRICS_PORT)
+    print("📊 Worker: метрики Prometheus на :", METRICS_PORT)
+    _probe_telegram()
     print("✅ Worker запущен, опрашивает каждые", POLL_INTERVAL, "секунд")
     scheduler.start()

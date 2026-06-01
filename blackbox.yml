@@ -1,0 +1,24 @@
+modules:
+  # Обычная HTTP-проверка (любой ответ < 500 считаем «живым»)
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: []
+      fail_if_not_ssl: false
+      preferred_ip_protocol: ip4
+
+  # HTTPS-проверка с контролем TLS-сертификата (для api.telegram.org)
+  http_tls:
+    prober: http
+    timeout: 8s
+    http:
+      method: GET
+      valid_status_codes: []
+      fail_if_not_ssl: true
+
+  # Проверка доступности TCP-порта
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
