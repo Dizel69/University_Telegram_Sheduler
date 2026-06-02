@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 8,
+  "version": 9,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -167,7 +167,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 }, "id": 20,
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (id) (rate(container_cpu_usage_seconds_total{id!=\"/\"}[5m])) * 100", "legendFormat": "{{id}}", "refId": "A" } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_cpu_usage_seconds_total[5m])) * 100", "legendFormat": "Суммарная загрузка контейнеров", "refId": "A" } ],
       "title": "Загрузка ЦП по контейнерам", "type": "timeseries"
     },
     {
@@ -177,7 +177,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 }, "id": 21,
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (id) (container_memory_working_set_bytes{id!=\"/\"})", "legendFormat": "{{id}}", "refId": "A" } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(container_memory_working_set_bytes)", "legendFormat": "Используемая память контейнерами", "refId": "A" } ],
       "title": "Память по контейнерам", "type": "timeseries"
     },
     {
@@ -187,7 +187,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 }, "id": 22,
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (id) (rate(container_network_receive_bytes_total{id!=\"/\",interface!=\"lo\"}[5m]))", "legendFormat": "{{id}}", "refId": "A" } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_network_receive_bytes_total{interface!=\"lo\"}[5m]))", "legendFormat": "Входящий трафик контейнеров", "refId": "A" } ],
       "title": "Входящий трафик контейнеров", "type": "timeseries"
     },
     {
@@ -197,7 +197,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 }, "id": 23,
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (id) (rate(container_network_transmit_bytes_total{id!=\"/\",interface!=\"lo\"}[5m]))", "legendFormat": "{{id}}", "refId": "A" } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_network_transmit_bytes_total{interface!=\"lo\"}[5m]))", "legendFormat": "Исходящий трафик контейнеров", "refId": "A" } ],
       "title": "Исходящий трафик контейнеров", "type": "timeseries"
     },
     {
@@ -207,7 +207,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 }, "id": 24,
       "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(8, sum by (id) (rate(container_cpu_usage_seconds_total{id!=\"/\"}[5m])) * 100)", "legendFormat": "{{id}}", "refId": "A", "instant": true } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(8, rate(container_cpu_usage_seconds_total[5m]) * 100)", "legendFormat": "{{id}}", "refId": "A", "instant": true } ],
       "title": "Топ контейнеров по ЦП", "type": "bargauge"
     },
     {
@@ -217,7 +217,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 }, "id": 25,
       "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(8, sum by (id) (container_memory_working_set_bytes{id!=\"/\"}))", "legendFormat": "{{id}}", "refId": "A", "instant": true } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(8, container_memory_working_set_bytes)", "legendFormat": "{{id}}", "refId": "A", "instant": true } ],
       "title": "Топ контейнеров по памяти", "type": "bargauge"
     },
     {
@@ -236,7 +236,7 @@
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 58 }, "id": 26,
       "options": { "alignValue": "left", "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false }, "mergeValues": true, "rowHeight": 0.9, "showValue": "auto", "tooltip": { "mode": "single", "sort": "none" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max by (id) (container_last_seen{id!=\"/\"})", "legendFormat": "{{id}}", "refId": "A" } ],
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(container_last_seen)", "legendFormat": "cAdvisor видит контейнеры", "refId": "A" } ],
       "title": "Статус контейнеров", "type": "state-timeline"
     },
 
