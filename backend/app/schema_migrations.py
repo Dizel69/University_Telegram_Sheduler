@@ -139,6 +139,7 @@ def apply_additive_schema_migrations(engine) -> None:
                 "ALTER TABLE event ADD COLUMN IF NOT EXISTS semester TEXT",
                 "ALTER TABLE event ADD COLUMN IF NOT EXISTS photo_urls JSONB",
                 "ALTER TABLE event ADD COLUMN IF NOT EXISTS attachments JSONB",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP",
             ]
             with engine.begin() as conn:
                 for sql in stmts:
@@ -155,6 +156,7 @@ def apply_additive_schema_migrations(engine) -> None:
                 "ALTER TABLE event ADD COLUMN semester TEXT",
                 "ALTER TABLE event ADD COLUMN photo_urls TEXT",
                 "ALTER TABLE event ADD COLUMN attachments TEXT",
+                "ALTER TABLE app_user ADD COLUMN last_seen_at TEXT",
             ]
             for sql in alters:
                 try:

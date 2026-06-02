@@ -110,6 +110,7 @@ class AppBusinessMetricsCollector:
         from prometheus_client.core import GaugeMetricFamily
         from sqlalchemy import text
         from app.database import engine
+        dialect = engine.dialect.name
 
         events_by_type = GaugeMetricFamily(
             "app_events", "Количество событий по типу", labels=["type"]
@@ -125,6 +126,11 @@ class AppBusinessMetricsCollector:
             "app_events_upcoming_7d", "События, запланированные на ближайшие 7 дней"
         )
         events_total = GaugeMetricFamily("app_events_total", "Всего событий")
+        user_last_seen = GaugeMetricFamily(
+            "app_user_last_seen_timestamp",
+            "Последняя активность пользователя (unix timestamp)",
+            labels=["user_id", "user_name", "login"],
+        )
 
         try:
             with engine.connect() as conn:
@@ -156,6 +162,47 @@ class AppBusinessMetricsCollector:
                     )
                 ).scalar() or 0
                 upcoming_7d.add_metric([], float(upcoming))
+
+                try:
+                    if dialect == "postgresql":
+                        rows = conn.execute(
+                            text(
+                                """
+                                SELECT
+                                    id,
+                                    TRIM(COALESCE(last_name, '') || ' ' || COALESCE(first_name, '') || ' ' || COALESCE(middle_name, '')) AS user_name,
+                                    login,
+                                    EXTRACT(EPOCH FROM last_seen_at) AS ts
+                                FROM app_user
+                                WHERE last_seen_at IS NOT NULL
+                                ORDER BY last_seen_at DESC
+                                """
+                            )
+                        )
+                    else:
+                        rows = conn.execute(
+                            text(
+                                """
+                                SELECT
+                                    id,
+                                    TRIM(COALESCE(last_name, '') || ' ' || COALESCE(first_name, '') || ' ' || COALESCE(middle_name, '')) AS user_name,
+                                    login,
+                                    strftime('%s', last_seen_at) AS ts
+                                FROM app_user
+                                WHERE last_seen_at IS NOT NULL
+                                ORDER BY last_seen_at DESC
+                                """
+                            )
+                        )
+                    for row in rows:
+                        if row[3] is None:
+                            continue
+                        user_last_seen.add_metric(
+                            [str(row[0]), str(row[1]).strip(), str(row[2])],
+                            float(row[3]),
+                        )
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -165,6 +212,7 @@ class AppBusinessMetricsCollector:
         yield reminders_sent
         yield users_total
         yield upcoming_7d
+        yield user_last_seen
 
 
 try:

@@ -55,6 +55,7 @@ class User(SQLModel, table=True):
     password_hash: str
     is_admin: bool = Field(default=False)
     is_owner: bool = Field(default=False)
+    last_seen_at: Optional[dt.datetime] = Field(default=None, index=True)
 
 
 class HomeworkCompletion(SQLModel, table=True):

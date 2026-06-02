@@ -1,6 +1,6 @@
 from pydantic import BaseModel, validator
 from typing import List, Optional
-from datetime import date as date_type, time as time_type
+from datetime import date as date_type, time as time_type, datetime as datetime_type
 
 from .semester_utils import normalize_semester_label
 
@@ -92,6 +92,7 @@ class UserPublic(BaseModel):
     login: str
     is_admin: bool
     is_owner: bool
+    last_seen_at: Optional[datetime_type] = None
 
     class Config:
         orm_mode = True

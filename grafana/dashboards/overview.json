@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 9,
+  "version": 11,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -823,7 +823,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"container_logs\"} |~ \"(?i)(error|exception|critical|traceback|fatal)\"",
+          "expr": "{job=\"container_logs\"} |~ \"(?i)(error|exception|critical|traceback|fatal)\" != \"context canceled\" != \"code = Canceled\"",
           "refId": "A"
         }
       ],
@@ -854,6 +854,44 @@
       ],
       "title": "Логи PostgreSQL и Redis",
       "type": "logs"
+    },
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 202 }, "id": 111, "panels": [], "title": "Активность пользователей", "type": "row" },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] },
+          "unit": "dateTimeAsIso"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 203 },
+      "id": 112,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "enablePagination": true, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [ { "desc": true, "displayName": "Value" } ]
+      },
+      "pluginVersion": "11.2.2",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "app_user_last_seen_timestamp",
+          "instant": true,
+          "legendFormat": "{{user_name}} ({{login}})",
+          "refId": "A"
+        }
+      ],
+      "title": "Последняя активность пользователей (дата и время)",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Последняя активность", "login": "Логин", "user_id": "ID", "user_name": "Пользователь" } } }
+      ],
+      "type": "table"
     }
   ]
 }
