@@ -128,7 +128,7 @@ class AppBusinessMetricsCollector:
         events_total = GaugeMetricFamily("app_events_total", "Всего событий")
         user_last_seen = GaugeMetricFamily(
             "app_user_last_seen_timestamp",
-            "Последняя активность пользователя (unix timestamp)",
+            "Последняя авторизация пользователя (unix timestamp)",
             labels=["user_id", "user_name", "login"],
         )
 

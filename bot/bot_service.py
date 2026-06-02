@@ -354,6 +354,29 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/health/telegram")
+async def health_telegram():
+    """Проверка реального канала отправки: bot-service -> Telegram API."""
+    started = _time.perf_counter()
+    try:
+        body = await _telegram_call("getMe", {})
+        if not body.get("ok"):
+            raise HTTPException(status_code=502, detail=f"Telegram API error: {body}")
+        return {"ok": True, "latency_seconds": _time.perf_counter() - started}
+    except HTTPException as e:
+        return {
+            "ok": False,
+            "latency_seconds": _time.perf_counter() - started,
+            "detail": str(e.detail),
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "latency_seconds": _time.perf_counter() - started,
+            "detail": f"{type(e).__name__}: {e}",
+        }
+
+
 @app.get("/metrics")
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

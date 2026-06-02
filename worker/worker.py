@@ -10,7 +10,7 @@ BOT_SERVICE_URL = os.getenv("BOT_SERVICE_URL", "http://bot:8081")
 POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "60"))
 BIRTHDAY_GREETING_TIME = os.getenv("BIRTHDAY_GREETING_TIME", "00:10")
 METRICS_PORT = int(os.getenv("WORKER_METRICS_PORT", "9101"))
-TELEGRAM_PROBE_URL = os.getenv("TELEGRAM_PROBE_URL", "https://api.telegram.org")
+TELEGRAM_PROBE_URL = os.getenv("TELEGRAM_PROBE_URL", f"{BOT_SERVICE_URL}/health/telegram")
 
 # Prometheus-метрики воркера
 WORKER_RUNS = Counter("worker_runs_total", "Количество циклов опроса воркера")
@@ -27,11 +27,21 @@ _last_birthday_greeting_date = None
 
 
 def _probe_telegram():
-    """Проверяет, доступен ли Telegram напрямую из воркера, и пишет gauge."""
+    """Проверяет реальный путь worker -> bot-service -> Telegram и пишет gauge."""
     started = _time.perf_counter()
     try:
-        resp = httpx.get(TELEGRAM_PROBE_URL, timeout=5.0)
-        TELEGRAM_REACHABLE.set(1 if resp.status_code < 500 else 0)
+        resp = httpx.get(TELEGRAM_PROBE_URL, timeout=10.0)
+        ok = 0
+        if resp.status_code < 500:
+            try:
+                payload = resp.json()
+                if isinstance(payload, dict):
+                    ok = 1 if payload.get("ok") else 0
+                else:
+                    ok = 1
+            except Exception:
+                ok = 1
+        TELEGRAM_REACHABLE.set(ok)
     except Exception as e:
         print("⚠️ Worker: Telegram недоступен:", e)
         TELEGRAM_REACHABLE.set(0)

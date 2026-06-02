@@ -1,4 +1,5 @@
 from typing import List
+import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -28,6 +29,10 @@ def login(body: LoginRequest):
         u = session.exec(stmt).first()
         if not u or not verify_password(body.password, u.password_hash):
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+        u.last_seen_at = dt.datetime.utcnow()
+        session.add(u)
+        session.commit()
+        session.refresh(u)
         token = create_access_token(u.id)
         return LoginResponse(access_token=token, user=_to_public(u))
 

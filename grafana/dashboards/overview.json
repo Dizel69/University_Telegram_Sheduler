@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 12,
+  "version": 15,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -699,8 +699,8 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 159 }, "id": 90,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "worker_telegram_reachable", "legendFormat": "Telegram", "refId": "A" } ],
-      "title": "Telegram доступен с воркера", "type": "stat"
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up{job=\"bot\"}", "legendFormat": "bot-service", "refId": "A" } ],
+      "title": "Доступность bot-service", "type": "stat"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -763,45 +763,43 @@
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "min": 0, "max": 1,
-        "custom": { "drawStyle": "line", "fillOpacity": 25, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "stepAfter" } }, "overrides": [] },
+        "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "stepAfter" } }, "overrides": [] },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 170 }, "id": 96,
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["lastNotNull", "min"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "worker_telegram_reachable", "legendFormat": "Доступность (1/0)", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "worker_telegram_probe_seconds", "legendFormat": "Время отклика, с", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "worker_telegram_reachable", "legendFormat": "raw: доступность (1/0)", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "avg_over_time(worker_telegram_reachable[10m])", "legendFormat": "среднее за 10 мин", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "worker_telegram_probe_seconds", "legendFormat": "время отклика, с", "refId": "C" }
       ],
       "title": "Доступность Telegram из воркера", "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "short", "min": 0, "max": 1,
-        "custom": { "drawStyle": "line", "fillOpacity": 25, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "stepAfter" } }, "overrides": [] },
+        "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 170 }, "id": 97,
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success", "legendFormat": "{{instance}}", "refId": "A" } ],
-      "title": "Внешние проверки (доступность)", "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "d",
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 14 }, { "color": "green", "value": 30 } ] } }, "overrides": [] },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 177 }, "id": 98,
-      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "(probe_ssl_earliest_cert_expiry - time()) / 86400", "legendFormat": "{{instance}}", "refId": "A" } ],
-      "title": "Срок действия SSL-сертификатов (дней)", "type": "bargauge"
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "min_over_time(up{job=\"bot\"}[10m])", "legendFormat": "bot-service", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "min_over_time(probe_success{job=\"blackbox-telegram\"}[10m])", "legendFormat": "Telegram API", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "min_over_time(probe_success{job=\"blackbox-http\",instance=\"http://backend:8000/metrics\"}[10m])", "legendFormat": "backend /metrics", "refId": "C" }
+      ],
+      "title": "Доступность сервисов (сводка за 10 мин)", "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "s",
         "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 177 }, "id": 99,
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 177 }, "id": 99,
       "options": { "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds", "legendFormat": "{{instance}}", "refId": "A" } ],
-      "title": "Время ответа внешних проверок", "type": "timeseries"
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-http\",instance=\"http://backend:8000/metrics\"}", "legendFormat": "backend", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-telegram\"}", "legendFormat": "Telegram API", "refId": "B" }
+      ],
+      "title": "Время ответа проверок (backend, Telegram API)", "type": "timeseries"
     },
 
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 183 }, "id": 108, "panels": [], "title": "Логи", "type": "row" },
@@ -823,11 +821,11 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"container_logs\"} |~ \"(?i)(error|exception|critical|traceback|fatal)\" != \"context canceled\" != \"code = Canceled\"",
+          "expr": "{job=\"container_logs\"} |~ \"(?i)(error|exception|critical|traceback|fatal)\" !~ \"(?i)(scheduler_processor|error notifying scheduler|error health checking|error processing requests|error notifying frontend|grpc: the client connection is closing|err=EOF|org_id=\\\"fake\\\")\" != \"context canceled\" != \"code = Canceled\"",
           "refId": "A"
         }
       ],
-      "title": "Последние ошибки (backend, bot, worker)",
+      "title": "Последние ошибки приложения (backend, bot, worker)",
       "type": "logs"
     },
     {
@@ -848,7 +846,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"container_logs\"}",
+          "expr": "{job=\"container_logs\"} !~ \"(?i)(scheduler_processor|error notifying scheduler|org_id=\\\"fake\\\")\"",
           "refId": "A"
         }
       ],
@@ -867,7 +865,7 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Последняя активность" },
+            "matcher": { "id": "byName", "options": "Последняя авторизация" },
             "properties": [ { "id": "unit", "value": "dateTimeAsIso" } ]
           }
         ]
@@ -878,7 +876,7 @@
         "cellHeight": "sm",
         "footer": { "countRows": false, "enablePagination": true, "fields": "", "reducer": ["sum"], "show": false },
         "showHeader": true,
-        "sortBy": [ { "desc": true, "displayName": "Последняя активность" } ]
+        "sortBy": [ { "desc": true, "displayName": "Последняя авторизация" } ]
       },
       "pluginVersion": "11.2.2",
       "targets": [
@@ -890,7 +888,7 @@
           "refId": "A"
         }
       ],
-      "title": "Последняя активность пользователей (дата и время)",
+      "title": "Последняя авторизация пользователей (дата и время)",
       "transformations": [
         { "id": "labelsToFields", "options": { "mode": "columns" } },
         {
@@ -899,14 +897,15 @@
             "excludeByName": {
               "Time": true,
               "__name__": true,
+              "app_user_last_seen_timestamp": true,
               "instance": true,
               "job": true,
-              "service": true
+              "service": true,
+              "login": true,
+              "user_id": true
             },
             "renameByName": {
-              "Value": "Последняя активность",
-              "login": "Логин",
-              "user_id": "ID",
+              "Value": "Последняя авторизация",
               "user_name": "Пользователь"
             }
           }
