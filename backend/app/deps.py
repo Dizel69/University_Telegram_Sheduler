@@ -13,23 +13,23 @@ from app.security import decode_token
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
 
-def _touch_last_seen(session: Session, uid: int) -> None:
+def _touch_last_seen(uid: int) -> None:
     """Обновляет last_seen_at не чаще раза в минуту, чтобы не перегружать БД."""
     try:
-        session.execute(
-            text(
-                """
-                UPDATE app_user
-                SET last_seen_at = CURRENT_TIMESTAMP
-                WHERE id = :uid
-                  AND (last_seen_at IS NULL OR last_seen_at < :cutoff)
-                """
-            ),
-            {"uid": uid, "cutoff": dt.datetime.utcnow() - dt.timedelta(minutes=1)},
-        )
-        session.commit()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE app_user
+                    SET last_seen_at = CURRENT_TIMESTAMP
+                    WHERE id = :uid
+                      AND (last_seen_at IS NULL OR last_seen_at < :cutoff)
+                    """
+                ),
+                {"uid": uid, "cutoff": dt.datetime.utcnow() - dt.timedelta(minutes=1)},
+            )
     except Exception:
-        session.rollback()
+        pass
 
 
 def require_admin_token_header(x_admin_token: Optional[str] = Header(None)) -> bool:
@@ -66,7 +66,7 @@ def require_logged_in_user(authorization: Optional[str] = Header(None)) -> User:
         user = session.get(User, uid)
         if not user:
             raise HTTPException(status_code=401, detail="Пользователь не найден")
-        _touch_last_seen(session, uid)
+        _touch_last_seen(uid)
         return user
 
 
@@ -86,7 +86,7 @@ def require_admin(
         user = session.get(User, uid)
         if not user or not user.is_admin:
             raise HTTPException(status_code=403, detail="Нужны права администратора")
-        _touch_last_seen(session, uid)
+        _touch_last_seen(uid)
 
 
 def require_owner(
@@ -105,4 +105,4 @@ def require_owner(
         user = session.get(User, uid)
         if not user or not user.is_owner:
             raise HTTPException(status_code=403, detail="Только владелец может управлять пользователями")
-        _touch_last_seen(session, uid)
+        _touch_last_seen(uid)
