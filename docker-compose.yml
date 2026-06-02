@@ -165,6 +165,39 @@ services:
       - "3001:3000"
     depends_on:
       - prometheus
+      - loki
+    networks:
+      - appnet
+
+  # Loki (централизованные логи, single-binary)
+  loki:
+    image: grafana/loki:2.9.10
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    mem_limit: 512m
+    networks:
+      - appnet
+
+  # Fluent Bit → Loki (логи контейнеров backend, bot, worker, postgres, redis)
+  fluent-bit:
+    image: fluent/fluent-bit:2.2.3
+    restart: unless-stopped
+    user: root
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - ./fluent-bit/extract_job.lua:/fluent-bit/etc/extract_job.lua:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - fluent_bit_data:/var/log
+    depends_on:
+      - loki
+    mem_limit: 128m
     networks:
       - appnet
 
@@ -219,6 +252,8 @@ volumes:
   pgdata:
   prometheus_data:
   grafana_data:
+  loki_data:
+  fluent_bit_data:
 
 networks:
   appnet:

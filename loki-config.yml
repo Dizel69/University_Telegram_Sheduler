@@ -1,0 +1,65 @@
+# Loki single-binary: лимиты под сервер ~4 GB RAM, retention 14 суток.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+    cache_ttl: 24h
+  filesystem:
+    directory: /loki/chunks
+
+limits_config:
+  retention_period: 336h
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  max_streams_per_user: 5000
+  max_global_streams_per_user: 5000
+  max_line_size: 256kb
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_query_series: 500
+  max_query_parallelism: 16
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_delay: 2h
+  compaction_interval: 10m
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 64
+
+analytics:
+  reporting_enabled: false

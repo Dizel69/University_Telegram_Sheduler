@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 4,
+  "version": 5,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -802,6 +802,58 @@
       "pluginVersion": "11.2.2",
       "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds", "legendFormat": "{{instance}}", "refId": "A" } ],
       "title": "Время ответа внешних проверок", "type": "timeseries"
+    },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 183 }, "id": 108, "panels": [], "title": "Логи", "type": "row" },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 184 },
+      "id": 109,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "11.2.2",
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=~\"backend|bot|worker\"} |~ \"(?i)(error|exception|critical|traceback|fatal)\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Последние ошибки (backend, bot, worker)",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 194 },
+      "id": 110,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "11.2.2",
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=~\"postgres|redis\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Логи PostgreSQL и Redis",
+      "type": "logs"
     }
   ]
 }
