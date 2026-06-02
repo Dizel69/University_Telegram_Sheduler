@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 11,
+  "version": 12,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -863,10 +863,14 @@
           "color": { "mode": "thresholds" },
           "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] },
-          "unit": "dateTimeAsIso"
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Последняя активность" },
+            "properties": [ { "id": "unit", "value": "dateTimeAsIso" } ]
+          }
+        ]
       },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 203 },
       "id": 112,
@@ -874,7 +878,7 @@
         "cellHeight": "sm",
         "footer": { "countRows": false, "enablePagination": true, "fields": "", "reducer": ["sum"], "show": false },
         "showHeader": true,
-        "sortBy": [ { "desc": true, "displayName": "Value" } ]
+        "sortBy": [ { "desc": true, "displayName": "Последняя активность" } ]
       },
       "pluginVersion": "11.2.2",
       "targets": [
@@ -889,7 +893,24 @@
       "title": "Последняя активность пользователей (дата и время)",
       "transformations": [
         { "id": "labelsToFields", "options": { "mode": "columns" } },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Последняя активность", "login": "Логин", "user_id": "ID", "user_name": "Пользователь" } } }
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "service": true
+            },
+            "renameByName": {
+              "Value": "Последняя активность",
+              "login": "Логин",
+              "user_id": "ID",
+              "user_name": "Пользователь"
+            }
+          }
+        }
       ],
       "type": "table"
     }
