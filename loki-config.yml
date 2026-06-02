@@ -1,13 +1,11 @@
-# Loki single-binary: лимиты под сервер ~4 GB RAM, retention 14 суток.
+# Loki single-binary: минимальный стабильный конфиг для Docker Compose.
 auth_enabled: false
 
 server:
   http_listen_port: 3100
-  grpc_listen_port: 9096
-  log_level: warn
+  log_level: info
 
 common:
-  instance_addr: 127.0.0.1
   path_prefix: /loki
   storage:
     filesystem:
@@ -21,18 +19,18 @@ common:
 schema_config:
   configs:
     - from: 2020-10-24
-      store: tsdb
+      store: boltdb-shipper
       object_store: filesystem
-      schema: v13
+      schema: v11
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /loki/tsdb-index
-    cache_location: /loki/tsdb-cache
-    cache_ttl: 24h
+  boltdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/boltdb-cache
+    shared_store: filesystem
   filesystem:
     directory: /loki/chunks
 
@@ -41,25 +39,7 @@ limits_config:
   ingestion_rate_mb: 4
   ingestion_burst_size_mb: 8
   max_streams_per_user: 5000
-  max_global_streams_per_user: 5000
-  max_line_size: 256kb
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
-  max_query_series: 500
-  max_query_parallelism: 16
 
-compactor:
-  working_directory: /loki/compactor
-  retention_enabled: true
-  delete_delay: 2h
-  compaction_interval: 10m
-
-query_range:
-  results_cache:
-    cache:
-      embedded_cache:
-        enabled: true
-        max_size_mb: 64
-
-analytics:
-  reporting_enabled: false
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 336h
