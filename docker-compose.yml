@@ -191,7 +191,6 @@ services:
     volumes:
       - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
       - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
-      - ./fluent-bit/extract_job.lua:/fluent-bit/etc/extract_job.lua:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - fluent_bit_data:/var/log
