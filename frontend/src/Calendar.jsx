@@ -341,7 +341,7 @@ export default function Calendar({ isAdmin = false }) {
       console.error('Не удалось сохранить заливки календаря', e)
       alert('Не удалось сохранить подсветку дней на сервере')
     })
-  }, [rangeHighlights, isAdmin])
+  }, [rangeHighlights])
 
   // PDF parser removed — no external parser service used
 

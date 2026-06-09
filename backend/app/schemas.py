@@ -52,6 +52,48 @@ class EventCreate(BaseModel):
         return normalize_semester_label(v)
 
 
+class EventUpdate(BaseModel):
+    """Схема частичного обновления события (перенос, правка времени и т.д.)."""
+    date: Optional[date_type] = None
+    time: Optional[time_type] = None
+    end_time: Optional[time_type] = None
+    title: Optional[str] = None
+    body: Optional[str] = None
+    type: Optional[str] = None
+    subject: Optional[str] = None
+    room: Optional[str] = None
+    teacher: Optional[str] = None
+    lesson_type: Optional[str] = None
+    reminder_offset_hours: Optional[int] = None
+    semester: Optional[str] = None
+    photo_urls: Optional[List[str]] = None
+    attachments: Optional[List[dict]] = None
+
+    @validator('date', pre=True)
+    def _empty_date_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+    @validator('time', pre=True)
+    def _empty_time_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+    @validator('end_time', pre=True)
+    def _empty_end_time_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
+    @validator('semester', pre=True)
+    def _normalize_semester(cls, v):
+        if v is None or v == "":
+            return None
+        return normalize_semester_label(v)
+
+
 class EventPublic(BaseModel):
     """Схема для публичного представления события."""
     id: int

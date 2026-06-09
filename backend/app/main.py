@@ -11,7 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from fastapi.staticfiles import StaticFiles
 from app.database import init_db
-from app.schemas import EventCreate, EventPublic
+from app.schemas import EventCreate, EventPublic, EventUpdate
 from app.models import Event, User
 from app.crud import add_event, get_public_events, get_due_reminders, mark_reminder_sent, set_sent_message
 from app.type_utils import canonical_event_type
@@ -968,30 +968,6 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
     except Exception:
         pass
     return created
-
-
-class EventUpdate(BaseModel):
-    """Модель обновления события."""
-    date: Optional[str] = None      # Новая дата
-    time: Optional[str] = None      # Новое время начала
-    end_time: Optional[str] = None  # Новое время окончания
-    title: Optional[str] = None     # Новый заголовок
-    body: Optional[str] = None      # Новые детали
-    type: Optional[str] = None      # Новый тип
-    subject: Optional[str] = None   # Предмет
-    room: Optional[str] = None      # Новая аудитория
-    teacher: Optional[str] = None   # Новый преподаватель
-    lesson_type: Optional[str] = None  # exam / control для exam_control; lecture / practice для schedule
-    reminder_offset_hours: Optional[int] = None
-    semester: Optional[str] = None  # для homework
-    photo_urls: Optional[List[str]] = None
-    attachments: Optional[List[dict]] = None
-
-    @validator('semester', pre=True)
-    def _normalize_semester(cls, v):
-        if v is None or v == '':
-            return None
-        return normalize_semester_label(v)
 
 
 @app.put('/events/{event_id}')

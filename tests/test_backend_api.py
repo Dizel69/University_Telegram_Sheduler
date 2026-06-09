@@ -62,6 +62,47 @@ def test_event_lifecycle_and_calendar_filter(backend_client, backend_engine):
     assert missing_response.status_code == 404
 
 
+def test_event_update_via_jwt_admin_updates_time(backend_client, backend_engine):
+    """Админ через Bearer JWT (не X-ADMIN-TOKEN) — правка времени и подсветки дней."""
+    token = _login_admin(backend_client)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    create_response = backend_client.post(
+        "/events",
+        headers=auth_headers,
+        json={
+            "type": "schedule",
+            "body": "Lecture",
+            "date": "2026-06-10",
+            "time": "10:00",
+            "end_time": "11:30",
+        },
+    )
+    assert create_response.status_code == 200
+    event_id = create_response.json()["id"]
+
+    update_response = backend_client.put(
+        f"/events/{event_id}",
+        headers=auth_headers,
+        json={"time": "14:00", "end_time": "15:30"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json() == {"ok": True}
+
+    with Session(backend_engine) as session:
+        updated = session.get(Event, event_id)
+        assert updated.time == time(14, 0)
+        assert updated.end_time == time(15, 30)
+
+    highlights_response = backend_client.put(
+        "/calendar/day-range-highlights",
+        headers=auth_headers,
+        json=[{"start": "2026-06-01", "end": "2026-06-07", "color": "#ff0000", "stitch": True}],
+    )
+    assert highlights_response.status_code == 200
+    assert len(highlights_response.json()) == 1
+
+
 def test_due_reminders_and_mark_sent(backend_client, backend_engine):
     with Session(backend_engine) as session:
         due = Event(

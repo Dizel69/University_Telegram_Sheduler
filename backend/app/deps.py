@@ -1,3 +1,4 @@
+import datetime as dt
 import os
 from typing import Optional
 
@@ -9,6 +10,20 @@ from app.models import User
 from app.security import decode_token
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+
+
+def _touch_last_seen(user_id: int) -> None:
+    """Обновить last_seen_at для метрик активности (не критично для запроса)."""
+    try:
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            if not user:
+                return
+            user.last_seen_at = dt.datetime.utcnow()
+            session.add(user)
+            session.commit()
+    except Exception:
+        pass
 
 
 def require_admin_token_header(x_admin_token: Optional[str] = Header(None)) -> bool:
