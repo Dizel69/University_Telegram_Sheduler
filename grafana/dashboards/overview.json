@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 16,
+  "version": 17,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -887,7 +887,7 @@
       "id": 112,
       "options": {
         "cellHeight": "sm",
-        "footer": { "countRows": true, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": true },
+        "footer": { "countRows": true, "enablePagination": false, "fields": "", "reducer": [], "show": true },
         "showHeader": true,
         "sortBy": [ { "desc": true, "displayName": "Последний вход" } ]
       },
@@ -895,7 +895,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "app_user_last_seen_timestamp",
+          "expr": "app_user_last_seen_timestamp * 1000",
           "format": "table",
           "instant": true,
           "refId": "A"
