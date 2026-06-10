@@ -172,10 +172,9 @@ class AppBusinessMetricsCollector:
                                     id,
                                     TRIM(COALESCE(last_name, '') || ' ' || COALESCE(first_name, '') || ' ' || COALESCE(middle_name, '')) AS user_name,
                                     login,
-                                    EXTRACT(EPOCH FROM last_seen_at) AS ts
+                                    COALESCE(EXTRACT(EPOCH FROM last_seen_at), 0) AS ts
                                 FROM app_user
-                                WHERE last_seen_at IS NOT NULL
-                                ORDER BY last_seen_at DESC
+                                ORDER BY last_seen_at DESC NULLS LAST, last_name, first_name
                                 """
                             )
                         )
@@ -187,19 +186,20 @@ class AppBusinessMetricsCollector:
                                     id,
                                     TRIM(COALESCE(last_name, '') || ' ' || COALESCE(first_name, '') || ' ' || COALESCE(middle_name, '')) AS user_name,
                                     login,
-                                    strftime('%s', last_seen_at) AS ts
+                                    COALESCE(CAST(strftime('%s', last_seen_at) AS REAL), 0) AS ts
                                 FROM app_user
-                                WHERE last_seen_at IS NOT NULL
-                                ORDER BY last_seen_at DESC
+                                ORDER BY
+                                    CASE WHEN last_seen_at IS NULL THEN 1 ELSE 0 END,
+                                    last_seen_at DESC,
+                                    last_name,
+                                    first_name
                                 """
                             )
                         )
                     for row in rows:
-                        if row[3] is None:
-                            continue
                         user_last_seen.add_metric(
                             [str(row[0]), str(row[1]).strip(), str(row[2])],
-                            float(row[3]),
+                            float(row[3] or 0),
                         )
                 except Exception:
                     pass

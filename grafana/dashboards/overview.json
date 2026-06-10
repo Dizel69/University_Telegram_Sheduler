@@ -26,7 +26,7 @@
   "timezone": "browser",
   "title": "University Scheduler — Обзор",
   "uid": "us-overview",
-  "version": 15,
+  "version": 16,
   "panels": [
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": [], "title": "Хост (сервер)", "type": "row" },
 
@@ -865,50 +865,72 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Последняя авторизация" },
-            "properties": [ { "id": "unit", "value": "dateTimeAsIso" } ]
+            "matcher": { "id": "byName", "options": "Пользователь" },
+            "properties": [ { "id": "custom.width", "value": 320 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Последний вход" },
+            "properties": [
+              { "id": "unit", "value": "dateTimeAsIso" },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "0": { "color": "text", "index": 0, "text": "Не входил" } } },
+                  { "type": "special", "options": { "match": "null", "result": { "color": "text", "index": 1, "text": "Не входил" } } }
+                ]
+              }
+            ]
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 203 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 203 },
       "id": 112,
       "options": {
         "cellHeight": "sm",
-        "footer": { "countRows": false, "enablePagination": true, "fields": "", "reducer": ["sum"], "show": false },
+        "footer": { "countRows": true, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": true },
         "showHeader": true,
-        "sortBy": [ { "desc": true, "displayName": "Последняя авторизация" } ]
+        "sortBy": [ { "desc": true, "displayName": "Последний вход" } ]
       },
       "pluginVersion": "11.2.2",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "app_user_last_seen_timestamp",
+          "format": "table",
           "instant": true,
-          "legendFormat": "{{user_name}} ({{login}})",
           "refId": "A"
         }
       ],
-      "title": "Последняя авторизация пользователей (дата и время)",
+      "title": "Все пользователи — последний вход",
       "transformations": [
-        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "labelsToFields", "options": { "mode": "columns", "keepLabels": ["user_name"] } },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
               "__name__": true,
-              "app_user_last_seen_timestamp": true,
               "instance": true,
               "job": true,
-              "service": true,
               "login": true,
+              "service": true,
               "user_id": true
             },
+            "indexByName": {
+              "user_name": 0,
+              "Value": 1,
+              "app_user_last_seen_timestamp": 1
+            },
             "renameByName": {
-              "Value": "Последняя авторизация",
+              "Value": "Последний вход",
+              "app_user_last_seen_timestamp": "Последний вход",
               "user_name": "Пользователь"
             }
           }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": { "include": { "names": ["Пользователь", "Последний вход"] } }
         }
       ],
       "type": "table"
