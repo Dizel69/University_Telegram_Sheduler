@@ -25,6 +25,7 @@ def init_db() -> None:
         Event,
         HomeworkCompletion,
         SubjectSetting,
+        TeacherProfile,
         TeacherSetting,
         User,
     )

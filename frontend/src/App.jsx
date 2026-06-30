@@ -10,6 +10,7 @@ import UsersAdmin from './UsersAdmin'
 import AttendanceAdmin from './AttendanceAdmin'
 import AnalyticsAdmin from './AnalyticsAdmin'
 import SubjectsAdmin from './SubjectsAdmin'
+import TeachersAdmin from './TeachersAdmin'
 import ThemeToggle from './ThemeToggle'
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
 
   const showAdminTabs = Boolean(accountUser?.is_admin)
   const showUsersTab = Boolean(accountUser?.is_owner)
+  const showTeachersTab = Boolean(accountUser)
 
   useEffect(() => {
     let isCancelled = false
@@ -95,8 +97,9 @@ export default function App() {
 
   useEffect(() => {
     if (tab === 'users' && !showUsersTab) setTab('calendar')
+    if (tab === 'teachers' && !showTeachersTab) setTab('calendar')
     if ((tab === 'create' || tab === 'list' || tab === 'attendance' || tab === 'analytics' || tab === 'subjects') && !showAdminTabs) setTab('calendar')
-  }, [tab, showUsersTab, showAdminTabs])
+  }, [tab, showUsersTab, showAdminTabs, showTeachersTab])
 
   const calendarIsAdmin = useMemo(() => Boolean(accountUser?.is_admin), [accountUser])
 
@@ -119,6 +122,9 @@ export default function App() {
           ) : null}
           <button type="button" className={tab === 'calendar' ? 'tab active' : 'tab'} onClick={() => setTab('calendar')}>Календарь</button>
           <button type="button" className={tab === 'homework' ? 'tab active' : 'tab'} onClick={() => setTab('homework')}>Домашняя работа</button>
+          {showTeachersTab ? (
+            <button type="button" className={tab === 'teachers' ? 'tab active' : 'tab'} onClick={() => setTab('teachers')}>Преподаватели</button>
+          ) : null}
         </nav>
         <div className="topbar-auth">
           <ThemeToggle />
@@ -152,6 +158,7 @@ export default function App() {
           <AnalyticsAdmin currentSemester={currentSemester} />
         )}
         {tab === 'subjects' && showAdminTabs && <SubjectsAdmin />}
+        {tab === 'teachers' && showTeachersTab && <TeachersAdmin isAdmin={showAdminTabs} />}
         {tab === 'semester' && <Semester />}
       </main>
       <UserLogin />

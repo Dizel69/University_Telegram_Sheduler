@@ -22,6 +22,7 @@ from app.attendance_routes import router as attendance_router
 from app.analytics_routes import router as analytics_router
 from app.subject_routes import router as subject_router
 from app.calendar_highlight_routes import router as calendar_highlight_router
+from app.teacher_routes import router as teacher_profiles_router
 import httpx
 from typing import List, Optional
 import calendar as _calendar
@@ -67,6 +68,7 @@ app.include_router(attendance_router)
 app.include_router(analytics_router)
 app.include_router(subject_router)
 app.include_router(calendar_highlight_router)
+app.include_router(teacher_profiles_router)
 
 def _metric_get_or_create_counter(name: str, documentation: str, labels: list[str]):
     try:
@@ -649,6 +651,16 @@ def public_events():
             'reminder_offset_hours': getattr(ev, 'reminder_offset_hours', 24),
         })
     return out
+
+
+@app.get("/teachers", response_model=List[str])
+def list_teachers():
+    """
+    Список уникальных имён преподавателей из ранее созданных событий
+    (используется для автодополнения в формах создания/редактирования).
+    """
+    from .crud import get_distinct_teachers
+    return get_distinct_teachers()
 
 
 @app.delete('/events/day')

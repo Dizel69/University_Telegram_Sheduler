@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, validator
 from typing import List, Optional
 from datetime import date as date_type, time as time_type, datetime as datetime_type
@@ -428,6 +430,100 @@ class TeacherVariantUpdateResult(BaseModel):
     ok: bool
     teacher: TeacherAdminRow
     updated_events: int
+
+
+def _normalize_subjects_list(v):
+    """Принимает список или строку (разделители: перевод строки, запятая, точка с запятой)."""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        parts = re.split(r"[\n,;]+", v)
+    elif isinstance(v, (list, tuple)):
+        parts = []
+        for item in v:
+            parts.extend(re.split(r"[\n,;]+", str(item)))
+    else:
+        return []
+    cleaned = []
+    seen = set()
+    for p in parts:
+        name = p.strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(name)
+    return cleaned
+
+
+class TeacherProfilePublic(BaseModel):
+    """Карточка преподавателя для отображения."""
+    id: int
+    full_name: str
+    department: Optional[str] = None
+    contact: Optional[str] = None
+    subjects: List[str] = []
+    bio: Optional[str] = None
+
+
+class TeacherProfileCreate(BaseModel):
+    """Создание карточки преподавателя."""
+    full_name: str
+    department: Optional[str] = None
+    contact: Optional[str] = None
+    subjects: List[str] = []
+    bio: Optional[str] = None
+
+    @validator('full_name')
+    def _full_name_required(cls, v):
+        text = (v or "").strip()
+        if not text:
+            raise ValueError("ФИО преподавателя обязательно")
+        return text
+
+    @validator('department', 'contact', 'bio', pre=True)
+    def _empty_to_none(cls, v):
+        if v is None:
+            return None
+        text = str(v).strip()
+        return text or None
+
+    @validator('subjects', pre=True)
+    def _normalize_subjects(cls, v):
+        return _normalize_subjects_list(v)
+
+
+class TeacherProfileUpdate(BaseModel):
+    """Частичное обновление карточки преподавателя."""
+    full_name: Optional[str] = None
+    department: Optional[str] = None
+    contact: Optional[str] = None
+    subjects: Optional[List[str]] = None
+    bio: Optional[str] = None
+
+    @validator('full_name')
+    def _full_name_not_blank(cls, v):
+        if v is None:
+            return v
+        text = v.strip()
+        if not text:
+            raise ValueError("ФИО преподавателя не может быть пустым")
+        return text
+
+    @validator('department', 'contact', 'bio', pre=True)
+    def _empty_to_none(cls, v):
+        if v is None:
+            return None
+        text = str(v).strip()
+        return text or None
+
+    @validator('subjects', pre=True)
+    def _normalize_subjects(cls, v):
+        if v is None:
+            return None
+        return _normalize_subjects_list(v)
 
 
 class CalendarDayRangeHighlightPublic(BaseModel):

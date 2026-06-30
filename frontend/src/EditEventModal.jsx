@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
+import TeacherAutocomplete, { rememberTeacher } from './TeacherAutocomplete'
 
 export default function EditEventModal({ ev, onClose, onSaved }) {
   if (!ev) return null
@@ -31,6 +32,8 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
   async function doSave() {
     setSaving(true)
     try {
+      // Запоминаем преподавателя для автодополнения в других формах
+      if (teacher && teacher.trim()) rememberTeacher(teacher)
       const payload = {}
       if (type) payload.type = type
       payload.subject = subject.trim() ? subject.trim() : null
@@ -132,7 +135,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
             </div>
             <div>
               <label className="label">Преподаватель (фамилия)</label>
-              <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Например: Иванов" />
+              <TeacherAutocomplete value={teacher} onChange={setTeacher} placeholder="Например: Иванов" />
             </div>
             {type === 'schedule' && (
               <div>

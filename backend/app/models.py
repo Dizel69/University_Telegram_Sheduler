@@ -112,6 +112,23 @@ class TeacherSetting(SQLModel, table=True):
     updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
 
 
+class TeacherProfile(SQLModel, table=True):
+    """Карточка преподавателя, заполняемая администратором вручную."""
+
+    __tablename__ = "teacher_profile"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    full_name: str = Field(index=True)            # ФИО (обязательно)
+    department: Optional[str] = Field(default=None)  # Кафедра
+    contact: Optional[str] = Field(default=None)     # Связь (телефон, email, кабинет и т.п.)
+    # Список предметов, которые ведёт преподаватель
+    subjects: Optional[list[str]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    bio: Optional[str] = Field(default=None)         # «О нём» — большое текстовое поле
+
+    created_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+
+
 class CalendarDayRangeHighlight(SQLModel, table=True):
     """Цветовая заливка диапазона дней в публичном календаре (общая для всех клиентов)."""
 

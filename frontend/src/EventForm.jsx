@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
+import TeacherAutocomplete, { rememberTeacher } from './TeacherAutocomplete'
 
 export default function EventForm({ onCreated }) {
   const [type, setType] = useState('schedule')
@@ -51,6 +52,8 @@ export default function EventForm({ onCreated }) {
     }
 
     try {
+      // Запоминаем нового преподавателя для автодополнения в других формах
+      if (teacher && teacher.trim()) rememberTeacher(teacher)
       // Handle repeat series
       if (repeat === 'none') {
         const payload = {
@@ -245,7 +248,7 @@ export default function EventForm({ onCreated }) {
         {type !== 'homework' && (
           <div>
             <label className="label">Преподаватель</label>
-            <input value={teacher} onChange={e => setTeacher(e.target.value)} placeholder="Ф.И.О." />
+            <TeacherAutocomplete value={teacher} onChange={setTeacher} placeholder="Ф.И.О." />
           </div>
         )}
 

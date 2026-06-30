@@ -31,6 +31,30 @@ def get_public_events(limit: int = 500) -> List[Event]:
         return result[:limit]
 
 
+def get_distinct_teachers() -> List[str]:
+    """
+    Возвращает отсортированный список уникальных непустых имён преподавателей
+    из событий и карточек преподавателей (для автодополнения в формах).
+    """
+    from .models import TeacherProfile
+
+    with Session(engine) as session:
+        event_names = session.exec(
+            select(Event.teacher).where(Event.teacher.is_not(None))
+        ).all()
+        profile_names = session.exec(select(TeacherProfile.full_name)).all()
+    seen = {}
+    for raw in list(event_names) + list(profile_names):
+        name = (raw or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        # Сохраняем первый встретившийся вариант написания
+        if key not in seen:
+            seen[key] = name
+    return sorted(seen.values(), key=lambda s: s.casefold())
+
+
 def get_due_reminders(now: datetime | None = None) -> List[Event]:
     """
     Возвращает события, у которых reminder_sent == False и время напоминания <= now.
