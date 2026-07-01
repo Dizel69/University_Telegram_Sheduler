@@ -44,6 +44,10 @@ export default function TeacherAutocomplete({ value, onChange, placeholder, id }
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(-1)
   const wrapRef = useRef(null)
+  // Уникальные случайные name/autocomplete отключают нативный автозаполнитель браузера:
+  // Chrome сопоставляет сохранённые значения по имени поля, а неизвестный токен autocomplete
+  // трактуется всеми современными браузерами как «выключено».
+  const antiAutofill = useRef('tac-' + Math.random().toString(36).slice(2, 10))
 
   useEffect(() => {
     let mounted = true
@@ -104,8 +108,18 @@ export default function TeacherAutocomplete({ value, onChange, placeholder, id }
     <div className="teacher-autocomplete" ref={wrapRef}>
       <input
         id={id}
+        name={antiAutofill.current}
         value={value}
-        autoComplete="off"
+        autoComplete={antiAutofill.current}
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        data-lpignore="true"
+        data-1p-ignore="true"
+        data-form-type="other"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open}
         placeholder={placeholder || 'Ф.И.О.'}
         onChange={e => {
           onChange(e.target.value)

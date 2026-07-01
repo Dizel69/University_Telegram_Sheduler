@@ -162,6 +162,7 @@ export default function TeachersAdmin({ isAdmin = false }) {
   const [status, setStatus] = useState('')
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
 
@@ -227,6 +228,27 @@ export default function TeachersAdmin({ isAdmin = false }) {
     }
   }
 
+  async function syncFromEvents() {
+    setSyncing(true)
+    setStatus('')
+    setError(null)
+    try {
+      const { data } = await axios.post('/teacher-profiles/sync')
+      const created = data?.created || 0
+      const updated = data?.updated || 0
+      setStatus(
+        created || updated
+          ? `Готово: добавлено ${created}, дополнено ${updated}.`
+          : 'Всё уже актуально — новых преподавателей и предметов не найдено.'
+      )
+      await load()
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message || String(e))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   async function deleteTeacher(t) {
     if (!window.confirm(`Удалить карточку преподавателя «${t.full_name}»?`)) return
     setStatus('')
@@ -247,7 +269,7 @@ export default function TeachersAdmin({ isAdmin = false }) {
           <h2>Преподаватели</h2>
           <p className="status" style={{ marginTop: 4 }}>
             {isAdmin
-              ? 'Карточки преподавателей: кафедра, связь, ФИО, предметы и описание. Заполняются вручную.'
+              ? 'Карточки преподавателей: ФИО, кафедра, связь, предметы и описание. ФИО и предметы можно заполнить автоматически из расписания, остальное — вручную.'
               : 'Справочник преподавателей кафедры.'}
           </p>
         </div>
@@ -255,6 +277,17 @@ export default function TeachersAdmin({ isAdmin = false }) {
           <button type="button" className="btn btn-sm" onClick={load} disabled={loading}>
             Обновить
           </button>
+          {isAdmin && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={syncFromEvents}
+              disabled={syncing}
+              title="Создать карточки для преподавателей из расписания и дополнить их предметы"
+            >
+              {syncing ? 'Заполняю…' : 'Заполнить из расписания'}
+            </button>
+          )}
           {isAdmin && !creating && (
             <button
               type="button"

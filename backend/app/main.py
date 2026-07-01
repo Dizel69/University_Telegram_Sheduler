@@ -23,6 +23,7 @@ from app.analytics_routes import router as analytics_router
 from app.subject_routes import router as subject_router
 from app.calendar_highlight_routes import router as calendar_highlight_router
 from app.teacher_routes import router as teacher_profiles_router
+from app.teacher_routes import touch_teacher_profile
 import httpx
 from typing import List, Optional
 import calendar as _calendar
@@ -537,6 +538,9 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
     # Подготовка события в базе данных (sent_message_id ещё не установлен)
     created = add_event(ev)
 
+    # Автозаполнение карточки преподавателя (ФИО + предмет из события)
+    touch_teacher_profile(created.teacher, created.subject or created.title)
+
     # Для schedule событий не отправлять уведомления — пометить как отправленные
     if created.type == 'schedule':
         mark_reminder_sent(created.id)
@@ -975,6 +979,8 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
         ev.reminder_sent = False
 
     created = add_event(ev)
+    # Автозаполнение карточки преподавателя (ФИО + предмет из события)
+    touch_teacher_profile(created.teacher, created.subject or created.title)
     try:
         created.type = canonical_event_type(created.type)
     except Exception:
@@ -997,11 +1003,17 @@ def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = D
         cnt = update_events_by_series(ev.series_id, **fields)
         if cnt == 0:
             raise HTTPException(status_code=404, detail='событий в серии не найдено')
+        updated_ev = get_event_by_id(event_id)
+        if updated_ev:
+            touch_teacher_profile(updated_ev.teacher, updated_ev.subject or updated_ev.title)
         return {'ok': True, 'updated': cnt}
     else:
         ok = update_event(event_id, **fields)
         if not ok:
             raise HTTPException(status_code=500, detail='не удалось обновить')
+        updated_ev = get_event_by_id(event_id)
+        if updated_ev:
+            touch_teacher_profile(updated_ev.teacher, updated_ev.subject or updated_ev.title)
         return {'ok': True}
 
 @app.post("/events/{event_id}/send_now")
