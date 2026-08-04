@@ -393,8 +393,8 @@ export default function EventForm({ onCreated }) {
 
       {type !== 'schedule' && (
         <>
-          <div style={{marginTop:10, display:'grid', gap:8}}>
-            <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
+          <div style={{marginTop:10, display:'flex', flexDirection:'column', alignItems:'flex-start', gap:8}}>
+            <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer'}}>
               <input
                 type="checkbox"
                 checked={saveOnly}
@@ -408,7 +408,7 @@ export default function EventForm({ onCreated }) {
               <span>Сохранить в календаре (без отправки) — скрыть во вкладке «События»</span>
             </label>
             {type === 'announcement' && (
-              <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
+              <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer'}}>
                 <input
                   type="checkbox"
                   checked={telegramOnly}

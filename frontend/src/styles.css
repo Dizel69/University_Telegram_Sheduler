@@ -88,6 +88,14 @@ input,select,textarea{
   box-sizing:border-box;
   transition:border-color 0.2s,background-color 0.25s;
 }
+input[type="checkbox"],input[type="radio"]{
+  width:auto;
+  padding:0;
+  margin:0;
+  border:none;
+  background:transparent;
+  flex-shrink:0;
+}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:0.85}
 .teacher-autocomplete{position:relative;width:100%}
 .teacher-autocomplete>input{width:100%}
