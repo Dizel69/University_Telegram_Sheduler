@@ -4,6 +4,7 @@ import { getSemesterForDate } from './semesterCalendar'
 import EditEventModal from './EditEventModal'
 import ErrorBoundary from './ErrorBoundary'
 import { bearerAuthHeaders } from './authHeaders'
+import { eventTemporalClass, isOngoingEvent } from './eventTime'
 
 /** Порядок в ячейке дня: контрольная/экзамен выше домашки. */
 function calendarTypeOrder(t) {
@@ -232,6 +233,8 @@ export default function Calendar({ isAdmin = false }) {
   const [transferEvent, setTransferEvent] = useState(null)
   const [editEvent, setEditEvent] = useState(null)
   const [showHomework, setShowHomework] = useState(true)
+  /** Тик для «сейчас идёт» / «уже прошло» без перезагрузки. */
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   function backendBase() {
     // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
@@ -241,6 +244,19 @@ export default function Calendar({ isAdmin = false }) {
   }
 
   useEffect(() => { load() }, [year, month])
+
+  useEffect(() => {
+    const tick = () => setNowMs(Date.now())
+    const id = setInterval(tick, 30000)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [])
 
   // Диплинк из Telegram: /calendar/m15/event/:id — открыть нужный месяц и день
   useEffect(() => {
@@ -636,10 +652,14 @@ export default function Calendar({ isAdmin = false }) {
               style={{ cursor: 'pointer', ...(hlBg ? { background: hlBg } : {}), ...bridgeStyle }}
             >
               <div className="date-num">{dt.getUTCDate()}</div>
-              {evs.slice(0,5).map(ev => (
-                <div key={ev.id} className="cal-ev" style={{display:'flex',flexDirection:'column',gap:4,padding:6,marginTop:6,background: eventColor(ev),borderRadius:6,color:eventTextColor(ev),fontSize:12}}>
-                  <div style={{display:'flex',justifyContent:'flex-start',alignItems:'flex-start'}}>
+              {evs.slice(0,5).map(ev => {
+                const temporal = eventTemporalClass(ev, nowMs)
+                const ongoing = temporal === 'is-ongoing'
+                return (
+                <div key={ev.id} className={'cal-ev' + (temporal ? ' ' + temporal : '')} style={{display:'flex',flexDirection:'column',gap:4,padding:6,marginTop:6,background: eventColor(ev),borderRadius:6,color:eventTextColor(ev),fontSize:12}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:4}}>
                     <div style={{fontSize:11,opacity:0.9,fontWeight:'bold'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
+                    {ongoing ? <span className="cal-ev-now">сейчас</span> : null}
                   </div>
                   <div style={{lineHeight:1.3,wordBreak:'break-word', whiteSpace:'normal'}}>
                     {ev.type === 'schedule' ? lessonIcon(ev.lesson_type) : null}
@@ -664,7 +684,7 @@ export default function Calendar({ isAdmin = false }) {
                     }} style={{marginLeft:8,background:'rgba(255,255,255,0.15)',border:'none',color:'#fff',padding:'2px 6px',borderRadius:4}}>✖</button>
                   )}
                 </div>
-              ))}
+              )})}
               {evs.length > 5 && <div style={{fontSize:12,color:'#6b7280'}}>+{evs.length-5} ещё</div>}
             </div>
           )
@@ -686,11 +706,15 @@ export default function Calendar({ isAdmin = false }) {
             </div>
             <div style={{marginTop:8}}>
               {(events[openDay] || []).length === 0 && <div>Событий нет.</div>}
-              {(events[openDay] || []).filter(ev => showHomework || ev.type !== 'homework').map(ev => (
-                <div key={ev.id} style={{padding:8,borderBottom:'1px solid #eef2ff'}}>
+              {(events[openDay] || []).filter(ev => showHomework || ev.type !== 'homework').map(ev => {
+                const temporal = eventTemporalClass(ev, nowMs)
+                const ongoing = isOngoingEvent(ev, nowMs)
+                return (
+                <div key={ev.id} className={'day-ev-row' + (temporal ? ' ' + temporal : '')} style={{padding:8,borderBottom:'1px solid #eef2ff'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                       <div style={{background: eventColor(ev), color:eventTextColor(ev), padding:'2px 8px', borderRadius:6, fontSize:12, fontWeight:700}}>{typeLabel(ev.type)}</div>
+                      {ongoing ? <span className="cal-ev-now">сейчас</span> : null}
                       <div style={{fontWeight:700}}>
                         {ev.type === 'schedule' ? lessonIcon(ev.lesson_type) : null}
                         {ev.type === 'exam_control' ? examKindIcon(ev.lesson_type) : null}
@@ -733,7 +757,7 @@ export default function Calendar({ isAdmin = false }) {
                     ) : null}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         </div>

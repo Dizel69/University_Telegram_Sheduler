@@ -146,6 +146,53 @@ textarea{min-height:120px}
 .cal-ev-type{font-size:11px;color:var(--muted)}
 .cal-ev-title{font-weight:600}
 
+/* прошедшие события — бледнее */
+.cal-ev.is-past,
+.day-ev-row.is-past{opacity:0.42;filter:saturate(0.55);transition:opacity 0.25s ease,filter 0.25s ease}
+.day-ev-row.is-past{opacity:0.5}
+
+/* текущая пара / контрольная */
+.cal-ev.is-ongoing{
+  opacity:1;
+  filter:none;
+  position:relative;
+  z-index:2;
+  outline:2px solid rgba(255,255,255,0.92);
+  box-shadow:0 0 0 2px rgba(37,99,235,0.55),0 4px 14px rgba(37,99,235,0.35);
+  animation:cal-ev-ongoing-pulse 1.8s ease-in-out infinite;
+}
+.day-ev-row.is-ongoing{
+  opacity:1;
+  filter:none;
+  background:rgba(59,130,246,0.08);
+  border-radius:8px;
+  border-bottom-color:transparent;
+  box-shadow:inset 3px 0 0 #2563eb;
+}
+.cal-ev-now{
+  flex-shrink:0;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  color:#1e3a8a;
+  background:rgba(255,255,255,0.92);
+  padding:1px 6px;
+  border-radius:999px;
+  line-height:1.4;
+}
+.day-ev-row .cal-ev-now{
+  color:#fff;
+  background:#2563eb;
+}
+@keyframes cal-ev-ongoing-pulse{
+  0%,100%{box-shadow:0 0 0 2px rgba(37,99,235,0.5),0 4px 14px rgba(37,99,235,0.3)}
+  50%{box-shadow:0 0 0 3px rgba(37,99,235,0.75),0 6px 18px rgba(37,99,235,0.45)}
+}
+@media (prefers-reduced-motion:reduce){
+  .cal-ev.is-ongoing{animation:none}
+}
+
 /* modal styles for login */
 .modal-overlay{position:fixed;left:0;top:0;right:0;bottom:0;background:var(--overlay);display:flex;align-items:center;justify-content:center;z-index:1000}
 .modal{background:var(--card);color:var(--text);padding:16px;border-radius:12px;width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;box-shadow:var(--shadow-lg)}

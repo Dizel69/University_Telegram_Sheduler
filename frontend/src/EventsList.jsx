@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { bearerAuthHeaders } from './authHeaders'
+import { isCompletedEvent, parseEventBoundary } from './eventTime'
 
 export default function EventsList({ highlightId, isAdmin = false }) {
   const [events, setEvents] = useState([])
@@ -8,24 +9,9 @@ export default function EventsList({ highlightId, isAdmin = false }) {
   const [error, setError] = useState(null)
   const [eventsTab, setEventsTab] = useState('current')
 
-  function parseEventBoundary(ev) {
-    if (!ev.date) return null
-    const [year, month, day] = String(ev.date).split('-').map(Number)
-    if (!year || !month || !day) return null
-    const timeValue = ev.end_time || ev.time || '23:59:59'
-    const [hours = 23, minutes = 59, seconds = 59] = String(timeValue).split(':').map(Number)
-    return new Date(year, month - 1, day, hours || 0, minutes || 0, seconds || 0)
-  }
-
   function eventSortValue(ev) {
     const boundary = parseEventBoundary(ev)
     return boundary ? boundary.getTime() : Number.MAX_SAFE_INTEGER
-  }
-
-  function isCompletedEvent(ev) {
-    const boundary = parseEventBoundary(ev)
-    if (!boundary) return false
-    return boundary.getTime() < Date.now()
   }
 
   async function load() {
