@@ -11,6 +11,10 @@ POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "60"))
 BIRTHDAY_GREETING_TIME = os.getenv("BIRTHDAY_GREETING_TIME", "00:10")
 METRICS_PORT = int(os.getenv("WORKER_METRICS_PORT", "9101"))
 TELEGRAM_PROBE_URL = os.getenv("TELEGRAM_PROBE_URL", f"{BOT_SERVICE_URL}/health/telegram")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+# Пятничный бэкап БД (локальное время контейнера; задай TZ=Europe/Moscow в .env)
+BACKUP_CRON_HOUR = int(os.getenv("BACKUP_CRON_HOUR", "3"))
+BACKUP_CRON_MINUTE = int(os.getenv("BACKUP_CRON_MINUTE", "0"))
 
 # Prometheus-метрики воркера
 WORKER_RUNS = Counter("worker_runs_total", "Количество циклов опроса воркера")
@@ -229,9 +233,36 @@ def check_and_send():
     except Exception as e:
         print("⚠️ Проверка Worker не удалась:", e)
 
+@scheduler.scheduled_job(
+    "cron",
+    day_of_week="fri",
+    hour=BACKUP_CRON_HOUR,
+    minute=BACKUP_CRON_MINUTE,
+)
+def friday_db_backup():
+    """Раз в пятницу создаёт SQL-дамп через backend /admin/backup (ротация на стороне backend)."""
+    if not ADMIN_TOKEN:
+        print("⚠️ Worker: ADMIN_TOKEN не задан, пятничный бэкап пропущен")
+        return
+    try:
+        with httpx.Client() as client:
+            resp = client.post(
+                f"{BACKEND_URL}/admin/backup",
+                headers={"X-ADMIN-TOKEN": ADMIN_TOKEN},
+                timeout=180.0,
+            )
+            resp.raise_for_status()
+            print("✅ Worker: пятничный бэкап OK:", resp.json())
+    except Exception as e:
+        print("❌ Worker: ошибка пятничного бэкапа:", e)
+
+
 if __name__ == '__main__':
     start_http_server(METRICS_PORT)
     print("📊 Worker: метрики Prometheus на :", METRICS_PORT)
     _probe_telegram()
     print("✅ Worker запущен, опрашивает каждые", POLL_INTERVAL, "секунд")
+    print(
+        f"🗄 Worker: пятничный бэкап в {BACKUP_CRON_HOUR:02d}:{BACKUP_CRON_MINUTE:02d} (день недели fri)"
+    )
     scheduler.start()

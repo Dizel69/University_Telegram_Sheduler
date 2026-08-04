@@ -505,6 +505,21 @@ def admin_validate(admin_ok: bool = Depends(require_admin_token_header)):
     return {"ok": True}
 
 
+@app.post("/admin/backup")
+def create_db_backup(_admin=Depends(require_admin)):
+    """
+    Создаёт SQL-дамп БД в папку backup (на хосте рядом с проектом) и ротирует до 2 файлов.
+    Доступно только администратору (JWT is_admin или X-ADMIN-TOKEN).
+    """
+    from app.backup import create_backup
+
+    try:
+        result = create_backup()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Не удалось создать бэкап: {exc}") from exc
+    return {"ok": True, **result}
+
+
 @app.post("/events/send", response_model=EventPublic)
 async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """

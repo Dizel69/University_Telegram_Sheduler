@@ -4,6 +4,7 @@ WORKDIR /app
 # Установка необходимых системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc libpq-dev libssl-dev libffi-dev pkg-config curl ca-certificates \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Обновление pip и инструментов

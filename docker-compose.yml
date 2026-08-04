@@ -62,6 +62,7 @@ services:
     env_file: .env
     environment:
       BOT_SERVICE_URL: http://host.docker.internal:8081
+      BACKUP_DIR: /backup
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -73,6 +74,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./backup:/backup
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/metrics > /dev/null || exit 1"]
       interval: 10s

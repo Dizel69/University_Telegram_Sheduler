@@ -39,13 +39,13 @@ class FakeClient:
             return FakeResponse(self.birthday_payload)
         return FakeResponse(self.events)
 
-    def post(self, url, json=None, timeout=None):
-        self.post_calls.append({"url": url, "json": json, "timeout": timeout})
+    def post(self, url, json=None, timeout=None, headers=None):
+        self.post_calls.append({"url": url, "json": json, "timeout": timeout, "headers": headers})
         if url.endswith("/send") and json and json.get("event_id") in self.fail_event_ids:
             return FakeResponse(status_code=500)
         if url.endswith("/send") and json and json.get("chat_id") in self.fail_event_ids:
             return FakeResponse(status_code=500)
-        return FakeResponse({"ok": True})
+        return FakeResponse({"ok": True, "filename": "backup_test.sql"})
 
 
 def _install_fake_client(monkeypatch, events, fail_event_ids=None, birthday_payload=None):
@@ -118,6 +118,7 @@ def test_check_and_send_sends_reminder_and_marks_sent(monkeypatch):
         "url": "http://backend.test/events/10/mark_reminder_sent",
         "json": None,
         "timeout": 5.0,
+        "headers": None,
     }
 
 
@@ -202,3 +203,17 @@ def test_check_and_send_sends_birthday_greetings_at_configured_time(monkeypatch)
     assert birthday_send["json"]["thread_id"] == 654
     assert "Сегодня День рождения у Иванов Иван Иванович." in birthday_send["json"]["text"]
     assert "Исполняется 20 лет." in birthday_send["json"]["text"]
+
+
+def test_friday_db_backup_posts_to_admin_endpoint(monkeypatch):
+    _install_fake_client(monkeypatch, events=[])
+    monkeypatch.setattr(worker, "ADMIN_TOKEN", "secret-admin")
+    monkeypatch.setattr(worker, "BACKEND_URL", "http://backend.test")
+
+    worker.friday_db_backup()
+
+    client = FakeClient.instances[0]
+    assert len(client.post_calls) == 1
+    call = client.post_calls[0]
+    assert call["url"] == "http://backend.test/admin/backup"
+    assert call["headers"]["X-ADMIN-TOKEN"] == "secret-admin"

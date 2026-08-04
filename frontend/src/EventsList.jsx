@@ -8,6 +8,7 @@ export default function EventsList({ highlightId, isAdmin = false }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [eventsTab, setEventsTab] = useState('current')
+  const [backingUp, setBackingUp] = useState(false)
 
   function eventSortValue(ev) {
     const boundary = parseEventBoundary(ev)
@@ -106,11 +107,35 @@ export default function EventsList({ highlightId, isAdmin = false }) {
     }
   }
 
+  async function createBackup() {
+    if (!isAdmin) return
+    if (!confirm('Создать бэкап базы данных сейчас? (хранятся только 2 последних файла)')) return
+    setBackingUp(true)
+    try {
+      const res = await axios.post('/admin/backup', null, { headers: bearerAuthHeaders() })
+      const name = res.data?.filename || 'готово'
+      const kept = Array.isArray(res.data?.kept) ? res.data.kept.join(', ') : ''
+      alert(`Бэкап создан: ${name}${kept ? `\nСейчас в папке: ${kept}` : ''}`)
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message
+      alert('Ошибка бэкапа: ' + (typeof msg === 'object' ? JSON.stringify(msg) : msg))
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
   return (
     <div className="card">
       <div className="list-header">
         <h3>События</h3>
-        <button className="btn" onClick={load}>Обновить</button>
+        <div className="list-header-actions">
+          {isAdmin ? (
+            <button className="btn" onClick={createBackup} disabled={backingUp}>
+              {backingUp ? 'Бэкап…' : 'Бэкап 🤡'}
+            </button>
+          ) : null}
+          <button className="btn" onClick={load}>Обновить</button>
+        </div>
       </div>
 
       {loading && <div>Загрузка...</div>}

@@ -109,6 +109,7 @@ textarea{min-height:120px}
 .btn-sm{padding:6px 8px;font-size:13px}
 .status{color:var(--muted)}
 .list-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.list-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .events-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
 .event-card{border-radius:10px;padding:12px;background:var(--event-card-bg);border:1px solid var(--border-subtle)}
 .event-card.highlight{box-shadow:0 8px 28px rgba(59,130,246,0.12);border-color:rgba(59,130,246,0.28)}
