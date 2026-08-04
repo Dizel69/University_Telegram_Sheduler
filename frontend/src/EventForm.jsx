@@ -18,6 +18,7 @@ export default function EventForm({ onCreated }) {
   const [reminder, setReminder] = useState(24)
   const [status, setStatus] = useState('')
   const [saveOnly, setSaveOnly] = useState(false)
+  const [telegramOnly, setTelegramOnly] = useState(false)
   const [lessonType, setLessonType] = useState('lecture')
   const [examKind, setExamKind] = useState('control')
   const [attachments, setAttachments] = useState([])
@@ -42,11 +43,12 @@ export default function EventForm({ onCreated }) {
       setStatus('Ошибка: если указано время, нужно указать дату')
       return
     }
-    if (repeat !== 'none' && !date) {
+    const sendTelegramOnly = telegramOnly && type === 'announcement'
+    if (!sendTelegramOnly && repeat !== 'none' && !date) {
       setStatus('Ошибка: для повтора нужно указать начальную дату')
       return
     }
-    if (repeat !== 'none' && !repeatUntil) {
+    if (!sendTelegramOnly && repeat !== 'none' && !repeatUntil) {
       setStatus('Ошибка: укажите дату окончания повтора')
       return
     }
@@ -54,8 +56,8 @@ export default function EventForm({ onCreated }) {
     try {
       // Запоминаем нового преподавателя для автодополнения в других формах
       if (teacher && teacher.trim()) rememberTeacher(teacher)
-      // Handle repeat series
-      if (repeat === 'none') {
+      // Handle repeat series (telegram-only всегда одно сообщение, без серии)
+      if (repeat === 'none' || sendTelegramOnly) {
         const payload = {
           type,
           subject: subject || null,
@@ -77,7 +79,11 @@ export default function EventForm({ onCreated }) {
         if (attachments.length) payload.attachments = attachments
 
         let res
-        if (saveOnly) {
+        if (sendTelegramOnly) {
+          // Только в Telegram: без записи в календарь
+          res = await axios.post('/events/send_telegram_only', payload)
+          setStatus('Отправлено только в Telegram' + (res.data.message_id ? ` — msg: ${res.data.message_id}` : ''))
+        } else if (saveOnly) {
           // Сохраняем событие в БД не отправляя (бэкенд пометит source='manual')
           res = await axios.post('/events', payload)
           setStatus('Сохранено в календаре (ручная запись) — id: ' + res.data.id)
@@ -99,8 +105,10 @@ export default function EventForm({ onCreated }) {
         setLessonType('lecture')
         setExamKind('control')
         setAttachments([])
-        // Для schedule не переходить на вкладку События
-        if (onCreated && type !== 'schedule') onCreated(res.data)
+        setSaveOnly(false)
+        setTelegramOnly(false)
+        // Для schedule и telegram-only не переходить на вкладку События
+        if (onCreated && type !== 'schedule' && !sendTelegramOnly) onCreated(res.data)
         return
       }
 
@@ -219,7 +227,11 @@ export default function EventForm({ onCreated }) {
       <div className="form-grid">
         <div>
           <label className="label">Тип</label>
-          <select value={type} onChange={e => setType(e.target.value)}>
+          <select value={type} onChange={e => {
+            const next = e.target.value
+            setType(next)
+            if (next !== 'announcement') setTelegramOnly(false)
+          }}>
             <option value="schedule">Пара / Мероприятие</option>
             <option value="exam_control">Контрольная / экзамен</option>
             <option value="transfer">Перенос</option>
@@ -381,11 +393,35 @@ export default function EventForm({ onCreated }) {
 
       {type !== 'schedule' && (
         <>
-          <div style={{marginTop:10}}>
+          <div style={{marginTop:10, display:'grid', gap:8}}>
             <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
-              <input type="checkbox" checked={saveOnly} onChange={e => setSaveOnly(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={saveOnly}
+                disabled={telegramOnly}
+                onChange={e => {
+                  const on = e.target.checked
+                  setSaveOnly(on)
+                  if (on) setTelegramOnly(false)
+                }}
+              />
               <span>Сохранить в календаре (без отправки) — скрыть во вкладке «События»</span>
             </label>
+            {type === 'announcement' && (
+              <label style={{display:'inline-flex', alignItems:'center', gap:8}}>
+                <input
+                  type="checkbox"
+                  checked={telegramOnly}
+                  disabled={saveOnly}
+                  onChange={e => {
+                    const on = e.target.checked
+                    setTelegramOnly(on)
+                    if (on) setSaveOnly(false)
+                  }}
+                />
+                <span>Отправить сообщение только в Telegram — без сохранения в календарь</span>
+              </label>
+            )}
           </div>
 
           <label className="label">Сообщение</label>
@@ -429,8 +465,10 @@ export default function EventForm({ onCreated }) {
       )}
 
       <div className="form-actions">
-        <button className="btn btn-primary" type="submit">Отправить сейчас</button>
-        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setAttachments([]); setStatus('') }}>Сброс</button>
+        <button className="btn btn-primary" type="submit">
+          {telegramOnly ? 'Отправить в Telegram' : 'Отправить сейчас'}
+        </button>
+        <button type="button" className="btn" onClick={() => { setSubject(''); setTitle(''); setRoom(''); setTeacher(''); setMessage(''); setDate(''); setTime(''); setEndTime(''); setRepeat('none'); setRepeatUntil(''); setReminder(24); setLessonType('lecture'); setExamKind('control'); setAttachments([]); setSaveOnly(false); setTelegramOnly(false); setStatus('') }}>Сброс</button>
         <div className="status">{status}</div>
       </div>
     </form>

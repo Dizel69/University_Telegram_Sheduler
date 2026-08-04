@@ -345,10 +345,10 @@ def _resolve_birthday_target():
     return chat_id, thread_id
 
 
-def _build_telegram_message_text(ev) -> str:
+def _build_telegram_message_text(ev, *, include_calendar_link: bool = True) -> str:
     """
     Текст поста в Telegram. Для exam_control — формат с хэштегами по выбору вида;
-    для остальных типов — прежняя схема + ссылка.
+    для остальных типов — прежняя схема + ссылка (если include_calendar_link).
     """
     link = f"{FRONTEND_URL}/calendar/m15/event/{getattr(ev, 'id', 0)}"
     canon = canonical_event_type(getattr(ev, "type", "") or "")
@@ -387,8 +387,9 @@ def _build_telegram_message_text(ev) -> str:
             lines.append(body)
         if include_time:
             lines.append(f"Время: {formatted_time}")
-        lines.append("")
-        lines.append(f"Ссылка в календаре: {link}")
+        if include_calendar_link:
+            lines.append("")
+            lines.append(f"Ссылка в календаре: {link}")
         return "\n".join(lines)
 
     parts = []
@@ -402,8 +403,9 @@ def _build_telegram_message_text(ev) -> str:
         parts.append(f"Преподаватель: {ev.teacher}")
     if include_time:
         parts.append(f"Время: {formatted_time}")
-    parts.append("")
-    parts.append(f"Ссылка в календаре: {link}")
+    if include_calendar_link:
+        parts.append("")
+        parts.append(f"Ссылка в календаре: {link}")
     return "\n".join([p for p in parts if p is not None and p != ""])
 
 
@@ -520,6 +522,68 @@ def create_db_backup(_admin=Depends(require_admin)):
     return {"ok": True, **result}
 
 
+async def _dispatch_to_bot(ev, *, include_calendar_link: bool = True, persist_message_id: bool = True):
+    """
+    Отправляет текст события в bot-service.
+    Возвращает message_id (или None). При persist_message_id и наличии id — пишет sent_message_id в БД.
+    """
+    text = _build_telegram_message_text(ev, include_calendar_link=include_calendar_link)
+    target_chat = _resolve_chat_id(ev)
+    target_thread = _resolve_thread_id(ev)
+    photos, documents, local_files = _media_payload_for_bot(ev)
+    payload = {
+        "chat_id": target_chat,
+        "thread_id": target_thread,
+        "text": text,
+    }
+    if photos:
+        payload["photos"] = photos
+    if documents:
+        payload["documents"] = documents
+    if local_files:
+        payload["local_files"] = local_files
+    print("DEBUG: исходящий запрос к bot-service:", payload)
+    message_id = None
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
+            try:
+                resp_text = resp.text
+            except Exception:
+                resp_text = '<unable to read response body>'
+            print("DEBUG: ответ bot-service:", resp.status_code, resp_text)
+
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            print('DEBUG: разобранные данные ответа:', data)
+
+            message_id = data.get('message_id')
+            if not message_id and target_thread is not None:
+                print('DEBUG: не получен message_id; повтор без thread_id')
+                payload2 = {k: v for k, v in payload.items() if k != "thread_id"}
+                try:
+                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=10.0)
+                    try:
+                        resp2_text = resp2.text
+                    except Exception:
+                        resp2_text = '<unable to read response body>'
+                    print('DEBUG: bot-service response (retry):', resp2.status_code, resp2_text)
+                    try:
+                        data2 = resp2.json()
+                    except Exception:
+                        data2 = {}
+                    message_id = data2.get('message_id')
+                except Exception as e:
+                    print('Предупреждение: повтор без thread_id не удался:', e)
+            if persist_message_id and message_id and getattr(ev, "id", None):
+                set_sent_message(ev.id, int(message_id))
+        except Exception as e:
+            print("Предупреждение: ошибка при отправке на bot-service:", e)
+    return message_id
+
+
 @app.post("/events/send", response_model=EventPublic)
 async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
@@ -566,69 +630,7 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
             pass
         return created
 
-    text = _build_telegram_message_text(created)
-
-    # Resolve chat and thread ids for sending
-    target_chat = _resolve_chat_id(created)
-    target_thread = _resolve_thread_id(created)
-
-    # Отправляем на bot-service — логируем исходящий payload и ответ
-    photos, documents, local_files = _media_payload_for_bot(created)
-    payload = {
-        "chat_id": target_chat,
-        "thread_id": target_thread,
-        "text": text,
-    }
-    if photos:
-        payload["photos"] = photos
-    if documents:
-        payload["documents"] = documents
-    if local_files:
-        payload["local_files"] = local_files
-    print("DEBUG: исходящий запрос к bot-service:", payload)
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
-            # Логирование ответа для дотрансляции
-            try:
-                resp_text = resp.text
-            except Exception:
-                resp_text = '<unable to read response body>'
-            print("DEBUG: ответ bot-service:", resp.status_code, resp_text)
-
-            try:
-                data = resp.json()
-            except Exception:
-                data = {}
-            print('DEBUG: разобранные данные ответа:', data)
-
-            # Если не получили message_id и пытались отправить в потоке, повторяем без thread_id
-            message_id = data.get('message_id')
-            if not message_id and target_thread is not None:
-                print('DEBUG: не получен message_id; повтор без thread_id')
-                payload2 = {k: v for k, v in payload.items() if k != "thread_id"}
-                try:
-                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=10.0)
-                    try:
-                        resp2_text = resp2.text
-                    except Exception:
-                        resp2_text = '<unable to read response body>'
-                    print('DEBUG: bot-service response (retry):', resp2.status_code, resp2_text)
-                    try:
-                        data2 = resp2.json()
-                    except Exception:
-                        data2 = {}
-                    message_id = data2.get('message_id')
-                    if message_id:
-                        set_sent_message(created.id, int(message_id))
-                except Exception as e:
-                    print('Предупреждение: повтор без thread_id не удался:', e)
-            else:
-                if message_id:
-                    set_sent_message(created.id, int(message_id))
-        except Exception as e:
-            # Не падаем — запись создана, но отправка не удалась
-            print("Предупреждение: ошибка при отправке на bot-service:", e)
+    await _dispatch_to_bot(created, include_calendar_link=True, persist_message_id=True)
 
     # Нормализуем возвращаемый тип для согласованности фронтенда
     try:
@@ -636,6 +638,37 @@ async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(requir
     except Exception:
         pass
     return created
+
+
+@app.post("/events/send_telegram_only")
+async def send_telegram_only(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
+    """
+    Отправляет объявление сразу в Telegram без сохранения в календарь / БД.
+    Без ссылки на календарь в тексте сообщения.
+    """
+    ev = Event(**event_in.dict())
+    try:
+        ev.type = canonical_event_type(ev.type)
+    except Exception:
+        pass
+    if ev.type != "announcement":
+        raise HTTPException(
+            status_code=400,
+            detail="Режим «только в Telegram» доступен только для объявлений",
+        )
+    if not (ev.body or "").strip():
+        raise HTTPException(status_code=400, detail="Текст сообщения обязателен")
+
+    if not ev.chat_id and DEFAULT_CHAT_ID:
+        try:
+            ev.chat_id = int(DEFAULT_CHAT_ID)
+        except Exception:
+            ev.chat_id = None
+
+    message_id = await _dispatch_to_bot(ev, include_calendar_link=False, persist_message_id=False)
+    if not message_id:
+        raise HTTPException(status_code=502, detail="Не удалось отправить сообщение в Telegram")
+    return {"ok": True, "message_id": int(message_id), "type": "announcement"}
 
 
 @app.get("/events", response_model=List[EventPublic])

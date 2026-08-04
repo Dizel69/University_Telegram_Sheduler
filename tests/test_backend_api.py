@@ -283,6 +283,64 @@ def test_create_and_send_uses_bot_service_and_stores_message_id(backend_client, 
         assert session.get(Event, event_id).sent_message_id == 777
 
 
+def test_send_telegram_only_does_not_persist_event(backend_client, backend_engine, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = backend_client.post(
+        "/events/send_telegram_only",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "announcement",
+            "subject": "General",
+            "body": "Flash notice",
+            "date": "2026-05-21",
+            "time": "10:15",
+            "chat_id": 222,
+            "topic_thread_id": 333,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "message_id": 777, "type": "announcement"}
+    assert _FakeAsyncClient.calls == [
+        {
+            "url": "http://bot-service.test/send",
+            "json": {
+                "chat_id": 222,
+                "thread_id": 333,
+                "text": "#Объявление\n#General\nFlash notice\nВремя: 10:15",
+            },
+            "timeout": 10.0,
+        }
+    ]
+
+    with Session(backend_engine) as session:
+        assert session.exec(select(Event)).all() == []
+
+
+def test_send_telegram_only_rejects_non_announcement(backend_client, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = backend_client.post(
+        "/events/send_telegram_only",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "homework",
+            "subject": "Math",
+            "body": "Do not send this way",
+        },
+    )
+
+    assert response.status_code == 400
+    assert _FakeAsyncClient.calls == []
+
+
 def test_create_and_send_exam_control_includes_time(backend_client, monkeypatch):
     from app import main
 
