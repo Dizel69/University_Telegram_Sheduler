@@ -27,7 +27,7 @@
 
 ```env
 # Telegram
-BOT_TOKEN=123456:ABCDEF...
+BOT_TOKEN=123456:ABCDEF....
 
 # Backend auth (для админских действий с фронта)
 ADMIN_TOKEN=change-me
