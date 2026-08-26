@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import TeacherAutocomplete, { rememberTeacher } from './TeacherAutocomplete'
+import FormattedTextEditor from './FormattedTextEditor'
+import { isEmptyFormattedText } from './telegramHtml'
 
 export default function EventForm({ onCreated }) {
   const [type, setType] = useState('schedule')
@@ -35,7 +37,7 @@ export default function EventForm({ onCreated }) {
     setStatus('Отправка...')
     // Простая клиентская валидация
     // Для schedule текст не обязателен, для остальных нужен
-    if (type !== 'schedule' && (!message || !message.trim())) {
+    if (type !== 'schedule' && isEmptyFormattedText(message)) {
       setStatus('Ошибка: Текст сообщения обязателен')
       return
     }
@@ -425,7 +427,11 @@ export default function EventForm({ onCreated }) {
           </div>
 
           <label className="label">Сообщение</label>
-          <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Текст сообщения — можно использовать #хэштеги" />
+          <FormattedTextEditor
+            value={message}
+            onChange={setMessage}
+            placeholder="Текст сообщения — можно использовать #хэштеги"
+          />
           <div style={{display:'flex', alignItems:'center', gap:8, marginTop:8}}>
             <button
               type="button"

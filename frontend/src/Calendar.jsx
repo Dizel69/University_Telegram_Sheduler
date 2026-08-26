@@ -5,6 +5,7 @@ import EditEventModal from './EditEventModal'
 import ErrorBoundary from './ErrorBoundary'
 import { bearerAuthHeaders } from './authHeaders'
 import { eventTemporalClass, isOngoingEvent } from './eventTime'
+import FormattedTextEditor, { FormattedBody } from './FormattedTextEditor'
 
 /** Порядок в ячейке дня: контрольная/экзамен выше домашки. */
 function calendarTypeOrder(t) {
@@ -725,7 +726,7 @@ export default function Calendar({ isAdmin = false }) {
                     </div>
                     <div style={{fontSize:12,color:'#6b7280'}}>{formatTimeRange(ev.time, ev.end_time)}</div>
                   </div>
-                  <div className="event-body" style={{marginTop:6}}>{ev.body}</div>
+                  <FormattedBody html={ev.body} className="event-body" style={{marginTop:6}} />
                   {ev.teacher ? <div style={{marginTop:6,fontSize:13,color:'#374151'}}>Преподаватель: {ev.teacher}</div> : null}
                   <div className="actions-wrap" style={{marginTop:8}}>
                     {isAdmin && ev.type !== 'birthday' ? (
@@ -771,7 +772,7 @@ export default function Calendar({ isAdmin = false }) {
                 <div key={ev.id} id={`undated-event-${ev.id}`} style={{padding:8,border:'1px solid #eef2ff',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700}}>{ev.title || ev.subject || ev.type}</div>
-                    <div className="event-body" style={{fontSize:13,color:'#374151',marginTop:6}}>{(ev.body || '').slice(0,240)}{(ev.body || '').length > 240 ? '…' : ''}</div>
+                    <FormattedBody html={ev.body} className="event-body" style={{fontSize:13,color:'#374151',marginTop:6}} maxChars={240} />
                   </div>
                   <div style={{marginLeft:12,display:'flex',flexDirection:'column',gap:6}}>
                     <button className="btn btn-sm" onClick={() => window.open(`${window.location.origin}/calendar/m15/event/${ev.id}`,'_blank')}>Открыть</button>
@@ -1057,7 +1058,7 @@ export default function Calendar({ isAdmin = false }) {
             )}
 
             <label className="label">Подробности</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} />
+            <FormattedTextEditor value={body} onChange={setBody} placeholder="Текст сообщения" />
 
             <div className="actions-wrap" style={{ marginTop: 8, alignItems: 'center' }}>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Сохраняю...' : 'Сохранить'}</button>

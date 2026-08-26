@@ -25,7 +25,7 @@ def test_health_and_metrics_routes():
 def test_send_message_maps_thread_id_and_message_id(monkeypatch):
     async def fake_telegram_call(method, payload):
         assert method == "sendMessage"
-        assert payload == {"chat_id": 123, "text": "hello", "message_thread_id": 456}
+        assert payload == {"chat_id": 123, "text": "hello", "message_thread_id": 456, "parse_mode": "HTML"}
         return {"ok": True, "result": {"message_id": 99}}
 
     monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
@@ -43,6 +43,7 @@ def test_send_message_with_single_photo_uses_send_photo(monkeypatch):
         assert payload["chat_id"] == 123
         assert payload["photo"] == "https://example.com/a.jpg"
         assert payload["caption"] == "hello"
+        assert payload["parse_mode"] == "HTML"
         return {"ok": True, "result": {"message_id": 101}}
 
     monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
@@ -63,6 +64,7 @@ def test_send_message_with_multiple_photos_uses_media_group(monkeypatch):
         assert payload["chat_id"] == 123
         assert len(payload["media"]) == 2
         assert payload["media"][0]["caption"] == "hello"
+        assert payload["media"][0]["parse_mode"] == "HTML"
         return {"ok": True, "result": [{"message_id": 201}, {"message_id": 202}]}
 
     monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
@@ -100,6 +102,46 @@ def test_send_message_with_document_uses_send_document(monkeypatch):
     assert calls[0][0] == "sendDocument"
     assert calls[0][1]["document"] == "https://example.com/book.pdf"
     assert calls[0][1]["caption"] == "book"
+    assert calls[0][1]["parse_mode"] == "HTML"
+
+
+def test_sanitize_telegram_html_keeps_supported_tags_and_escapes_text():
+    from telegram_html import sanitize_telegram_html
+
+    html = sanitize_telegram_html(
+        "#Объявление\n<b>bold</b> <i>it</i> <u>un</u> <s>st</s> "
+        "<span class='tg-spoiler'>hid</span> A & B <script>x</script>"
+    )
+
+    assert "<b>bold</b>" in html
+    assert "<i>it</i>" in html
+    assert "<u>un</u>" in html
+    assert "<s>st</s>" in html
+    assert "<tg-spoiler>hid</tg-spoiler>" in html
+    assert "A &amp; B" in html
+    assert "<script>" not in html
+    assert "x" in html
+    assert sanitize_telegram_html("<b><i><u><s>all</s></u></i></b>") == "<b><i><u><s>all</s></u></i></b>"
+    assert sanitize_telegram_html("<code><b>x</b></code>") == "<code>x</code>"
+
+
+def test_send_message_preserves_telegram_html_and_sets_parse_mode(monkeypatch):
+    async def fake_telegram_call(method, payload):
+        assert method == "sendMessage"
+        assert payload["parse_mode"] == "HTML"
+        assert payload["text"] == "<b>Hello</b> A &amp; B"
+        return {"ok": True, "result": {"message_id": 11}}
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post(
+        "/send",
+        json={"chat_id": 123, "text": "<b>Hello</b> A & B"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "message_id": 11}
 
 
 def test_send_message_returns_502_for_telegram_error(monkeypatch):

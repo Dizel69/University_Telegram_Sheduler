@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { bearerAuthHeaders } from './authHeaders'
 import { isCompletedEvent, parseEventBoundary } from './eventTime'
+import { FormattedBody } from './FormattedTextEditor'
 
 export default function EventsList({ highlightId, isAdmin = false }) {
   const [events, setEvents] = useState([])
@@ -179,7 +180,7 @@ export default function EventsList({ highlightId, isAdmin = false }) {
               </div>
               <div className="event-meta">{ev.date ? ev.date : ''} {ev.time ? ev.time : ''}</div>
             </div>
-            <div className="event-body">{ev.body}</div>
+            <FormattedBody html={ev.body} className="event-body" />
             <div className="event-actions">
               {isAdmin ? <button className="btn btn-sm" onClick={() => sendNow(ev.id)}>Отправить сейчас</button> : null}
               <button className="btn btn-sm" onClick={() => showTargetChat(ev.id)}>Показать чат</button>

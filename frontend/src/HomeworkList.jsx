@@ -8,6 +8,7 @@ import {
   normalizeSemesterLabel,
   ymdFromDate,
 } from './semesterCalendar'
+import { FormattedBody } from './FormattedTextEditor'
 
 const FILTER_ALL = '*'
 const FILTER_NO_SEMESTER = '__none__'
@@ -292,7 +293,7 @@ export default function HomeworkList({ accountUser }) {
                 {shouldShowSemesterUnderSubject(ev) ? (
                   <div className="homework-semester">{normalizeSemesterLabel(ev.semester)}</div>
                 ) : null}
-                <div className="homework-body">{ev.body}</div>
+                <FormattedBody html={ev.body} className="homework-body" />
                 {accountUser ? (
                   <div className="homework-item-actions">
                     {hwTab === 'active' ? (

@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from starlette.responses import Response
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from telegram_html import sanitize_telegram_html
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
@@ -210,6 +211,15 @@ def _effective_thread_id(thread_id: int | None) -> int | None:
     return None if tid == 1 else tid
 
 
+def _apply_html_text(payload: dict, key: str = "text") -> None:
+    """Санитизирует текст и включает parse_mode=HTML, чтобы эффекты были видны в Telegram."""
+    raw = payload.get(key)
+    if raw is None or raw == "":
+        return
+    payload[key] = sanitize_telegram_html(str(raw))
+    payload["parse_mode"] = "HTML"
+
+
 @app.post("/send")
 async def send_message(req: SendRequest):
     """Отправляет сообщение в Telegram и возвращает ID сообщения."""
@@ -228,6 +238,7 @@ async def send_message(req: SendRequest):
                 payload: dict[str, object] = {"chat_id": req.chat_id, "photo": photos[0], "caption": req.text}
                 if thread_id is not None:
                     payload["message_thread_id"] = thread_id
+                _apply_html_text(payload, "caption")
                 body = await _telegram_call("sendPhoto", payload)
             else:
                 media: list[dict[str, str]] = []
@@ -235,6 +246,7 @@ async def send_message(req: SendRequest):
                     item: dict[str, str] = {"type": "photo", "media": photo}
                     if idx == 0 and req.text:
                         item["caption"] = req.text
+                        _apply_html_text(item, "caption")
                     media.append(item)
                 payload = {"chat_id": req.chat_id, "media": media}
                 if thread_id is not None:
@@ -244,6 +256,7 @@ async def send_message(req: SendRequest):
             payload = {"chat_id": req.chat_id, "text": req.text}
             if thread_id is not None:
                 payload["message_thread_id"] = thread_id
+            _apply_html_text(payload, "text")
             body = await _telegram_call("sendMessage", payload)
 
         if documents:
@@ -253,6 +266,7 @@ async def send_message(req: SendRequest):
                     payload_doc["message_thread_id"] = thread_id
                 if not photos and idx == 0 and req.text:
                     payload_doc["caption"] = req.text
+                    _apply_html_text(payload_doc, "caption")
                 doc_body = await _telegram_call("sendDocument", payload_doc)
                 if idx == 0 and not photos:
                     body = doc_body
@@ -276,6 +290,7 @@ async def send_message(req: SendRequest):
                 fields["message_thread_id"] = thread_id
             if idx == 0 and req.text:
                 fields["caption"] = req.text
+                _apply_html_text(fields, "caption")
             photo_body = await _telegram_call_multipart("sendPhoto", fields, "photo", path, filename=name)
             if idx == 0 and not photos and not documents:
                 body = photo_body
@@ -286,6 +301,7 @@ async def send_message(req: SendRequest):
                 fields["message_thread_id"] = thread_id
             if idx == 0 and req.text and not photos and not documents and not local_photo_paths:
                 fields["caption"] = req.text
+                _apply_html_text(fields, "caption")
             doc_body = await _telegram_call_multipart("sendDocument", fields, "document", path, filename=name)
             if idx == 0 and not photos and not documents and not local_photo_paths:
                 body = doc_body

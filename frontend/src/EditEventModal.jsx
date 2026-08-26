@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import TeacherAutocomplete, { rememberTeacher } from './TeacherAutocomplete'
+import FormattedTextEditor from './FormattedTextEditor'
 
 export default function EditEventModal({ ev, onClose, onSaved }) {
   if (!ev) return null
@@ -176,7 +177,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
           </div>
 
           <label className="label">Подробности</label>
-          <textarea value={body} onChange={e => setBody(e.target.value)} />
+          <FormattedTextEditor value={body} onChange={setBody} placeholder="Текст сообщения" />
           <label className="label">Фото (ссылки, по одной в строке)</label>
           <textarea
             value={photoUrlsText}
