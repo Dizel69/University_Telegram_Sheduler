@@ -149,10 +149,14 @@ Backend нормализует типы в каноничные токены:
 
 ## CI/CD (GitHub Actions)
 
-В `.github/workflows/ci-cd.yml` настроен простой деплой:
+В `.github/workflows/ci-cd.yml` деплой зависит от изменённых файлов:
 
-- на пуш в `main` код копируется на сервер по SCP,
-- затем по SSH выполняется `docker compose down` и `docker compose up --build -d`.
+- коммит с префиксом `docs` по-прежнему пропускается целиком;
+- изменения только в мониторинге (`prometheus.yml`, `grafana/`, `loki-config.yml`, `fluent-bit/`, `blackbox.yml`) перезапускают только мониторинг;
+- изменения вне мониторинга не трогают Prometheus/Grafana/Loki и остальные exporter'ы;
+- если в одном пуше есть и то и другое (или изменён `docker-compose.yml`), job'ы приложения и мониторинга идут параллельно.
+
+Код копируется на сервер по SCP, затем по SSH выполняется точечный `docker compose up` без `docker compose down` всего стека.
 
 Ожидаемые секреты репозитория:
 
