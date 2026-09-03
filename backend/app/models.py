@@ -2,7 +2,7 @@ from typing import Optional
 import datetime as dt
 
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, BigInteger, UniqueConstraint, JSON
+from sqlalchemy import Column, BigInteger, String, UniqueConstraint, JSON
 
 
 class Event(SQLModel, table=True):
@@ -119,9 +119,14 @@ class TeacherProfile(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     full_name: str = Field(index=True)            # ФИО (обязательно)
+    academic_degree: Optional[str] = Field(default=None)  # Научная степень
+    position: Optional[str] = Field(
+        default=None,
+        sa_column=Column("job_title", String, nullable=True),
+    )  # Должность
     department: Optional[str] = Field(default=None)  # Кафедра
     contact: Optional[str] = Field(default=None)     # Связь (телефон, email, кабинет и т.п.)
-    # Список предметов, которые ведёт преподаватель
+    # Список предметов, которые ведёт преподаватель (из расписания, на вкладке не показывается)
     subjects: Optional[list[str]] = Field(default=None, sa_column=Column(JSON, nullable=True))
     bio: Optional[str] = Field(default=None)         # «О нём» — большое текстовое поле
 

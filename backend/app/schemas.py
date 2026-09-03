@@ -462,6 +462,8 @@ class TeacherProfilePublic(BaseModel):
     """Карточка преподавателя для отображения."""
     id: int
     full_name: str
+    academic_degree: Optional[str] = None
+    position: Optional[str] = None
     department: Optional[str] = None
     contact: Optional[str] = None
     subjects: List[str] = []
@@ -471,6 +473,8 @@ class TeacherProfilePublic(BaseModel):
 class TeacherProfileCreate(BaseModel):
     """Создание карточки преподавателя."""
     full_name: str
+    academic_degree: Optional[str] = None
+    position: Optional[str] = None
     department: Optional[str] = None
     contact: Optional[str] = None
     subjects: List[str] = []
@@ -483,7 +487,7 @@ class TeacherProfileCreate(BaseModel):
             raise ValueError("ФИО преподавателя обязательно")
         return text
 
-    @validator('department', 'contact', 'bio', pre=True)
+    @validator('academic_degree', 'position', 'department', 'contact', 'bio', pre=True)
     def _empty_to_none(cls, v):
         if v is None:
             return None
@@ -498,6 +502,8 @@ class TeacherProfileCreate(BaseModel):
 class TeacherProfileUpdate(BaseModel):
     """Частичное обновление карточки преподавателя."""
     full_name: Optional[str] = None
+    academic_degree: Optional[str] = None
+    position: Optional[str] = None
     department: Optional[str] = None
     contact: Optional[str] = None
     subjects: Optional[List[str]] = None
@@ -512,7 +518,7 @@ class TeacherProfileUpdate(BaseModel):
             raise ValueError("ФИО преподавателя не может быть пустым")
         return text
 
-    @validator('department', 'contact', 'bio', pre=True)
+    @validator('academic_degree', 'position', 'department', 'contact', 'bio', pre=True)
     def _empty_to_none(cls, v):
         if v is None:
             return None

@@ -3,32 +3,31 @@ import axios from 'axios'
 
 const EMPTY_FORM = {
   full_name: '',
+  academic_degree: '',
+  position: '',
   department: '',
   contact: '',
-  subjectsText: '',
   bio: '',
 }
 
 function toForm(t) {
   return {
     full_name: t.full_name || '',
+    academic_degree: t.academic_degree || '',
+    position: t.position || '',
     department: t.department || '',
     contact: t.contact || '',
-    subjectsText: (t.subjects || []).join('\n'),
     bio: t.bio || '',
   }
 }
 
 function toPayload(form) {
-  const subjects = form.subjectsText
-    .split(/[\n,;]+/)
-    .map(s => s.trim())
-    .filter(Boolean)
   return {
     full_name: form.full_name.trim(),
+    academic_degree: form.academic_degree.trim() || null,
+    position: form.position.trim() || null,
     department: form.department.trim() || null,
     contact: form.contact.trim() || null,
-    subjects,
     bio: form.bio.trim() || null,
   }
 }
@@ -56,6 +55,22 @@ function TeacherEditor({ initial, busy, onSave, onCancel, submitLabel }) {
           />
         </div>
         <div className="teacher-editor-field">
+          <label className="label">Научная степень</label>
+          <input
+            value={form.academic_degree}
+            onChange={e => set('academic_degree', e.target.value)}
+            placeholder="к.ф.-м.н., д.т.н., PhD…"
+          />
+        </div>
+        <div className="teacher-editor-field">
+          <label className="label">Должность</label>
+          <input
+            value={form.position}
+            onChange={e => set('position', e.target.value)}
+            placeholder="Доцент, профессор, старший преподаватель…"
+          />
+        </div>
+        <div className="teacher-editor-field">
           <label className="label">Кафедра</label>
           <input
             value={form.department}
@@ -69,15 +84,6 @@ function TeacherEditor({ initial, busy, onSave, onCancel, submitLabel }) {
             value={form.contact}
             onChange={e => set('contact', e.target.value)}
             placeholder="Телефон, email, кабинет…"
-          />
-        </div>
-        <div className="teacher-editor-field">
-          <label className="label">Предметы (по одному в строке)</label>
-          <textarea
-            className="teacher-subjects-input"
-            value={form.subjectsText}
-            onChange={e => set('subjectsText', e.target.value)}
-            placeholder={'Математический анализ\nЛинейная алгебра'}
           />
         </div>
       </div>
@@ -110,10 +116,15 @@ function TeacherEditor({ initial, busy, onSave, onCancel, submitLabel }) {
 }
 
 function TeacherCard({ t, isAdmin, onEdit, onDelete }) {
+  const rankLine = [t.academic_degree, t.position].filter(Boolean).join(', ')
+
   return (
     <div className="teacher-card">
       <div className="teacher-card-head">
-        <h3 className="teacher-card-name">{t.full_name}</h3>
+        <div>
+          <h3 className="teacher-card-name">{t.full_name}</h3>
+          {rankLine ? <p className="teacher-card-rank">{rankLine}</p> : null}
+        </div>
         {isAdmin && (
           <div className="teacher-card-actions">
             <button type="button" className="btn btn-sm" onClick={() => onEdit(t)}>
@@ -127,22 +138,20 @@ function TeacherCard({ t, isAdmin, onEdit, onDelete }) {
       </div>
       <div className="teacher-card-meta">
         <div className="teacher-card-row">
+          <span className="teacher-card-label">Степень</span>
+          <span className="teacher-card-value">{t.academic_degree || '—'}</span>
+        </div>
+        <div className="teacher-card-row">
+          <span className="teacher-card-label">Должность</span>
+          <span className="teacher-card-value">{t.position || '—'}</span>
+        </div>
+        <div className="teacher-card-row">
           <span className="teacher-card-label">Кафедра</span>
           <span className="teacher-card-value">{t.department || '—'}</span>
         </div>
         <div className="teacher-card-row">
           <span className="teacher-card-label">Связь</span>
           <span className="teacher-card-value">{t.contact || '—'}</span>
-        </div>
-        <div className="teacher-card-row">
-          <span className="teacher-card-label">Предметы</span>
-          <span className="teacher-card-value">
-            {(t.subjects || []).length > 0 ? (
-              <span className="teacher-subjects-tags">
-                {t.subjects.map(s => <span key={s}>{s}</span>)}
-              </span>
-            ) : '—'}
-          </span>
         </div>
       </div>
       {t.bio ? (
@@ -187,10 +196,11 @@ export default function TeachersAdmin({ isAdmin = false }) {
     return teachers.filter(t => {
       const hay = [
         t.full_name,
+        t.academic_degree,
+        t.position,
         t.department,
         t.contact,
         t.bio,
-        ...(t.subjects || []),
       ].filter(Boolean).join(' ').toLowerCase()
       return hay.includes(q)
     })
@@ -239,7 +249,7 @@ export default function TeachersAdmin({ isAdmin = false }) {
       setStatus(
         created || updated
           ? `Готово: добавлено ${created}, дополнено ${updated}.`
-          : 'Всё уже актуально — новых преподавателей и предметов не найдено.'
+          : 'Всё уже актуально — новых преподавателей не найдено.'
       )
       await load()
     } catch (e) {
@@ -269,7 +279,7 @@ export default function TeachersAdmin({ isAdmin = false }) {
           <h2>Преподаватели</h2>
           <p className="status" style={{ marginTop: 4 }}>
             {isAdmin
-              ? 'Карточки преподавателей: ФИО, кафедра, связь, предметы и описание. ФИО и предметы можно заполнить автоматически из расписания, остальное — вручную.'
+              ? 'Карточки преподавателей: ФИО, научная степень, должность, кафедра, связь и описание. ФИО можно заполнить автоматически из расписания, остальное — вручную.'
               : 'Справочник преподавателей кафедры.'}
           </p>
         </div>
@@ -283,7 +293,7 @@ export default function TeachersAdmin({ isAdmin = false }) {
               className="btn btn-sm"
               onClick={syncFromEvents}
               disabled={syncing}
-              title="Создать карточки для преподавателей из расписания и дополнить их предметы"
+              title="Создать карточки для преподавателей из расписания"
             >
               {syncing ? 'Заполняю…' : 'Заполнить из расписания'}
             </button>
@@ -307,7 +317,7 @@ export default function TeachersAdmin({ isAdmin = false }) {
             type="search"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="ФИО, кафедра, предмет…"
+            placeholder="ФИО, степень, должность, кафедра…"
           />
         </label>
       </div>

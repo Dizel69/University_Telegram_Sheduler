@@ -126,6 +126,8 @@ def _to_public(row: TeacherProfile) -> dict:
     return {
         "id": row.id,
         "full_name": row.full_name,
+        "academic_degree": row.academic_degree,
+        "position": row.position,
         "department": row.department,
         "contact": row.contact,
         "subjects": list(row.subjects or []),
@@ -157,6 +159,8 @@ def create_teacher_profile(
     with Session(engine) as session:
         row = TeacherProfile(
             full_name=payload.full_name,
+            academic_degree=payload.academic_degree,
+            position=payload.position,
             department=payload.department,
             contact=payload.contact,
             subjects=payload.subjects or [],

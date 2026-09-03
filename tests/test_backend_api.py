@@ -890,3 +890,56 @@ def test_teachers_admin_rename_and_visibility(backend_client, backend_engine):
         headers=ADMIN_HEADERS,
     )
     assert analytics.json()["teacher_workload"] == []
+
+
+def test_teacher_profile_degree_and_position(backend_client):
+    denied = backend_client.post(
+        "/teacher-profiles",
+        json={"full_name": "Иванов Иван Иванович"},
+    )
+    assert denied.status_code in (401, 403)
+
+    created = backend_client.post(
+        "/teacher-profiles",
+        headers=ADMIN_HEADERS,
+        json={
+            "full_name": " Иванов Иван Иванович ",
+            "academic_degree": " к.ф.-м.н. ",
+            "position": " доцент ",
+            "department": "Кафедра математики",
+            "contact": "ivanov@uni.test",
+            "bio": "Читает анализ",
+        },
+    )
+    assert created.status_code == 200
+    row = created.json()
+    assert row["full_name"] == "Иванов Иван Иванович"
+    assert row["academic_degree"] == "к.ф.-м.н."
+    assert row["position"] == "доцент"
+    assert row["department"] == "Кафедра математики"
+    assert "Math" not in (row.get("subjects") or [])
+
+    listed = backend_client.get("/teacher-profiles")
+    assert listed.status_code == 200
+    found = next(item for item in listed.json() if item["id"] == row["id"])
+    assert found["academic_degree"] == "к.ф.-м.н."
+    assert found["position"] == "доцент"
+
+    updated = backend_client.put(
+        f"/teacher-profiles/{row['id']}",
+        headers=ADMIN_HEADERS,
+        json={"academic_degree": "д.ф.-м.н.", "position": "профессор"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["academic_degree"] == "д.ф.-м.н."
+    assert updated.json()["position"] == "профессор"
+    assert updated.json()["department"] == "Кафедра математики"
+
+    cleared = backend_client.put(
+        f"/teacher-profiles/{row['id']}",
+        headers=ADMIN_HEADERS,
+        json={"academic_degree": "  ", "position": ""},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["academic_degree"] is None
+    assert cleared.json()["position"] is None

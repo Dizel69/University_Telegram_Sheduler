@@ -25,7 +25,7 @@ os.environ.setdefault("BACKEND_URL", "http://backend.test")
 
 @pytest.fixture()
 def backend_engine(monkeypatch):
-    from app import account_routes, calendar_highlight_routes, crud, database, deps, main, models  # noqa: F401
+    from app import account_routes, calendar_highlight_routes, crud, database, deps, main, models, teacher_routes  # noqa: F401
     from app.models import CalendarDayRangeHighlight  # noqa: F401 — register table in metadata
 
     engine = create_engine(
@@ -35,7 +35,7 @@ def backend_engine(monkeypatch):
     )
     SQLModel.metadata.create_all(engine)
 
-    for module in (database, crud, deps, account_routes, calendar_highlight_routes, main):
+    for module in (database, crud, deps, account_routes, calendar_highlight_routes, main, teacher_routes):
         monkeypatch.setattr(module, "engine", engine, raising=False)
 
     main.app.dependency_overrides.clear()
