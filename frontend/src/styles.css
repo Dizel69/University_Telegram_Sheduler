@@ -1311,12 +1311,6 @@ html[data-theme="dark"] h4 { color: var(--text); }
   font-size: 17px;
   line-height: 1.25;
 }
-.teacher-card-rank {
-  margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--text-secondary);
-}
 .teacher-card-actions {
   display: flex;
   gap: 6px;

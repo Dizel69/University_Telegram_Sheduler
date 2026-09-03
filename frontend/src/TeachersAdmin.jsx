@@ -116,15 +116,10 @@ function TeacherEditor({ initial, busy, onSave, onCancel, submitLabel }) {
 }
 
 function TeacherCard({ t, isAdmin, onEdit, onDelete }) {
-  const rankLine = [t.academic_degree, t.position].filter(Boolean).join(', ')
-
   return (
     <div className="teacher-card">
       <div className="teacher-card-head">
-        <div>
-          <h3 className="teacher-card-name">{t.full_name}</h3>
-          {rankLine ? <p className="teacher-card-rank">{rankLine}</p> : null}
-        </div>
+        <h3 className="teacher-card-name">{t.full_name}</h3>
         {isAdmin && (
           <div className="teacher-card-actions">
             <button type="button" className="btn btn-sm" onClick={() => onEdit(t)}>
