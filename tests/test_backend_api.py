@@ -110,6 +110,7 @@ def test_due_reminders_and_mark_sent(backend_client, backend_engine):
             body="Due soon",
             date=date.today() + timedelta(days=1),
             time=time(9, 0),
+            end_time=time(10, 30),
             reminder_offset_hours=48,
             chat_id=123,
             topic_thread_id=456,
@@ -133,6 +134,8 @@ def test_due_reminders_and_mark_sent(backend_client, backend_engine):
     assert [event["id"] for event in reminders] == [due_id]
     assert reminders[0]["chat_id"] == 123
     assert reminders[0]["thread_id"] == 456
+    assert reminders[0]["time"] == "09:00:00"
+    assert reminders[0]["end_time"] == "10:30:00"
 
     mark_response = backend_client.post(f"/events/{due_id}/mark_reminder_sent")
     assert mark_response.status_code == 200

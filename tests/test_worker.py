@@ -64,6 +64,8 @@ def test_format_exam_control_reminder_includes_optional_fields():
             "subject": "Discrete Math",
             "room": "301",
             "teacher": "Dr. Ada",
+            "time": "14:00:00",
+            "end_time": "15:35:00",
             "body": "Bring ID",
         },
         "2026-05-20",
@@ -74,7 +76,34 @@ def test_format_exam_control_reminder_includes_optional_fields():
     assert "#Discrete_Math" in text
     assert "Аудитория: 301" in text
     assert "Преподаватель: Dr. Ada" in text
+    assert "Время проведения: 14:00 - 15:35" in text
     assert "Bring ID" in text
+
+
+def test_format_exam_control_reminder_omits_time_when_missing():
+    text = worker._format_exam_control_reminder(
+        {
+            "lesson_type": "exam",
+            "subject": "Algebra",
+            "body": "Bring ID",
+        },
+        "2026-05-20",
+    )
+
+    assert "Время проведения:" not in text
+
+
+def test_format_exam_control_reminder_start_time_only():
+    text = worker._format_exam_control_reminder(
+        {
+            "lesson_type": "control",
+            "time": "09:00",
+            "body": "Chapter 3",
+        },
+        "2026-05-21",
+    )
+
+    assert "Время проведения: 09:00\nChapter 3" in text
 
 
 def test_check_and_send_handles_empty_reminders(monkeypatch):

@@ -920,6 +920,7 @@ def events_due_reminders():
             "body": ev.body,
             "date": ev.date.isoformat() if ev.date else None,
             "time": ev.time.isoformat() if ev.time else None,
+            "end_time": ev.end_time.isoformat() if getattr(ev, "end_time", None) else None,
             "room": getattr(ev, 'room', None),
             "teacher": getattr(ev, 'teacher', None),
             "lesson_type": getattr(ev, "lesson_type", None),

@@ -109,6 +109,32 @@ def _send_birthday_greetings(client: httpx.Client):
     _last_birthday_greeting_date = today
 
 
+def _format_clock(value):
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    text = str(value).strip()
+    if not text:
+        return None
+    parts = text.split(":")
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+    return text
+
+
+def _format_exam_time_line(ev: dict):
+    start = _format_clock(ev.get("time"))
+    end = _format_clock(ev.get("end_time"))
+    if start and end:
+        return f"Время проведения: {start} - {end}"
+    if start:
+        return f"Время проведения: {start}"
+    if end:
+        return f"Время проведения: {end}"
+    return None
+
+
 def _format_exam_control_reminder(ev: dict, date) -> str:
     """Тот же шаблон, что и при отправке события в Telegram (контрольная / экзамен)."""
     lines = [f"⏰ Напоминание ({date})", ""]
@@ -123,6 +149,9 @@ def _format_exam_control_reminder(ev: dict, date) -> str:
     teacher = ev.get("teacher")
     if teacher and str(teacher).strip():
         lines.append(f"Преподаватель: {str(teacher).strip()}")
+    time_line = _format_exam_time_line(ev)
+    if time_line:
+        lines.append(time_line)
     body = (ev.get("body") or "").strip()
     if body:
         lines.append(body)
