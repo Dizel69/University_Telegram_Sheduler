@@ -127,11 +127,11 @@ def _format_exam_time_line(ev: dict):
     start = _format_clock(ev.get("time"))
     end = _format_clock(ev.get("end_time"))
     if start and end:
-        return f"Время проведения: {start} - {end}"
+        return f"<b>Время проведения: {start} - {end}</b>"
     if start:
-        return f"Время проведения: {start}"
+        return f"<b>Время проведения: {start}</b>"
     if end:
-        return f"Время проведения: {end}"
+        return f"<b>Время проведения: {end}</b>"
     return None
 
 

@@ -1,4 +1,7 @@
 httpx==0.24.1
+httpcore==0.17.3
+# anyio 4.15+ лениво резолвит anyio.abc и ломает import httpx (httpcore 0.17)
+anyio==4.14.2
 APScheduler==3.10.1
 python-dotenv==1.0.1
 prometheus-client==0.22.1

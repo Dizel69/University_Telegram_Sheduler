@@ -282,6 +282,22 @@ jobs:
             wait_for "http://127.0.0.1:8081/health" "bot-service"
             curl -fsS --max-time 10 "http://127.0.0.1:8081/health"
             echo ""
+
+            wait_for_worker() {
+              local attempt
+              for attempt in $(seq 1 30); do
+                if docker compose exec -T worker python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/metrics', timeout=3)" >/dev/null 2>&1; then
+                  echo "worker is up (attempt $attempt)"
+                  return 0
+                fi
+                sleep 2
+              done
+              echo "::error::worker did not become ready"
+              docker compose ps worker || true
+              docker compose logs --tail 80 worker || true
+              return 1
+            }
+            wait_for_worker
             echo "App smoke tests passed."
 
   smoke_monitoring:

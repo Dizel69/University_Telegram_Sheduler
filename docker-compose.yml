@@ -109,6 +109,12 @@ services:
       - redis
     volumes:
       - ./worker:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/metrics', timeout=3)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     networks:
       - appnet
 
