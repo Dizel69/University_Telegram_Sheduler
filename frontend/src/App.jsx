@@ -107,7 +107,7 @@ export default function App() {
     <div className="container">
       <header className="topbar">
         <h1>Планировщик университета</h1>
-        <nav>
+        <nav className="topbar-nav">
           {showAdminTabs ? (
             <>
               <button type="button" className={tab === 'create' ? 'tab active' : 'tab'} onClick={() => setTab('create')}>Создать</button>

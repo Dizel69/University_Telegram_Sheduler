@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import EditEventModal from './EditEventModal'
@@ -6,14 +6,18 @@ import ErrorBoundary from './ErrorBoundary'
 import { bearerAuthHeaders } from './authHeaders'
 import { eventTemporalClass, isOngoingEvent } from './eventTime'
 import FormattedTextEditor, { FormattedBody } from './FormattedTextEditor'
-
-/** Порядок в ячейке дня: контрольная/экзамен выше домашки. */
-function calendarTypeOrder(t) {
-  if (t === 'exam_control') return 0
-  if (t === 'homework') return 1
-  if (t === 'birthday') return 2
-  return 2
-}
+import CalendarAgenda from './CalendarAgenda'
+import { useMediaQuery } from './useMediaQuery'
+import {
+  calendarTypeOrder,
+  eventColor,
+  eventTextColor,
+  examKindIcon,
+  formatTimeRange,
+  lessonIcon,
+  localIsoDate,
+  typeLabel,
+} from './calendarUi'
 
 function TransferModal({ ev, onClose, onSaved }) {
   const [targetDate, setTargetDate] = useState(ev.date || '')
@@ -195,26 +199,6 @@ export default function Calendar({ isAdmin = false }) {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
   const [events, setEvents] = useState({})
-
-  function formatTimeRange(t, end) {
-    if (!t && !end) return ''
-    const s = t ? (t.slice(0,5)) : ''
-    const e = end ? (end.slice(0,5)) : ''
-    if (s && e) return `${s} - ${e}`
-    return s || e
-  }
-
-  function lessonIcon(lessonType) {
-    if (lessonType === 'lecture') return '🔊'
-    if (lessonType === 'practice') return '📓'
-    return ''
-  }
-
-  function examKindIcon(lessonType) {
-    if (lessonType === 'exam') return '🎓'
-    if (lessonType === 'control') return '📝'
-    return '📝'
-  }
   const [undated, setUndated] = useState([])
   const [editing, setEditing] = useState(false)
   /** Режим «карандаш»: два клика по дням, затем выбор цвета. */
@@ -236,6 +220,12 @@ export default function Calendar({ isAdmin = false }) {
   const [showHomework, setShowHomework] = useState(true)
   /** Тик для «сейчас идёт» / «уже прошло» без перезагрузки. */
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const isNarrow = useMediaQuery('(max-width: 767px)')
+  const useAgenda = isNarrow && !editing
+  const [legendOpen, setLegendOpen] = useState(() => (
+    typeof window !== 'undefined' ? !window.matchMedia('(max-width: 767px)').matches : true
+  ))
+  const [agendaPin, setAgendaPin] = useState({ day: null, eventId: null, nonce: 0 })
 
   function backendBase() {
     // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
@@ -276,7 +266,8 @@ export default function Calendar({ isAdmin = false }) {
           const [y, mo] = ev.date.split('-').map(Number)
           setYear(y)
           setMonth(mo - 1)
-          setOpenDay(ev.date)
+          setAgendaPin((p) => ({ day: ev.date, eventId: ev.id, nonce: p.nonce + 1 }))
+          if (!window.matchMedia('(max-width: 767px)').matches) setOpenDay(ev.date)
         } else {
           setTimeout(() => {
             document.getElementById(`undated-event-${eventId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -303,6 +294,10 @@ export default function Calendar({ isAdmin = false }) {
       setPendingHighlightRange(null)
     }
   }, [editing])
+
+  useEffect(() => {
+    setLegendOpen(!isNarrow)
+  }, [isNarrow])
 
   async function persistRangeHighlights(list) {
     if (!isAdmin) return
@@ -419,20 +414,49 @@ export default function Calendar({ isAdmin = false }) {
 
   function goToday() {
     const t = new Date()
+    const iso = localIsoDate(t)
     setYear(t.getFullYear())
     setMonth(t.getMonth())
+    setAgendaPin((p) => ({ day: iso, eventId: null, nonce: p.nonce + 1 }))
   }
 
-  // build days array with Monday-first week (Mon..Sun)
-  const days = []
-  const d0 = new Date(Date.UTC(year, month, 1))
-  const startWeekday = d0.getUTCDay() // 0 Sun, 1 Mon ...
-  // convert to Monday-first offset: make Monday=0 ... Sunday=6
-  const offset = (startWeekday + 6) % 7
-  const daysInMonth = new Date(Date.UTC(year, month+1, 0)).getUTCDate()
+  function dayHighlightBg(isoDay) {
+    const hlIdx = topHighlightRangeIndex(isoDay, rangeHighlights)
+    if (hlIdx < 0) return null
+    return highlightPaleBackground(rangeHighlights[hlIdx].color)
+  }
 
-  for (let i=0;i<offset;i++) days.push(null)
-  for (let d=1; d<=daysInMonth; d++) days.push(new Date(Date.UTC(year, month, d)))
+  async function sendEventNow(ev) {
+    try {
+      await axios.post(`/events/${ev.id}/send_now`, null, { headers: bearerAuthHeaders() })
+      alert('Отправлено')
+      load()
+    } catch (e) {
+      alert('Ошибка: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  async function removeEvent(ev) {
+    if (!confirm('Удалить событие? Это действие нельзя отменить.')) return
+    try {
+      await axios.delete(`/events/${ev.id}`, { headers: bearerAuthHeaders() })
+      await load()
+    } catch (e) {
+      console.error(e)
+      alert('Ошибка удаления: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+
+  const days = useMemo(() => {
+    const list = []
+    const d0 = new Date(Date.UTC(year, month, 1))
+    const startWeekday = d0.getUTCDay()
+    const offset = (startWeekday + 6) % 7
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+    for (let i = 0; i < offset; i++) list.push(null)
+    for (let d = 1; d <= daysInMonth; d++) list.push(new Date(Date.UTC(year, month, d)))
+    return list
+  }, [year, month])
 
   async function deleteEventsForDay(day) {
     if (!confirm('Удалить все события за день? Это действие нельзя отменить.')) return
@@ -473,14 +497,16 @@ export default function Calendar({ isAdmin = false }) {
 
   return (
     <ErrorBoundary>
-    <div className="card">
-      <div className="calendar-toolbar">
-        <div className="calendar-toolbar-group">
+    <div className={'card' + (useAgenda ? ' calendar-card-agenda' : '')}>
+      <div className={'calendar-toolbar' + (useAgenda ? ' is-agenda' : '')}>
+        <div className="calendar-toolbar-group calendar-toolbar-nav">
           <button className="btn" onClick={prev}>◀</button>
           <button className="btn" onClick={goToday}>Сегодня</button>
           <button className="btn" onClick={next}>▶</button>
         </div>
-        <div className="calendar-toolbar-group">
+        <h3 className="calendar-month-title">{monthLabel(year, month)}</h3>
+        <div className="calendar-toolbar-status">{loading ? 'Загрузка...' : ''}</div>
+        <div className="calendar-toolbar-group calendar-toolbar-actions">
           {/* Редактирование доступно только админам */}
           {isAdmin ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -523,17 +549,17 @@ export default function Calendar({ isAdmin = false }) {
             <input type="checkbox" checked={showHomework} onChange={() => setShowHomework(!showHomework)} />
             <span className="toggle-slider"></span>
             <span className="toggle-emoji">{showHomework ? '📓' : '❌'}</span>
-            <span className="toggle-label">{showHomework ? 'Выключить отображение Д/З' : 'Включить отображение Д/З'}</span>
+            <span className="toggle-label hide-narrow">{showHomework ? 'Выключить отображение Д/З' : 'Включить отображение Д/З'}</span>
+            <span className="toggle-label hide-wide">{showHomework ? 'Домашка' : 'Д/З скрыта'}</span>
           </label>
           {editing && isAdmin ? (
             <button className="btn btn-danger" onClick={deleteEventsForMonth}>Удалить все события за месяц</button>
           ) : null}
         </div>
-        <h3>{monthLabel(year, month)}</h3>
-        <div>{loading ? 'Загрузка...' : ''}</div>
       </div>
-      {/* Legend explaining colors */}
-      <div className="calendar-legend">
+      <details className="calendar-legend-details" open={legendOpen} onToggle={(e) => setLegendOpen(e.target.open)}>
+        <summary>Легенда</summary>
+        <div className="calendar-legend">
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <span style={{width:12,height:12,background:'#ef4444',borderRadius:3,display:'inline-block'}}></span>
           <span className="legend-label">Перенос</span>
@@ -558,7 +584,8 @@ export default function Calendar({ isAdmin = false }) {
           <span style={{width:12,height:12,background:'#facc15',borderRadius:3,display:'inline-block'}}></span>
           <span className="legend-label">День рождения</span>
         </div>
-      </div>
+        </div>
+      </details>
       {loadError && (
         <div className="card alert-error-card">
           <div className="alert-error-title">Не удалось загрузить события</div>
@@ -571,8 +598,25 @@ export default function Calendar({ isAdmin = false }) {
         </div>
       )}
 
-      <div className="calendar-wrap">
-      <div className="calendar-grid">
+      {useAgenda ? (
+        <CalendarAgenda
+          year={year}
+          month={month}
+          days={days}
+          events={events}
+          showHomework={showHomework}
+          dayHighlightBg={dayHighlightBg}
+          nowMs={nowMs}
+          isAdmin={isAdmin}
+          pin={agendaPin}
+          onEditEvent={setEditEvent}
+          onTransferEvent={setTransferEvent}
+          onDeleteEvent={removeEvent}
+          onSendNow={sendEventNow}
+        />
+      ) : (
+      <div className={'calendar-wrap' + (isNarrow ? ' is-compact' : '')}>
+      <div className={'calendar-grid' + (isNarrow ? ' is-compact' : '')}>
   <div className="weekday">Пн</div>
   <div className="weekday">Вт</div>
   <div className="weekday">Ср</div>
@@ -585,7 +629,7 @@ export default function Calendar({ isAdmin = false }) {
           if (!dt) return <div key={idx} className="day empty"></div>
           const ds = dt.toISOString().slice(0,10)
           const evs = (events[ds] || []).filter(ev => showHomework || ev.type !== 'homework')
-          const todayIso = new Date().toISOString().slice(0,10)
+          const todayIso = localIsoDate()
           const hlIdx = topHighlightRangeIndex(ds, rangeHighlights)
           const hl = hlIdx >= 0 ? rangeHighlights[hlIdx] : null
           const hlBg = hlIdx < 0 ? null : highlightPaleBackground(hl.color)
@@ -692,8 +736,9 @@ export default function Calendar({ isAdmin = false }) {
         })}
       </div>
       </div>
+      )}
       {/* Day detail modal/panel */}
-      {openDay && (
+      {openDay && !useAgenda && (
         <div className="modal-overlay" onClick={() => setOpenDay(null)}>
           <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -820,50 +865,6 @@ export default function Calendar({ isAdmin = false }) {
     </ErrorBoundary>
   )
 }
-
-  function typeColor(t) {
-    // normalize and map to consistent colors
-    if (!t) return '#6b7280'
-    const n = String(t).toLowerCase().trim()
-    if (n.includes('schedule') || n.includes('расписание')) return '#60a5fa'
-    if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return '#f97316'
-    if (n.includes('homework') || n.includes('домаш') || n.includes('домашнее_задание') || n.includes('домашняя_работа')) return '#a78bfa'
-    if (n.includes('transfer') || n.includes('перенос')) return '#ef4444'
-    if (n.includes('announcement') || n.includes('объявлен')) return '#34d399'
-    if (n.includes('birthday') || n.includes('рождени')) return '#facc15'
-    return '#9ca3af'
-  }
-
-  // eventColor: defensive color decision using event fields (type, body, title)
-  function eventColor(ev) {
-    try {
-      if (!ev) return typeColor(ev?.type)
-      const body = (ev.body || '').toString().toLowerCase()
-      const title = (ev.title || '').toString().toLowerCase()
-      if (ev.type === 'birthday') return '#facc15'
-      // if body/title mention перенос — force transfer color
-      if (body.includes('перенос') || title.includes('перенос') || body.includes('перенес')) return '#ef4444'
-      return typeColor(ev.type)
-    } catch (e) {
-      return typeColor(ev?.type)
-    }
-  }
-
-  function eventTextColor(ev) {
-    return ev?.type === 'birthday' ? '#713f12' : '#fff'
-  }
-
-  function typeLabel(t) {
-    if (!t) return ''
-    const n = String(t).toLowerCase().trim()
-    if (n.includes('birthday') || n.includes('рождени')) return 'День рождения'
-    if (n.includes('transfer') || n.includes('перенос')) return 'Перенос'
-    if (n.includes('homework') || n.startsWith('home') || n.includes('домаш')) return 'Домашняя работа'
-    if (n.includes('exam_control') || n.includes('контрольн') || n.includes('экзамен')) return 'Контрольная / экзамен'
-    if (n.includes('schedule') || n.includes('расписание')) return 'Расписание'
-    if (n.includes('announcement') || n.includes('объявлен')) return 'Объявление'
-    return t
-  }
 
   function AddEventModal({ date, onClose, onSaved }) {
     const [type, setType] = useState('schedule')
