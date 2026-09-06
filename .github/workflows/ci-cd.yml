@@ -276,7 +276,10 @@ jobs:
             }
 
             wait_for "http://127.0.0.1:8000/metrics" "backend"
-            curl -fsS --max-time 10 "http://127.0.0.1:8000/metrics" | head -c 200
+            # Не пайпить в head: при pipefail curl получает 23 (CURLE_WRITE_ERROR),
+            # когда head закрывает stdout после 200 байт.
+            metrics="$(curl -fsS --max-time 10 "http://127.0.0.1:8000/metrics")"
+            printf '%.200s\n' "$metrics"
             echo ""
 
             wait_for "http://127.0.0.1:8081/health" "bot-service"
