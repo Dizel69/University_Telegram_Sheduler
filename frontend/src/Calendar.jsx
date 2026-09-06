@@ -15,7 +15,9 @@ import {
   examKindIcon,
   formatTimeRange,
   lessonIcon,
+  isOutsideMonth,
   localIsoDate,
+  monthGridDays,
   typeLabel,
 } from './calendarUi'
 
@@ -74,13 +76,6 @@ function TransferModal({ ev, onClose, onSaved }) {
       </div>
     </div>
   )
-}
-
-function monthBounds(year, month) {
-  // month: 0-11. return first and last date objects in UTC
-  const first = new Date(Date.UTC(year, month, 1))
-  const last = new Date(Date.UTC(year, month + 1, 0))
-  return { first, last }
 }
 
 function monthLabel(year, month) {
@@ -361,9 +356,9 @@ export default function Calendar({ isAdmin = false }) {
     setLoading(true)
     setLoadError(null)
     try {
-      const { first, last } = monthBounds(year, month)
-      const start = first.toISOString().slice(0,10)
-      const end = last.toISOString().slice(0,10)
+      const grid = monthGridDays(year, month)
+      const start = grid[0].toISOString().slice(0, 10)
+      const end = grid[grid.length - 1].toISOString().slice(0, 10)
   const base = backendBase()
   const url = (base || '') + `/calendar?start=${start}&end=${end}`
   const res = await axios.get(url)
@@ -447,16 +442,14 @@ export default function Calendar({ isAdmin = false }) {
     }
   }
 
-  const days = useMemo(() => {
-    const list = []
-    const d0 = new Date(Date.UTC(year, month, 1))
-    const startWeekday = d0.getUTCDay()
-    const offset = (startWeekday + 6) % 7
-    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-    for (let i = 0; i < offset; i++) list.push(null)
-    for (let d = 1; d <= daysInMonth; d++) list.push(new Date(Date.UTC(year, month, d)))
-    return list
-  }, [year, month])
+  const days = useMemo(() => monthGridDays(year, month), [year, month])
+
+  function goToIsoDate(iso, eventId = null) {
+    const [y, mo] = iso.split('-').map(Number)
+    setYear(y)
+    setMonth(mo - 1)
+    setAgendaPin((p) => ({ day: iso, eventId, nonce: p.nonce + 1 }))
+  }
 
   async function deleteEventsForDay(day) {
     if (!confirm('Удалить все события за день? Это действие нельзя отменить.')) return
@@ -609,6 +602,7 @@ export default function Calendar({ isAdmin = false }) {
           nowMs={nowMs}
           isAdmin={isAdmin}
           pin={agendaPin}
+          onGoToDate={goToIsoDate}
           onEditEvent={setEditEvent}
           onTransferEvent={setTransferEvent}
           onDeleteEvent={removeEvent}
@@ -626,18 +620,16 @@ export default function Calendar({ isAdmin = false }) {
   <div className="weekday">Вс</div>
 
         {days.map((dt, idx) => {
-          if (!dt) return <div key={idx} className="day empty"></div>
           const ds = dt.toISOString().slice(0,10)
+          const outside = isOutsideMonth(dt, month)
           const evs = (events[ds] || []).filter(ev => showHomework || ev.type !== 'homework')
           const todayIso = localIsoDate()
           const hlIdx = topHighlightRangeIndex(ds, rangeHighlights)
           const hl = hlIdx >= 0 ? rangeHighlights[hlIdx] : null
           const hlBg = hlIdx < 0 ? null : highlightPaleBackground(hl.color)
           const wantStitch = hlIdx >= 0 && rangeWantsStitch(hl)
-          const prevCell = idx > 0 ? days[idx - 1] : null
-          const nextCell = idx + 1 < days.length ? days[idx + 1] : null
-          const prevIso = prevCell ? prevCell.toISOString().slice(0, 10) : null
-          const nextIso = nextCell ? nextCell.toISOString().slice(0, 10) : null
+          const prevIso = idx > 0 ? days[idx - 1].toISOString().slice(0, 10) : null
+          const nextIso = idx + 1 < days.length ? days[idx + 1].toISOString().slice(0, 10) : null
           const prevMerge =
             wantStitch &&
             hlIdx >= 0 &&
@@ -666,9 +658,10 @@ export default function Calendar({ isAdmin = false }) {
 
           return (
             <div
-              key={idx}
+              key={ds}
               className={
                 'day' +
+                (outside ? ' outside-month' : '') +
                 (ds === todayIso ? ' today' : '') +
                 (hlBg && wantStitch ? ' day-highlight-stitch' : '') +
                 (hlBg && (prevMerge || nextMerge) ? ' day-highlight-run' : '')

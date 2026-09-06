@@ -89,6 +89,23 @@ export function weekdayIndexMondayFirst(utcDate) {
   return (utcDate.getUTCDay() + 6) % 7
 }
 
+/** Полные недели месяца, включая дни соседних месяцев в начале и конце сетки. */
+export function monthGridDays(year, month) {
+  const first = new Date(Date.UTC(year, month, 1))
+  const offset = weekdayIndexMondayFirst(first)
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  const total = Math.ceil((offset + daysInMonth) / 7) * 7
+  const list = []
+  for (let i = 0; i < total; i++) {
+    list.push(new Date(Date.UTC(year, month, 1 - offset + i)))
+  }
+  return list
+}
+
+export function isOutsideMonth(utcDate, month) {
+  return utcDate.getUTCMonth() !== month
+}
+
 export function formatAgendaDayLabel(utcDate, todayIso) {
   const iso = isoFromUtcDate(utcDate)
   const weekday = WEEKDAYS_LONG[weekdayIndexMondayFirst(utcDate)]

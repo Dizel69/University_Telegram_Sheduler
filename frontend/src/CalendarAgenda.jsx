@@ -8,6 +8,7 @@ import {
   formatAgendaDayLabel,
   formatTimeRange,
   isoFromUtcDate,
+  isOutsideMonth,
   lessonIcon,
   localIsoDate,
   typeLabel,
@@ -114,6 +115,7 @@ export default function CalendarAgenda({
   nowMs,
   isAdmin,
   pin,
+  onGoToDate,
   onEditEvent,
   onTransferEvent,
   onDeleteEvent,
@@ -126,7 +128,10 @@ export default function CalendarAgenda({
   const [monthOpen, setMonthOpen] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
 
-  const monthDays = useMemo(() => days.filter(Boolean), [days])
+  const monthDays = useMemo(
+    () => days.filter((d) => d && !isOutsideMonth(d, month)),
+    [days, month],
+  )
   const isCurrentMonth = year === new Date().getFullYear() && month === new Date().getMonth()
 
   const weekDays = useMemo(
@@ -202,6 +207,14 @@ export default function CalendarAgenda({
     })
   }
 
+  function selectDay(iso, dt) {
+    if (dt && isOutsideMonth(dt, month) && onGoToDate) {
+      onGoToDate(iso)
+      return
+    }
+    scrollToDay(iso)
+  }
+
   return (
     <div className="calendar-agenda">
       <div className="agenda-weekbar" ref={barRef}>
@@ -219,6 +232,7 @@ export default function CalendarAgenda({
             const hlBg = dayHighlightBg(iso)
             const isToday = iso === todayIso
             const isActive = iso === activeDay
+            const outside = isOutsideMonth(dt, month)
             return (
               <button
                 key={iso}
@@ -227,10 +241,11 @@ export default function CalendarAgenda({
                   'agenda-week-cell'
                   + (isToday ? ' is-today' : '')
                   + (isActive ? ' is-active' : '')
+                  + (outside ? ' is-outside' : '')
                   + (i >= 5 ? ' is-weekend' : '')
                 }
                 style={hlBg ? { background: hlBg } : undefined}
-                onClick={() => scrollToDay(iso)}
+                onClick={() => selectDay(iso, dt)}
               >
                 <span className="agenda-week-num">{dt.getUTCDate()}</span>
                 <span className="agenda-week-dots" aria-hidden="true">
@@ -269,6 +284,7 @@ export default function CalendarAgenda({
               const hlBg = dayHighlightBg(iso)
               const isToday = iso === todayIso
               const isActive = iso === activeDay
+              const outside = isOutsideMonth(dt, month)
               return (
                 <button
                   key={iso}
@@ -277,9 +293,10 @@ export default function CalendarAgenda({
                     'agenda-mini-cell'
                     + (isToday ? ' is-today' : '')
                     + (isActive ? ' is-active' : '')
+                    + (outside ? ' is-outside' : '')
                   }
                   style={hlBg ? { background: hlBg } : undefined}
-                  onClick={() => scrollToDay(iso)}
+                  onClick={() => selectDay(iso, dt)}
                 >
                   <span className="agenda-mini-num">{dt.getUTCDate()}</span>
                   <span className="agenda-week-dots" aria-hidden="true">

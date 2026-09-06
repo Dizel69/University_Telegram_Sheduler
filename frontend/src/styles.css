@@ -141,6 +141,12 @@ textarea{min-height:120px}
 .day.day-highlight-stitch{overflow:hidden}
 .day.day-highlight-stitch .cal-ev{flex:1 1 auto;min-height:0}
 .day.empty{background:transparent;border:none;min-height:0;height:auto;align-self:stretch}
+.day.outside-month{
+  background:transparent;
+  border-color:color-mix(in srgb, var(--border-subtle) 55%, transparent);
+}
+.day.outside-month .date-num{color:var(--muted);font-weight:600}
+.day.outside-month.today .date-num{color:#fff;font-weight:700}
 .date-num{font-weight:700;margin-bottom:6px}
 .cal-ev{background:var(--cal-ev-bg);padding:6px;border-radius:6px;margin-bottom:4px;font-size:13px;display:flex;flex-direction:column;align-items:stretch;gap:6px;overflow:visible;word-break:break-word;border:1px solid var(--border-subtle)}
 .cal-ev > div { overflow:visible; text-overflow:unset; white-space:normal }
@@ -346,6 +352,8 @@ textarea{min-height:120px}
   touch-action:manipulation;
 }
 .agenda-week-cell.is-empty{pointer-events:none}
+.agenda-week-cell.is-outside .agenda-week-num{color:var(--muted);font-weight:600}
+.agenda-week-cell.is-outside.is-today .agenda-week-num{color:#fff;font-weight:700}
 .agenda-week-num{
   width:28px;
   height:28px;
@@ -424,6 +432,11 @@ textarea{min-height:120px}
   touch-action:manipulation;
 }
 .agenda-mini-cell.is-empty{background:transparent;pointer-events:none;border:none}
+.agenda-mini-cell.is-outside{
+  background:transparent;
+  color:var(--muted);
+}
+.agenda-mini-cell.is-outside.is-active:not(.is-today){background:var(--accent-soft)}
 .agenda-mini-num{font-size:13px;font-weight:700}
 .agenda-mini-cell.is-today .agenda-mini-num{
   width:26px;height:26px;border-radius:50%;
