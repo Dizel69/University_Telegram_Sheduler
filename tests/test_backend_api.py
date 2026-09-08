@@ -530,27 +530,37 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     assert all("Разметка" in s["label"] for s in thursday_slots)
 
     control_day = date(2026, 5, 20)
+    exam_day = date(2026, 5, 21)
     with Session(backend_engine) as session:
-        session.add(
-            Event(
-                type="schedule",
-                subject="Физика",
-                body="Лекция",
-                date=control_day,
-                time=time(10, 0),
-            )
+        physics_pair = Event(
+            type="schedule",
+            subject="Физика",
+            body="Лекция",
+            date=control_day,
+            time=time(10, 0),
         )
-        session.add(
-            Event(
-                type="exam_control",
-                subject="Физика",
-                body="Контрольная",
-                date=control_day,
-                time=time(10, 0),
-                lesson_type="control",
-            )
+        physics_control = Event(
+            type="exam_control",
+            subject="Физика",
+            body="Контрольная",
+            date=control_day,
+            time=time(10, 0),
+            lesson_type="control",
         )
+        physics_exam = Event(
+            type="exam_control",
+            subject="Физика",
+            body="Экзамен",
+            date=exam_day,
+            time=time(12, 0),
+            lesson_type="exam",
+        )
+        session.add(physics_pair)
+        session.add(physics_control)
+        session.add(physics_exam)
         session.commit()
+        session.refresh(physics_control)
+        physics_control_id = physics_control.id
 
     board_ctrl = backend_client.get(
         "/admin/attendance",
@@ -560,7 +570,18 @@ def test_attendance_board_and_marks(backend_client, backend_engine):
     ctrl_day = next(d for d in board_ctrl.json()["days"] if str(d["date"])[:10] == control_day.isoformat())
     physics_slots = [s for s in ctrl_day["slots"] if "Физика" in s["label"]]
     assert len(physics_slots) == 1
-    assert "контрольная" in physics_slots[0]["label"].lower()
+    assert "контрольная" not in physics_slots[0]["label"].lower()
+    assert "экзамен" not in physics_slots[0]["label"].lower()
+
+    exam_col = next(d for d in board_ctrl.json()["days"] if str(d["date"])[:10] == exam_day.isoformat())
+    assert all("Физика" not in s["label"] for s in exam_col["slots"])
+
+    exam_put = backend_client.put(
+        "/admin/attendance",
+        headers=ADMIN_HEADERS,
+        json={"user_id": student_id, "event_id": physics_control_id, "mark": "N"},
+    )
+    assert exam_put.status_code == 400
 
     with Session(backend_engine) as session:
         math_ev = session.exec(select(Event).where(Event.date == lesson_day, Event.subject == "Math")).first()

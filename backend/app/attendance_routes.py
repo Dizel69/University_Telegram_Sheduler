@@ -20,7 +20,8 @@ from app.type_utils import canonical_event_type
 
 router = APIRouter(tags=["attendance"])
 
-_SCHEDULE_TYPES = frozenset({"schedule", "exam_control", "transfer"})
+_ATTENDANCE_TYPES = frozenset({"schedule", "transfer"})
+_SCHEDULE_LIKE_TYPES = frozenset({"schedule", "exam_control", "transfer"})
 
 
 def _monday_week_start(d: dt.date) -> dt.date:
@@ -33,11 +34,8 @@ def _event_subject(ev: Event) -> str:
 
 def _lesson_label(ev: Event) -> str:
     subj = _event_subject(ev) or "Предмет"
-    kind = canonical_event_type(ev.type or "")
     tag = ""
-    if kind == "exam_control":
-        tag = " — экзамен" if (ev.lesson_type or "").lower() == "exam" else " — контрольная"
-    elif kind == "transfer":
+    if canonical_event_type(ev.type or "") == "transfer":
         tag = " — перенос"
     if ev.time:
         return f"{subj}{tag} ({ev.time.strftime('%H:%M')})"
@@ -49,30 +47,18 @@ def _slot_sort_key(ev: Event) -> Tuple:
     return (t, ev.id or 0)
 
 
+def _is_attendance_event(ev: Event) -> bool:
+    return canonical_event_type(ev.type or "") in _ATTENDANCE_TYPES
+
+
 def _is_schedule_event(ev: Event) -> bool:
-    return canonical_event_type(ev.type or "") in _SCHEDULE_TYPES
+    """Пары, переносы и контрольные/экзамены — для аналитики нагрузки, не для отметок."""
+    return canonical_event_type(ev.type or "") in _SCHEDULE_LIKE_TYPES
 
 
 def _attendance_events_for_day(events: List[Event]) -> List[Event]:
-    """
-    События дня для сетки посещаемости.
-
-    Если в этот день по предмету есть контрольная/экзамен, обычные пары (schedule/перенос)
-    того же предмета не показываем — иначе контрольная дублируется с регулярным занятием.
-    """
-    relevant = [ev for ev in events if _is_schedule_event(ev) and _event_subject(ev)]
-    exam_subjects = {
-        _event_subject(ev)
-        for ev in relevant
-        if canonical_event_type(ev.type or "") == "exam_control"
-    }
-    out: List[Event] = []
-    for ev in relevant:
-        subj = _event_subject(ev)
-        kind = canonical_event_type(ev.type or "")
-        if subj in exam_subjects and kind in ("schedule", "transfer"):
-            continue
-        out.append(ev)
+    """Пары и переносы дня. Контрольные и экзамены в посещаемость не входят."""
+    out = [ev for ev in events if _is_attendance_event(ev) and _event_subject(ev)]
     out.sort(key=_slot_sort_key)
     return out
 
@@ -113,7 +99,7 @@ def _merge_mark_slots(days_out: List[AttendanceDayColumn], marks: List[Attendanc
         if m.event_id in known:
             continue
         ev = session.get(Event, m.event_id)
-        if not ev or not ev.date:
+        if not ev or not ev.date or not _is_attendance_event(ev):
             continue
         for col in days_out:
             if col.date != ev.date:
@@ -159,7 +145,7 @@ def get_attendance_board(
         marks_rows: List[AttendanceMark] = []
         for r in session.exec(select(AttendanceMark)).all():
             ev = session.get(Event, r.event_id)
-            if ev and ev.date and monday <= ev.date <= sunday:
+            if ev and ev.date and monday <= ev.date <= sunday and _is_attendance_event(ev):
                 marks_rows.append(r)
 
         marks = [
@@ -189,7 +175,7 @@ def set_attendance_mark(payload: AttendanceMarkSet, _admin=Depends(require_admin
         ev = session.get(Event, payload.event_id)
         if not ev:
             raise HTTPException(status_code=404, detail="Событие не найдено")
-        if not _is_schedule_event(ev):
+        if not _is_attendance_event(ev):
             raise HTTPException(status_code=400, detail="Отметка только для пары из расписания")
 
         existing = session.exec(

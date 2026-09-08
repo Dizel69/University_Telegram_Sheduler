@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 import jwt
 
+from app.attendance_routes import _attendance_events_for_day, _lesson_label
+from app.models import Event
 from app.schemas import EventCreate, EventPublic
 from app.security import JWT_ALG, JWT_SECRET, create_access_token, decode_token, hash_password, verify_password
 from app.semester_utils import SECOND_SEMESTER_LABEL, legacy_semester_migrations, normalize_semester_label
@@ -21,6 +23,33 @@ def test_canonical_event_type_handles_known_aliases():
 def test_canonical_event_type_returns_normalized_unknown_value():
     assert canonical_event_type("  Custom Type  ") == "custom type"
     assert canonical_event_type("") == ""
+
+
+def test_attendance_events_exclude_exam_and_control():
+    pair = Event(id=1, type="schedule", subject="Физика", body="Лекция", time=time(10, 0))
+    control = Event(
+        id=2,
+        type="exam_control",
+        subject="Физика",
+        body="Контрольная",
+        time=time(10, 0),
+        lesson_type="control",
+    )
+    exam = Event(
+        id=3,
+        type="exam_control",
+        subject="Физика",
+        body="Экзамен",
+        time=time(12, 0),
+        lesson_type="exam",
+    )
+    transfer = Event(id=4, type="transfer", subject="Физика", body="Перенос", time=time(14, 0))
+
+    slots = _attendance_events_for_day([pair, control, exam, transfer])
+
+    assert [ev.id for ev in slots] == [1, 4]
+    assert "контрольная" not in _lesson_label(pair).lower()
+    assert "экзамен" not in _lesson_label(pair).lower()
 
 
 def test_normalize_semester_label_maps_legacy_values():
