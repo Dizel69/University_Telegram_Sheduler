@@ -12,6 +12,7 @@ import AnalyticsAdmin from './AnalyticsAdmin'
 import SubjectsAdmin from './SubjectsAdmin'
 import TeachersAdmin from './TeachersAdmin'
 import ThemeToggle from './ThemeToggle'
+import FeedbackFab from './FeedbackFab'
 
 export default function App() {
   const [tab, setTab] = useState('calendar')
@@ -162,6 +163,7 @@ export default function App() {
         {tab === 'semester' && <Semester />}
       </main>
       <UserLogin />
+      <FeedbackFab accountUser={accountUser} />
     </div>
   )
 }

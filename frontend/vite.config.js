@@ -69,6 +69,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/feedback': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/files': {
         target: 'http://backend:8000',
         changeOrigin: true,

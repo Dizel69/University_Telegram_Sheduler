@@ -964,3 +964,82 @@ def test_teacher_profile_degree_and_position(backend_client):
     assert cleared.status_code == 200
     assert cleared.json()["academic_degree"] is None
     assert cleared.json()["position"] is None
+
+
+def test_feedback_requires_configured_chat_id(backend_client, monkeypatch):
+    from app import feedback_routes
+
+    monkeypatch.delenv("FEEDBACK_CHAT_ID", raising=False)
+    feedback_routes._hits.clear()
+    response = backend_client.post(
+        "/feedback",
+        json={"kind": "bug", "title": "Календарь", "body": "Не открывается карточка события"},
+    )
+    assert response.status_code == 503
+    assert "FEEDBACK_CHAT_ID" in response.json()["detail"]
+
+
+def test_feedback_rejects_short_body(backend_client, monkeypatch):
+    monkeypatch.setenv("FEEDBACK_CHAT_ID", "424242")
+    response = backend_client.post(
+        "/feedback",
+        json={"kind": "bug", "title": "Баг", "body": "мало"},
+    )
+    assert response.status_code == 422
+
+
+def test_feedback_sends_to_private_chat_without_thread(backend_client, monkeypatch):
+    from app import feedback_routes
+
+    monkeypatch.setenv("FEEDBACK_CHAT_ID", "424242")
+    feedback_routes._hits.clear()
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(feedback_routes.httpx, "AsyncClient", _FakeAsyncClient)
+
+    response = backend_client.post(
+        "/feedback",
+        json={
+            "kind": "suggestion",
+            "title": "Фильтр по преподавателю",
+            "body": "Хотелось бы фильтровать пары по преподавателю",
+            "page": "/#calendar",
+            "contact": "tg @student",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert len(_FakeAsyncClient.calls) == 1
+    sent = _FakeAsyncClient.calls[0]["json"]
+    assert sent["chat_id"] == 424242
+    assert "thread_id" not in sent
+    assert "💡 Предложение" in sent["text"]
+    assert "Фильтр по преподавателю" in sent["text"]
+    assert "tg @student" in sent["text"]
+    assert "/#calendar" in sent["text"]
+
+
+def test_feedback_includes_logged_in_user_and_escapes_html(backend_client, monkeypatch):
+    from app import feedback_routes
+
+    monkeypatch.setenv("FEEDBACK_CHAT_ID", "424242")
+    feedback_routes._hits.clear()
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(feedback_routes.httpx, "AsyncClient", _FakeAsyncClient)
+
+    token = _login_admin(backend_client)
+    response = backend_client.post(
+        "/feedback",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "kind": "bug",
+            "title": "Падает <script>",
+            "body": "Ошибка при сохранении A & B <tag>",
+        },
+    )
+    assert response.status_code == 200
+    text = _FakeAsyncClient.calls[0]["json"]["text"]
+    assert "<script>" not in text
+    assert "&lt;script&gt;" in text
+    assert "A &amp; B" in text
+    assert "admin" in text
+    assert "🐛 Баг" in text

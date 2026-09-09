@@ -172,6 +172,59 @@ class UserUpdate(BaseModel):
     is_admin: Optional[bool] = None
 
 
+class FeedbackCreate(BaseModel):
+    """Обратная связь с сайта: баг или предложение, уходит в личку бота."""
+
+    kind: str
+    title: str
+    body: str
+    page: Optional[str] = None
+    contact: Optional[str] = None
+
+    @validator("kind")
+    def _kind(cls, v):
+        k = (v or "").strip().lower()
+        if k not in ("bug", "suggestion"):
+            raise ValueError("Выберите «баг» или «предложение»")
+        return k
+
+    @validator("title")
+    def _title(cls, v):
+        t = " ".join(str(v or "").split())
+        if len(t) < 3:
+            raise ValueError("Слишком короткий заголовок")
+        if len(t) > 150:
+            raise ValueError("Заголовок длиннее 150 символов")
+        return t
+
+    @validator("body")
+    def _body(cls, v):
+        t = str(v or "").strip()
+        if len(t) < 10:
+            raise ValueError("Опишите подробнее (минимум 10 символов)")
+        if len(t) > 3500:
+            raise ValueError("Текст длиннее 3500 символов")
+        return t
+
+    @validator("page", pre=True)
+    def _page(cls, v):
+        if v is None:
+            return None
+        t = str(v).strip()
+        if not t:
+            return None
+        return t[:300]
+
+    @validator("contact", pre=True)
+    def _contact(cls, v):
+        if v is None:
+            return None
+        t = str(v).strip()
+        if not t:
+            return None
+        return t[:120]
+
+
 class AttendanceLessonSlot(BaseModel):
     """Одна пара в сетке (отдельное событие расписания)."""
 

@@ -49,6 +49,18 @@ def _bearer(authorization: Optional[str]) -> Optional[str]:
     return None
 
 
+def optional_logged_in_user(authorization: Optional[str] = Header(None)) -> Optional[User]:
+    """Текущий пользователь, если есть валидный Bearer. Иначе None (без 401)."""
+    token = _bearer(authorization)
+    if not token:
+        return None
+    uid = decode_token(token)
+    if uid is None:
+        return None
+    with Session(engine) as session:
+        return session.get(User, uid)
+
+
 def require_logged_in_user(authorization: Optional[str] = Header(None)) -> User:
     token = _bearer(authorization)
     if not token:

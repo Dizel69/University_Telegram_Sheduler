@@ -1840,3 +1840,61 @@ html[data-theme="dark"] .formatted-body tg-spoiler {
   background: var(--accent-soft);
   color: inherit;
 }
+
+.feedback-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.feedback-fab:hover { background: var(--surface-muted) }
+.feedback-fab-icon { font-size: 16px; line-height: 1 }
+.feedback-kind {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+.feedback-kind-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  cursor: pointer;
+}
+.feedback-kind-btn span { font-size: 12px; color: var(--muted); font-weight: 400 }
+.feedback-kind-btn.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: var(--tab-active-shadow);
+}
+.feedback-modal textarea { min-height: 140px }
+
+@media (max-width: 640px) {
+  .feedback-fab {
+    right: 12px;
+    bottom: 12px;
+    padding: 10px 12px;
+  }
+  .feedback-fab-label { display: none }
+  .feedback-kind { grid-template-columns: 1fr }
+}
