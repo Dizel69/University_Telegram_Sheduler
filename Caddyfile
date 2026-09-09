@@ -1,0 +1,7 @@
+# Публичный вход: https://sysprog.duckdns.org (без :3000)
+# Let's Encrypt сертификат Caddy берёт сам, если открыты 80 и 443.
+
+{$PUBLIC_HOST:sysprog.duckdns.org} {
+	encode gzip
+	reverse_proxy frontend:5173
+}

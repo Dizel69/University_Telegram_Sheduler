@@ -1,11 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const hmrClientPort = Number(process.env.HMR_CLIENT_PORT || 0)
+
 // Прокси /api к backend-сервису внутри docker-compose сети
 export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
+    ...(hmrClientPort
+      ? {
+          hmr: {
+            clientPort: hmrClientPort,
+            protocol: hmrClientPort === 443 ? 'wss' : 'ws',
+          },
+        }
+      : {}),
     proxy: {
       '/api': {
         target: 'http://backend:8000',

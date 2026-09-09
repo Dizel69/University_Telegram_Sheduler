@@ -63,7 +63,7 @@ jobs:
                 prometheus.yml|loki-config.yml|blackbox.yml|grafana|grafana/*|fluent-bit|fluent-bit/*)
                   deploy_monitoring=true
                   ;;
-                docker-compose.yml|docker-compose.yaml)
+                docker-compose.yml|docker-compose.yaml|Caddyfile)
                   deploy_app=true
                   deploy_monitoring=true
                   ;;
@@ -213,7 +213,7 @@ jobs:
           script: |
             set -euo pipefail
             cd ${{ secrets.DEPLOY_PATH }}
-            APP_SERVICES="backend bot worker frontend"
+            APP_SERVICES="backend bot worker frontend caddy"
             echo "Restarting app services only: $APP_SERVICES"
             flock -w 900 /tmp/m15-docker-compose.lock env COMPOSE_PARALLEL_LIMIT=1 docker compose up -d --no-deps --build $APP_SERVICES
             docker compose ps $APP_SERVICES

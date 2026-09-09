@@ -53,8 +53,10 @@ TELEGRAM_API_IPV6=2001:67c:4e8:f004::9
 
 # Для ссылок в Telegram на карточку события в UI
 # Если FRONTEND_URL не задан, backend попробует собрать его из HOST:3000
-HOST=127.0.0.1
-FRONTEND_URL=http://127.0.0.1:3000
+HOST=sysprog.duckdns.org
+FRONTEND_URL=https://sysprog.duckdns.org
+BACKEND_PUBLIC_URL=https://sysprog.duckdns.org
+PUBLIC_HOST=sysprog.duckdns.org
 
 # Дефолтный чат для отправки, если у события не задан chat_id
 DEFAULT_CHAT_ID=-1001234567890
@@ -81,7 +83,7 @@ docker compose up --build
 
 ### 3) Полезные адреса
 
-- **Frontend (UI)**: `http://localhost:3000` (внутри контейнера Vite на `5173`, наружу проброшено на `3000`)
+- **Frontend (UI)**: `https://sysprog.duckdns.org` (Caddy на `:80`/`:443`, Let's Encrypt). Запасной вход без HTTPS: `http://localhost:3000`
 - **Backend API**: `http://localhost:8000`
   - Swagger: `http://localhost:8000/docs`
 - **Backend метрики (Prometheus format)**: `http://localhost:8000/metrics`
@@ -169,7 +171,8 @@ Backend нормализует типы в каноничные токены:
 
 - **Бот не отправляет в тему**: проверь `thread_id` (message_thread_id) и что чат — супергруппа с включёнными темами.
 - **401/403 с фронта**: проверь `ADMIN_TOKEN` и заголовок `X-ADMIN-TOKEN`.
-- **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (или `HOST`, чтобы backend собрал `http://{HOST}:3000`).
+- **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (например `https://sysprog.duckdns.org`).
+- **HTTPS не поднимается**: открой на сервере/роутере TCP `80` и `443`, затем `docker compose logs caddy`.
 - **Telegram доступен только по IPv6**: в `.env` задай `TELEGRAM_API_IPV6`, затем пересоздай `bot`. `docker-compose.yml` зафиксирует `api.telegram.org` на этот IPv6 через `extra_hosts`. Если контейнер всё равно не выходит по IPv6, нужно включить IPv6 в Docker на сервере или использовать VPN/proxy.
 
 ## Схема взаимодействия контейнеров
@@ -181,6 +184,7 @@ flowchart LR
     TG[Telegram API]
 
     %% Контейнеры приложения
+    CADDY["caddy\n:80/:443"]
     FE["frontend\n:3000->5173"]
     BE["backend\n:8000"]
     BOT["bot\n:8081"]
@@ -195,7 +199,8 @@ flowchart LR
     NE["node-exporter\n:9100"]
 
     %% Пользовательские потоки
-    U -->|"HTTP(S): UI, действия пользователя\n(логин, расписание, запросы)"| FE
+    U -->|"HTTPS :443 (без порта)"| CADDY
+    CADDY -->|reverse proxy| FE
     FE -->|"REST/JSON: запросы API\n(пользователи, расписание, настройки)"| BE
 
     %% Telegram-потоки

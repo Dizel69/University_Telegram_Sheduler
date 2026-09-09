@@ -223,10 +223,12 @@ export default function Calendar({ isAdmin = false }) {
   const [agendaPin, setAgendaPin] = useState({ day: null, eventId: null, nonce: 0 })
 
   function backendBase() {
-    // Предпочитаем VITE_HOST (установить при build), иначе используем hostname текущей страницы
-    // Храним конфиг в переменных окружения или runtime host; избегаем hardcoding локального hostname
-    const host = import.meta.env.VITE_HOST || window.location.hostname
-    return `http://${host}:8000`
+    // Same-origin: Vite (и Caddy) проксируют API на backend.
+    // Иначе HTTPS-страница не сможет ходить на http://host:8000 (mixed content).
+    if (import.meta.env.VITE_HOST) {
+      return `http://${import.meta.env.VITE_HOST}:8000`
+    }
+    return window.location.origin
   }
 
   useEffect(() => { load() }, [year, month])

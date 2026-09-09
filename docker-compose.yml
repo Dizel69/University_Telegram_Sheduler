@@ -125,10 +125,32 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # HMR через Caddy на 443, иначе Vite стучится на внутренний 5173
+      HMR_CLIENT_PORT: "443"
     ports:
       - "3000:5173"
     depends_on:
       - backend
+    networks:
+      - appnet
+
+  # HTTPS-вход без порта: https://sysprog.duckdns.org
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:-sysprog.duckdns.org}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
     networks:
       - appnet
 
@@ -261,6 +283,8 @@ volumes:
   grafana_data:
   loki_data:
   fluent_bit_data:
+  caddy_data:
+  caddy_config:
 
 networks:
   appnet:
