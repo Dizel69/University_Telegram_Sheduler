@@ -213,9 +213,10 @@ async def test_telegram_call_falls_back_between_routes(monkeypatch):
     body = await bot_service._telegram_call("sendMessage", {"chat_id": 1, "text": "hello"})
 
     assert body == {"ok": True, "result": {"message_id": 5}}
-    assert "-6" in calls[0]
+    assert len(calls) == 3
+    assert "-4" in calls[0]
     assert "-4" in calls[1]
-    assert "--resolve" not in calls[2]
+    assert bot_service._last_good_route
 
 
 @pytest.mark.asyncio

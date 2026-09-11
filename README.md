@@ -195,6 +195,7 @@ Backend нормализует типы в каноничные токены:
 - **HTTPS не поднимается**: открой на сервере/роутере TCP `80` и `443`, затем `docker compose logs caddy`.
 - **Telegram доступен только по IPv6**: в `.env` задай `TELEGRAM_API_IPV6`, затем пересоздай `bot`. Бот сам пробует IPv6 → IPv4 → DNS и запоминает рабочий маршрут.
 - **Telegram режется и по IPv4, и по IPv6**: подними локальный прокси и задай `TELEGRAM_PROXY=socks5h://127.0.0.1:1080`, затем перезапусти `bot`.
+- **Бот молчит в личке**: long polling (`getUpdates`) идёт тем же каналом, что и отправка. Если в Grafana растёт «Недоступность Telegram», бот **не видит** входящие. Проверь `docker compose logs bot | grep -E 'getUpdates|Telegram curl failed'`. Можно задать запасные IPv4: `TELEGRAM_API_IPV4_EXTRA=149.154.167.99,149.154.167.91`. Если IPv6 у тебя единственный рабочий путь — `TELEGRAM_PREFER_IPV6=1`.
 - **Обратная связь / дни рождения не уходят, в Grafana «Telegram недоступен»**: смотри `worker_telegram_reachable` и логи `bot` (`Telegram unreachable`). Мониторинг теперь бьёт в `/health/telegram` бота, а не напрямую в `api.telegram.org` из docker-сети.
 - **Обратная связь не приходит в личку**: `FEEDBACK_CHAT_ID` должен быть **твоим** числовым user id (положительное число), не `DEFAULT_CHAT_ID` группы. Сначала открой бота и нажми `/start` — иначе Telegram запретит боту писать первым.
 

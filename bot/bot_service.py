@@ -36,106 +36,92 @@ if not BOT_TOKEN:
 TELEGRAM_HOST = "api.telegram.org"
 API_BASE = f"https://{TELEGRAM_HOST}/bot{BOT_TOKEN}"
 
-# Рабочие IP Telegram для явного route fallback
+# Рабочие IP Telegram для явного route fallback.
+# 166.110 часто режется, соседние DC (167.x) иногда ещё живы.
 TELEGRAM_IPV6 = os.getenv("TELEGRAM_API_IPV6", "2001:67c:4e8:f004::9")
 TELEGRAM_IPV4 = os.getenv("TELEGRAM_API_IPV4", "149.154.166.110")
+TELEGRAM_IPV4_EXTRA = os.getenv("TELEGRAM_API_IPV4_EXTRA", "149.154.167.99,149.154.167.91,149.154.175.100")
+# По умолчанию IPv4 первым: мёртвый IPv6 не должен блокировать getUpdates.
+TELEGRAM_PREFER_IPV6 = (os.getenv("TELEGRAM_PREFER_IPV6") or "").strip().lower() in {"1", "true", "yes", "on"}
 # Опционально: socks5h://127.0.0.1:1080 или http://user:pass@host:port
 TELEGRAM_PROXY = (os.getenv("TELEGRAM_PROXY") or "").strip()
 
 # Последний успешный маршрут — его пробуем первым, чтобы мёртвый IPv6 не съедал таймаут.
 _last_good_route: str | None = None
+_service_started_at = _time.time()
 
 app = FastAPI(title="Сервис бота М15")
 
 
+def _ipv4_targets() -> list[str]:
+    found: list[str] = []
+    for raw in [TELEGRAM_IPV4, *(p.strip() for p in TELEGRAM_IPV4_EXTRA.split(","))]:
+        ip = (raw or "").strip()
+        if ip and ip not in found:
+            found.append(ip)
+    return found
+
+
+def _timeouts(*, long_poll: bool, quick: bool) -> tuple[str, str]:
+    if long_poll:
+        return "4", "45"
+    if quick:
+        return "2", "8"
+    return "3", "20"
+
+
 def _route_variants(*, long_poll: bool = False, quick: bool = False) -> list[dict]:
+    connect, max_time = _timeouts(long_poll=long_poll, quick=quick)
     if TELEGRAM_PROXY:
-        if long_poll:
-            timeout = ("10", "45")
-        elif quick:
-            timeout = ("3", "8")
-        else:
-            timeout = ("8", "25")
         return [
             {
                 "name": "proxy",
                 "family_flag": None,
                 "resolve": None,
-                "connect_timeout": timeout[0],
-                "max_time": timeout[1],
+                "connect_timeout": "10" if long_poll else connect,
+                "max_time": max_time,
             }
         ]
-    if long_poll:
-        return [
+
+    ipv4_routes = []
+    for idx, ip in enumerate(_ipv4_targets()):
+        ipv4_routes.append(
             {
-                "name": "ipv6-resolve",
-                "family_flag": "-6",
-                "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
-                "connect_timeout": "4",
-                "max_time": "40",
-            },
-            {
-                "name": "ipv4-resolve",
+                "name": "ipv4-resolve" if idx == 0 else f"ipv4-alt-{idx}",
                 "family_flag": "-4",
-                "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
-                "connect_timeout": "8",
-                "max_time": "45",
-            },
-            {
-                "name": "system-dns",
-                "family_flag": None,
-                "resolve": None,
-                "connect_timeout": "8",
-                "max_time": "45",
-            },
-        ]
-    if quick:
-        return [
-            {
-                "name": "ipv6-resolve",
-                "family_flag": "-6",
-                "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
-                "connect_timeout": "2",
-                "max_time": "6",
-            },
-            {
-                "name": "ipv4-resolve",
-                "family_flag": "-4",
-                "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
-                "connect_timeout": "3",
-                "max_time": "8",
-            },
-            {
-                "name": "system-dns",
-                "family_flag": None,
-                "resolve": None,
-                "connect_timeout": "3",
-                "max_time": "8",
-            },
-        ]
-    return [
+                "resolve": f"{TELEGRAM_HOST}:443:{ip}",
+                "connect_timeout": connect,
+                "max_time": max_time,
+            }
+        )
+    ipv4_routes.append(
+        {
+            "name": "system-dns-ipv4",
+            "family_flag": "-4",
+            "resolve": None,
+            "connect_timeout": connect,
+            "max_time": max_time,
+        }
+    )
+    ipv6_routes = [
         {
             "name": "ipv6-resolve",
             "family_flag": "-6",
             "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
-            "connect_timeout": "2",
-            "max_time": "12",
-        },
-        {
-            "name": "ipv4-resolve",
-            "family_flag": "-4",
-            "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
-            "connect_timeout": "5",
-            "max_time": "25",
+            "connect_timeout": connect,
+            "max_time": max_time,
         },
         {
             "name": "system-dns",
             "family_flag": None,
             "resolve": None,
-            "connect_timeout": "5",
-            "max_time": "20",
+            "connect_timeout": connect,
+            "max_time": max_time,
         },
     ]
+    if TELEGRAM_PREFER_IPV6:
+        return ipv6_routes[:1] + ipv4_routes + ipv6_routes[1:]
+    return ipv4_routes + ipv6_routes
 
 
 def _ordered_routes(routes: list[dict]) -> list[dict]:
@@ -179,6 +165,7 @@ async def _telegram_call(method: str, payload: dict, *, long_poll: bool = False,
             cmd = [
                 "curl",
                 "-sS",
+                "--http1.1",
                 "--connect-timeout",
                 route["connect_timeout"],
                 "--max-time",
@@ -239,6 +226,7 @@ async def _telegram_call_multipart(method: str, fields: dict[str, object], file_
             cmd = [
                 "curl",
                 "-sS",
+                "--http1.1",
                 "--connect-timeout", route["connect_timeout"],
                 "--max-time", route["max_time"],
                 "-X", "POST", url,
@@ -500,6 +488,8 @@ async def health():
         stale = (_t.time() - last) > 90
     polling_on = dm_bot.polling_enabled
     ok = True
+    if polling_on and last is None and (_t.time() - _service_started_at) > 90:
+        ok = False
     if polling_on and stale and last is not None:
         ok = False
     return {

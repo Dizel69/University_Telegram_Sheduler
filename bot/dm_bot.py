@@ -656,6 +656,12 @@ async def poll_loop() -> None:
                         logger.exception("handle_update failed")
             else:
                 logger.warning("getUpdates not ok: %s", body)
+                description = str((body.get("description") or "")).lower()
+                if "conflict" in description or "webhook" in description:
+                    try:
+                        await _telegram_call("deleteWebhook", {"drop_pending_updates": False})
+                    except Exception:
+                        logger.exception("deleteWebhook after conflict")
                 await asyncio.sleep(2)
         except asyncio.CancelledError:
             polling_enabled = False
