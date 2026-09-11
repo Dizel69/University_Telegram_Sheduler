@@ -12,9 +12,14 @@ BIRTHDAY_GREETING_TIME = os.getenv("BIRTHDAY_GREETING_TIME", "00:10")
 METRICS_PORT = int(os.getenv("WORKER_METRICS_PORT", "9101"))
 TELEGRAM_PROBE_URL = os.getenv("TELEGRAM_PROBE_URL", f"{BOT_SERVICE_URL}/health/telegram")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+INTERNAL_SERVICE_TOKEN = (os.getenv("INTERNAL_SERVICE_TOKEN") or "").strip() or ADMIN_TOKEN
+# Утро: личное расписание в ЛС (Europe/Moscow). Если пар нет — не пишем.
+DM_MORNING_SCHEDULE_TIME = (os.getenv("DM_MORNING_SCHEDULE_TIME") or "07:30").strip()
 # Пятничный бэкап БД (локальное время контейнера; задай TZ=Europe/Moscow в .env)
 BACKUP_CRON_HOUR = int(os.getenv("BACKUP_CRON_HOUR", "3"))
 BACKUP_CRON_MINUTE = int(os.getenv("BACKUP_CRON_MINUTE", "0"))
+BOT_SEND_TIMEOUT = float(os.getenv("BOT_SEND_TIMEOUT", "45"))
+TELEGRAM_PROBE_TIMEOUT = float(os.getenv("TELEGRAM_PROBE_TIMEOUT", "20"))
 
 # Prometheus-метрики воркера
 WORKER_RUNS = Counter("worker_runs_total", "Количество циклов опроса воркера")
@@ -34,7 +39,7 @@ def _probe_telegram():
     """Проверяет реальный путь worker -> bot-service -> Telegram и пишет gauge."""
     started = _time.perf_counter()
     try:
-        resp = httpx.get(TELEGRAM_PROBE_URL, timeout=10.0)
+        resp = httpx.get(TELEGRAM_PROBE_URL, timeout=TELEGRAM_PROBE_TIMEOUT)
         ok = 0
         if resp.status_code < 500:
             try:
@@ -62,12 +67,18 @@ def _age_word(age: int) -> str:
     return "лет"
 
 
-def _is_birthday_window(now_local: datetime) -> bool:
+def _greeting_hhmm():
     try:
         hh, mm = BIRTHDAY_GREETING_TIME.split(":", 1)
-        return now_local.hour == int(hh) and now_local.minute == int(mm)
+        return int(hh), int(mm)
     except Exception:
-        return now_local.hour == 0 and now_local.minute == 10
+        return 0, 10
+
+
+def _is_birthday_window(now_local: datetime) -> bool:
+    """После настроенного времени — весь день, пока не отправим."""
+    hh, mm = _greeting_hhmm()
+    return (now_local.hour, now_local.minute) >= (hh, mm)
 
 
 def _send_birthday_greetings(client: httpx.Client):
@@ -87,6 +98,13 @@ def _send_birthday_greetings(client: httpx.Client):
     chat_id = data.get("chat_id")
     thread_id = data.get("thread_id")
 
+    if not birthdays:
+        _last_birthday_greeting_date = today
+        return
+    if not chat_id:
+        print("⚠️ Worker: нет chat_id для поздравлений с днём рождения")
+        return
+
     for row in birthdays:
         full_name = (row.get("full_name") or "").strip()
         age = row.get("age")
@@ -102,7 +120,7 @@ def _send_birthday_greetings(client: httpx.Client):
             "thread_id": thread_id,
             "text": text
         }
-        resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
+        resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=BOT_SEND_TIMEOUT)
         resp.raise_for_status()
         WORKER_BIRTHDAYS_SENT.inc()
 
@@ -156,6 +174,57 @@ def _format_exam_control_reminder(ev: dict, date) -> str:
     if body:
         lines.append(body)
     return "\n".join(lines)
+
+
+def _internal_headers():
+    token = INTERNAL_SERVICE_TOKEN
+    if not token:
+        return {}
+    return {"X-INTERNAL-TOKEN": token}
+
+
+def _send_personal_dms(client: httpx.Client):
+    """Личные утренние расписания и пинги ДЗ. Не в DEFAULT_CHAT_ID / группу."""
+    try:
+        r = client.get(
+            f"{BACKEND_URL}/internal/bot/due-personal",
+            timeout=10.0,
+            headers=_internal_headers() or None,
+        )
+        r.raise_for_status()
+        data = r.json() or {}
+    except Exception as e:
+        print("⚠️ Worker: не удалось получить персональные напоминания:", e)
+        return
+
+    for item in (data.get("morning") or []) + (data.get("homework") or []):
+        telegram_id = item.get("telegram_id")
+        if not telegram_id:
+            continue
+        try:
+            telegram_id = int(telegram_id)
+        except (TypeError, ValueError):
+            continue
+        if telegram_id < 0:
+            print("⚠️ Worker: пропуск личного пинга с групповым chat_id", telegram_id)
+            continue
+        payload = {"chat_id": telegram_id, "text": item.get("text") or ""}
+        try:
+            resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=BOT_SEND_TIMEOUT)
+            resp.raise_for_status()
+            client.post(
+                f"{BACKEND_URL}/internal/bot/mark-personal-sent",
+                json={
+                    "user_id": item.get("user_id"),
+                    "kind": item.get("kind"),
+                    "dedupe_key": item.get("dedupe_key"),
+                    "event_id": item.get("event_id"),
+                },
+                timeout=5.0,
+                headers=_internal_headers() or None,
+            )
+        except Exception as e:
+            print("❌ Worker: ошибка личного напоминания", item.get("kind"), item.get("user_id"), e)
 
 
 @scheduler.scheduled_job('interval', seconds=POLL_INTERVAL)
@@ -240,7 +309,7 @@ def check_and_send():
                 if local_files:
                     payload["local_files"] = local_files
                 try:
-                    resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
+                    resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=BOT_SEND_TIMEOUT)
                     resp.raise_for_status()
                     client.post(f"{BACKEND_URL}/events/{ev.get('id')}/mark_reminder_sent", timeout=5.0)
                     WORKER_REMINDERS_SENT.inc()
@@ -249,7 +318,7 @@ def check_and_send():
                     if thread_id is not None:
                         payload_retry = {k: v for k, v in payload.items() if k != "thread_id"}
                         try:
-                            resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload_retry, timeout=10.0)
+                            resp = client.post(f"{BOT_SERVICE_URL}/send", json=payload_retry, timeout=BOT_SEND_TIMEOUT)
                             resp.raise_for_status()
                             client.post(f"{BACKEND_URL}/events/{ev.get('id')}/mark_reminder_sent", timeout=5.0)
                             WORKER_REMINDERS_SENT.inc()
@@ -259,6 +328,7 @@ def check_and_send():
                             pass
                     WORKER_REMINDERS_FAILED.inc()
                     print("❌ Worker: ошибка отправки напоминания для события", ev.get("id"), e)
+            _send_personal_dms(client)
     except Exception as e:
         print("⚠️ Проверка Worker не удалась:", e)
 

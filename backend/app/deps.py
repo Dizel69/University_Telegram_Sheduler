@@ -10,6 +10,7 @@ from app.models import User
 from app.security import decode_token
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+INTERNAL_SERVICE_TOKEN = (os.getenv("INTERNAL_SERVICE_TOKEN") or "").strip() or ADMIN_TOKEN
 
 
 def _touch_last_seen(user_id: int) -> None:
@@ -24,6 +25,19 @@ def _touch_last_seen(user_id: int) -> None:
             session.commit()
     except Exception:
         pass
+
+
+def require_internal_service(
+    x_internal_token: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+) -> bool:
+    """Общий секрет сервисов (бот/воркер). Не JWT пользователя. Header: X-INTERNAL-TOKEN."""
+    if not INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=403, detail="Внутренний API выключен")
+    provided = (x_internal_token or "").strip() or (x_admin_token or "").strip()
+    if provided != INTERNAL_SERVICE_TOKEN:
+        raise HTTPException(status_code=401, detail="Неверный внутренний токен")
+    return True
 
 
 def require_admin_token_header(x_admin_token: Optional[str] = Header(None)) -> bool:

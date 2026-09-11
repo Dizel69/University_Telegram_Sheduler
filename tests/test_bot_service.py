@@ -10,7 +10,9 @@ import bot_service
 def test_health_and_metrics_routes():
     client = TestClient(bot_service.app)
 
-    assert client.get("/health").json() == {"ok": True}
+    health = client.get("/health").json()
+    assert health["ok"] is True
+    assert "polling" in health
 
     metrics = client.get("/metrics")
     assert metrics.status_code == 200
@@ -188,6 +190,7 @@ async def test_telegram_call_falls_back_between_routes(monkeypatch):
         )
 
     monkeypatch.setattr(bot_service, "_run_curl", fake_run_curl)
+    monkeypatch.setattr(bot_service, "_last_good_route", None)
 
     body = await bot_service._telegram_call("sendMessage", {"chat_id": 1, "text": "hello"})
 
@@ -195,6 +198,32 @@ async def test_telegram_call_falls_back_between_routes(monkeypatch):
     assert "-6" in calls[0]
     assert "-4" in calls[1]
     assert "--resolve" not in calls[2]
+
+
+@pytest.mark.asyncio
+async def test_telegram_call_prefers_last_successful_route(monkeypatch):
+    calls = []
+
+    async def fake_run_curl(args):
+        calls.append(args)
+        if "-6" in args:
+            return subprocess.CompletedProcess(args, returncode=28, stdout="", stderr="timeout")
+        return subprocess.CompletedProcess(
+            args,
+            returncode=0,
+            stdout='{"ok": true, "result": {"message_id": 5}}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(bot_service, "_run_curl", fake_run_curl)
+    monkeypatch.setattr(bot_service, "_last_good_route", None)
+
+    await bot_service._telegram_call("sendMessage", {"chat_id": 1, "text": "hello"})
+    assert bot_service._last_good_route == "ipv4-resolve"
+
+    calls.clear()
+    await bot_service._telegram_call("sendMessage", {"chat_id": 1, "text": "hello"})
+    assert "-4" in calls[0]
 
 
 @pytest.mark.asyncio

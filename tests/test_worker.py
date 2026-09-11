@@ -19,10 +19,11 @@ class FakeResponse:
 class FakeClient:
     instances = []
 
-    def __init__(self, events=None, fail_event_ids=None, birthday_payload=None):
+    def __init__(self, events=None, fail_event_ids=None, birthday_payload=None, personal=None):
         self.events = events or []
         self.fail_event_ids = set(fail_event_ids or [])
         self.birthday_payload = birthday_payload or {"chat_id": None, "thread_id": None, "birthdays": []}
+        self.personal = personal or {"morning": [], "homework": []}
         self.get_calls = []
         self.post_calls = []
         FakeClient.instances.append(self)
@@ -33,10 +34,12 @@ class FakeClient:
     def __exit__(self, exc_type, exc, tb):
         return None
 
-    def get(self, url, timeout):
+    def get(self, url, timeout, headers=None):
         self.get_calls.append({"url": url, "timeout": timeout})
         if url.endswith("/birthdays/today"):
             return FakeResponse(self.birthday_payload)
+        if url.endswith("/internal/bot/due-personal"):
+            return FakeResponse(self.personal)
         return FakeResponse(self.events)
 
     def post(self, url, json=None, timeout=None, headers=None):
@@ -48,11 +51,16 @@ class FakeClient:
         return FakeResponse({"ok": True, "filename": "backup_test.sql"})
 
 
-def _install_fake_client(monkeypatch, events, fail_event_ids=None, birthday_payload=None):
+def _install_fake_client(monkeypatch, events, fail_event_ids=None, birthday_payload=None, personal=None):
     FakeClient.instances = []
 
     def factory():
-        return FakeClient(events=events, fail_event_ids=fail_event_ids, birthday_payload=birthday_payload)
+        return FakeClient(
+            events=events,
+            fail_event_ids=fail_event_ids,
+            birthday_payload=birthday_payload,
+            personal=personal,
+        )
 
     monkeypatch.setattr(worker.httpx, "Client", factory)
 
@@ -112,7 +120,9 @@ def test_check_and_send_handles_empty_reminders(monkeypatch):
     worker.check_and_send()
 
     client = FakeClient.instances[0]
-    assert client.get_calls == [{"url": "http://backend.test/events/due_reminders", "timeout": 10.0}]
+    get_urls = [call["url"] for call in client.get_calls]
+    assert "http://backend.test/events/due_reminders" in get_urls
+    assert "http://backend.test/internal/bot/due-personal" in get_urls
     assert client.post_calls == []
 
 
@@ -232,6 +242,76 @@ def test_check_and_send_sends_birthday_greetings_at_configured_time(monkeypatch)
     assert birthday_send["json"]["thread_id"] == 654
     assert "Сегодня День рождения у Иванов Иван Иванович." in birthday_send["json"]["text"]
     assert "Исполняется 20 лет." in birthday_send["json"]["text"]
+
+
+def test_birthday_greeting_retries_later_in_the_day(monkeypatch):
+    class _FakeDateTime:
+        @classmethod
+        def utcnow(cls):
+            return cls.now()
+
+        @classmethod
+        def now(cls):
+            return _RealDateTime(2026, 5, 27, 10, 54, 0)
+
+    from datetime import datetime as _RealDateTime
+
+    _install_fake_client(
+        monkeypatch,
+        events=[],
+        birthday_payload={
+            "chat_id": 321,
+            "thread_id": None,
+            "birthdays": [
+                {"full_name": "Иванов Иван Иванович", "age": 20},
+            ],
+        },
+    )
+    monkeypatch.setattr(worker, "datetime", _FakeDateTime)
+    monkeypatch.setattr(worker, "BIRTHDAY_GREETING_TIME", "00:10")
+    monkeypatch.setattr(worker, "_last_birthday_greeting_date", None)
+
+    worker.check_and_send()
+
+    client = FakeClient.instances[0]
+    assert any(c["url"].endswith("/send") for c in client.post_calls)
+    assert "Сегодня День рождения у Иванов Иван Иванович." in client.post_calls[0]["json"]["text"]
+
+
+def test_personal_reminders_go_to_telegram_user_not_group(monkeypatch):
+    _install_fake_client(
+        monkeypatch,
+        events=[],
+        personal={
+            "morning": [
+                {
+                    "user_id": 2,
+                    "telegram_id": 555001,
+                    "kind": "morning",
+                    "dedupe_key": "2026-09-10",
+                    "text": "Расписание на сегодня",
+                }
+            ],
+            "homework": [
+                {
+                    "user_id": 2,
+                    "telegram_id": 555001,
+                    "event_id": 88,
+                    "kind": "homework",
+                    "dedupe_key": "88",
+                    "text": "Напоминание о ДЗ",
+                }
+            ],
+        },
+    )
+
+    worker.check_and_send()
+
+    client = FakeClient.instances[0]
+    send_chats = [c["json"]["chat_id"] for c in client.post_calls if c["url"].endswith("/send")]
+    assert send_chats == [555001, 555001]
+    assert -1001234567890 not in send_chats
+    assert any(c["url"].endswith("/internal/bot/mark-personal-sent") for c in client.post_calls)
 
 
 def test_friday_db_backup_posts_to_admin_endpoint(monkeypatch):

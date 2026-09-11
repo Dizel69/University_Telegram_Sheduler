@@ -115,7 +115,7 @@ async def submit_feedback(
     }
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=bot_payload, timeout=15.0)
+            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=bot_payload, timeout=45.0)
         except httpx.RequestError as exc:
             logger.warning("feedback bot-service unreachable: %s", exc)
             raise HTTPException(status_code=502, detail="Не удалось связаться с ботом") from exc

@@ -140,12 +140,27 @@ def apply_additive_schema_migrations(engine) -> None:
                 "ALTER TABLE event ADD COLUMN IF NOT EXISTS photo_urls JSONB",
                 "ALTER TABLE event ADD COLUMN IF NOT EXISTS attachments JSONB",
                 "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS telegram_id BIGINT",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_mirror_posts BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_mirror_asked BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_morning_schedule BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_homework_reminder BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_homework_offset_hours INTEGER DEFAULT 24",
                 "ALTER TABLE teacher_profile ADD COLUMN IF NOT EXISTS academic_degree TEXT",
                 "ALTER TABLE teacher_profile ADD COLUMN IF NOT EXISTS job_title TEXT",
             ]
             with engine.begin() as conn:
                 for sql in stmts:
                     conn.execute(text(sql))
+                conn.execute(
+                    text(
+                        """
+                        CREATE UNIQUE INDEX IF NOT EXISTS uq_app_user_telegram_id
+                        ON app_user (telegram_id)
+                        WHERE telegram_id IS NOT NULL
+                        """
+                    )
+                )
 
         # SQLite: ADD COLUMN IF NOT EXISTS — с 3.35+; на старых — тихий сбой по одной колонке
         if dialect == "sqlite":
@@ -159,6 +174,12 @@ def apply_additive_schema_migrations(engine) -> None:
                 "ALTER TABLE event ADD COLUMN photo_urls TEXT",
                 "ALTER TABLE event ADD COLUMN attachments TEXT",
                 "ALTER TABLE app_user ADD COLUMN last_seen_at TEXT",
+                "ALTER TABLE app_user ADD COLUMN telegram_id INTEGER",
+                "ALTER TABLE app_user ADD COLUMN dm_mirror_posts INTEGER DEFAULT 0",
+                "ALTER TABLE app_user ADD COLUMN dm_mirror_asked INTEGER DEFAULT 0",
+                "ALTER TABLE app_user ADD COLUMN dm_morning_schedule INTEGER DEFAULT 0",
+                "ALTER TABLE app_user ADD COLUMN dm_homework_reminder INTEGER DEFAULT 0",
+                "ALTER TABLE app_user ADD COLUMN dm_homework_offset_hours INTEGER DEFAULT 24",
                 "ALTER TABLE teacher_profile ADD COLUMN academic_degree TEXT",
                 "ALTER TABLE teacher_profile ADD COLUMN job_title TEXT",
             ]
@@ -168,6 +189,16 @@ def apply_additive_schema_migrations(engine) -> None:
                         conn.execute(text(sql))
                 except Exception:
                     pass
+            try:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS uq_app_user_telegram_id "
+                            "ON app_user (telegram_id)"
+                        )
+                    )
+            except Exception:
+                pass
 
         migrate_attendance_mark_schema(engine)
     except Exception:

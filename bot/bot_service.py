@@ -38,8 +38,120 @@ API_BASE = f"https://{TELEGRAM_HOST}/bot{BOT_TOKEN}"
 # Рабочие IP Telegram для явного route fallback
 TELEGRAM_IPV6 = os.getenv("TELEGRAM_API_IPV6", "2001:67c:4e8:f004::9")
 TELEGRAM_IPV4 = os.getenv("TELEGRAM_API_IPV4", "149.154.166.110")
+# Опционально: socks5h://127.0.0.1:1080 или http://user:pass@host:port
+TELEGRAM_PROXY = (os.getenv("TELEGRAM_PROXY") or "").strip()
+
+# Последний успешный маршрут — его пробуем первым, чтобы мёртвый IPv6 не съедал таймаут.
+_last_good_route: str | None = None
 
 app = FastAPI(title="Сервис бота М15")
+
+
+def _route_variants(*, long_poll: bool = False, quick: bool = False) -> list[dict]:
+    if TELEGRAM_PROXY:
+        if long_poll:
+            timeout = ("10", "45")
+        elif quick:
+            timeout = ("3", "8")
+        else:
+            timeout = ("8", "25")
+        return [
+            {
+                "name": "proxy",
+                "family_flag": None,
+                "resolve": None,
+                "connect_timeout": timeout[0],
+                "max_time": timeout[1],
+            }
+        ]
+    if long_poll:
+        return [
+            {
+                "name": "ipv6-resolve",
+                "family_flag": "-6",
+                "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
+                "connect_timeout": "4",
+                "max_time": "40",
+            },
+            {
+                "name": "ipv4-resolve",
+                "family_flag": "-4",
+                "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
+                "connect_timeout": "8",
+                "max_time": "45",
+            },
+            {
+                "name": "system-dns",
+                "family_flag": None,
+                "resolve": None,
+                "connect_timeout": "8",
+                "max_time": "45",
+            },
+        ]
+    if quick:
+        return [
+            {
+                "name": "ipv6-resolve",
+                "family_flag": "-6",
+                "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
+                "connect_timeout": "2",
+                "max_time": "6",
+            },
+            {
+                "name": "ipv4-resolve",
+                "family_flag": "-4",
+                "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
+                "connect_timeout": "3",
+                "max_time": "8",
+            },
+            {
+                "name": "system-dns",
+                "family_flag": None,
+                "resolve": None,
+                "connect_timeout": "3",
+                "max_time": "8",
+            },
+        ]
+    return [
+        {
+            "name": "ipv6-resolve",
+            "family_flag": "-6",
+            "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
+            "connect_timeout": "2",
+            "max_time": "12",
+        },
+        {
+            "name": "ipv4-resolve",
+            "family_flag": "-4",
+            "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
+            "connect_timeout": "5",
+            "max_time": "25",
+        },
+        {
+            "name": "system-dns",
+            "family_flag": None,
+            "resolve": None,
+            "connect_timeout": "5",
+            "max_time": "20",
+        },
+    ]
+
+
+def _ordered_routes(routes: list[dict]) -> list[dict]:
+    if not _last_good_route:
+        return list(routes)
+    preferred = [r for r in routes if r["name"] == _last_good_route]
+    rest = [r for r in routes if r["name"] != _last_good_route]
+    return preferred + rest
+
+
+def _apply_route_flags(cmd: list[str], route: dict) -> None:
+    if TELEGRAM_PROXY:
+        cmd.extend(["-x", TELEGRAM_PROXY])
+    if route["family_flag"] is not None:
+        cmd.append(route["family_flag"])
+    if route["resolve"] is not None:
+        cmd.extend(["--resolve", route["resolve"]])
 
 
 async def _run_curl(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -50,38 +162,16 @@ async def _run_curl(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-async def _telegram_call(method: str, payload: dict) -> dict:
+async def _telegram_call(method: str, payload: dict, *, long_poll: bool = False, quick: bool = False) -> dict:
+    global _last_good_route
     url = f"{API_BASE}/{method}"
     payload_json = json.dumps(payload, ensure_ascii=False)
 
-    # Пробуем маршруты по порядку: IPv6 -> IPv4 -> системный DNS.
-    # Для первых двух явно фиксируем стек (-6/-4), чтобы curl не "перепрыгивал".
-    route_variants = [
-        {
-            "name": "ipv6-resolve",
-            "family_flag": "-6",
-            "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]",
-            "connect_timeout": "4",
-            "max_time": "12",
-        },
-        {
-            "name": "ipv4-resolve",
-            "family_flag": "-4",
-            "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}",
-            "connect_timeout": "15",
-            "max_time": "40",
-        },
-        {
-            "name": "system-dns",
-            "family_flag": None,
-            "resolve": None,
-            "connect_timeout": "8",
-            "max_time": "25",
-        },
-    ]
+    # IPv6 -> IPv4 -> DNS, но первый — последний успешный маршрут.
+    route_variants = _ordered_routes(_route_variants(long_poll=long_poll, quick=quick))
+    max_rounds = 1 if long_poll or quick else 2
 
     last_error = "unknown error"
-    max_rounds = 3
     _started = _time.perf_counter()
     for round_idx in range(1, max_rounds + 1):
         for route in route_variants:
@@ -100,12 +190,10 @@ async def _telegram_call(method: str, payload: dict) -> dict:
                 "-d",
                 payload_json,
             ]
-            if route["family_flag"] is not None:
-                cmd.append(route["family_flag"])
-            if route["resolve"] is not None:
-                cmd.extend(["--resolve", route["resolve"]])
+            _apply_route_flags(cmd, route)
 
-            logger.info("Telegram curl try round=%s route=%s", round_idx, route["name"])
+            if method != "getUpdates":
+                logger.info("Telegram curl try round=%s route=%s", round_idx, route["name"])
             result = await _run_curl(cmd)
             if result.returncode != 0:
                 last_error = (
@@ -121,29 +209,31 @@ async def _telegram_call(method: str, payload: dict) -> dict:
                 logger.warning("Telegram returned non-JSON: %s", result.stdout[:200])
                 raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
 
-            logger.info("Telegram curl success round=%s route=%s", round_idx, route["name"])
-            TELEGRAM_MESSAGES_SENT.inc()
-            TELEGRAM_REQUEST_DURATION.observe(_time.perf_counter() - _started)
+            _last_good_route = route["name"]
+            if method not in {"getUpdates", "getMe", "deleteWebhook"}:
+                logger.info("Telegram curl success round=%s route=%s", round_idx, route["name"])
+                TELEGRAM_MESSAGES_SENT.inc()
+                TELEGRAM_REQUEST_DURATION.observe(_time.perf_counter() - _started)
+            elif method != "getUpdates":
+                logger.info("Telegram curl success round=%s route=%s method=%s", round_idx, route["name"], method)
             return body
 
         # Пауза между раундами — даём сети "подышать"
         if round_idx < max_rounds:
             await asyncio.sleep(round_idx)
 
-    TELEGRAM_UNREACHABLE.inc()
+    if method != "getMe":
+        TELEGRAM_UNREACHABLE.inc()
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
 
 async def _telegram_call_multipart(method: str, fields: dict[str, object], file_field: str, file_path: str, filename: str | None = None) -> dict:
+    global _last_good_route
     url = f"{API_BASE}/{method}"
-    route_variants = [
-        {"name": "ipv6-resolve", "family_flag": "-6", "resolve": f"{TELEGRAM_HOST}:443:[{TELEGRAM_IPV6}]", "connect_timeout": "4", "max_time": "12"},
-        {"name": "ipv4-resolve", "family_flag": "-4", "resolve": f"{TELEGRAM_HOST}:443:{TELEGRAM_IPV4}", "connect_timeout": "15", "max_time": "40"},
-        {"name": "system-dns", "family_flag": None, "resolve": None, "connect_timeout": "8", "max_time": "25"},
-    ]
+    route_variants = _ordered_routes(_route_variants())
 
     last_error = "unknown error"
-    for round_idx in range(1, 4):
+    for round_idx in range(1, 3):
         for route in route_variants:
             cmd = [
                 "curl",
@@ -152,10 +242,7 @@ async def _telegram_call_multipart(method: str, fields: dict[str, object], file_
                 "--max-time", route["max_time"],
                 "-X", "POST", url,
             ]
-            if route["family_flag"] is not None:
-                cmd.append(route["family_flag"])
-            if route["resolve"] is not None:
-                cmd.extend(["--resolve", route["resolve"]])
+            _apply_route_flags(cmd, route)
             for k, v in fields.items():
                 if v is None:
                     continue
@@ -176,10 +263,12 @@ async def _telegram_call_multipart(method: str, fields: dict[str, object], file_
                 logger.warning("Telegram multipart curl failed: %s", last_error)
                 continue
             try:
-                return json.loads(result.stdout)
+                body = json.loads(result.stdout)
             except json.JSONDecodeError:
                 raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
-        if round_idx < 3:
+            _last_good_route = route["name"]
+            return body
+        if round_idx < 2:
             await asyncio.sleep(round_idx)
     raise HTTPException(status_code=502, detail=f"Telegram unreachable: {last_error}")
 
@@ -192,6 +281,7 @@ class SendRequest(BaseModel):
     photos: list[str] | None = None
     documents: list[str] | None = None
     local_files: list[dict] | None = None
+    reply_markup: dict | None = None
 
 
 class CreateTopicRequest(BaseModel):
@@ -256,6 +346,8 @@ async def send_message(req: SendRequest):
             payload = {"chat_id": req.chat_id, "text": req.text}
             if thread_id is not None:
                 payload["message_thread_id"] = thread_id
+            if req.reply_markup is not None:
+                payload["reply_markup"] = req.reply_markup
             _apply_html_text(payload, "text")
             body = await _telegram_call("sendMessage", payload)
 
@@ -360,6 +452,17 @@ async def create_topic(req: CreateTopicRequest):
         raise HTTPException(status_code=500, detail="Unexpected bot-service error")
 
 
+@app.on_event("startup")
+async def _start_dm_polling():
+    flag = (os.getenv("DISABLE_TELEGRAM_POLLING") or "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        logger.info("Telegram polling disabled (DISABLE_TELEGRAM_POLLING)")
+        return
+    import dm_bot
+
+    asyncio.create_task(dm_bot.poll_loop(), name="telegram-long-polling")
+
+
 @app.get("/")
 async def root():
     return {"service": "bot-service", "status": "ok"}
@@ -367,30 +470,56 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"ok": True}
+    import dm_bot
+    import time as _t
+
+    last = dm_bot.last_poll_ok_at
+    stale = True
+    if last is not None:
+        stale = (_t.time() - last) > 90
+    polling_on = dm_bot.polling_enabled
+    ok = True
+    if polling_on and stale and last is not None:
+        ok = False
+    return {
+        "ok": ok,
+        "polling": polling_on,
+        "last_poll_ok_at": last,
+    }
 
 
 @app.get("/health/telegram")
 async def health_telegram():
-    """Проверка реального канала отправки: bot-service -> Telegram API."""
+    """Проверка реального канала отправки: bot-service -> Telegram API.
+
+    503, если Telegram недоступен — так blackbox и воркер видят ту же правду.
+    """
     started = _time.perf_counter()
     try:
-        body = await _telegram_call("getMe", {})
+        body = await _telegram_call("getMe", {}, quick=True)
         if not body.get("ok"):
             raise HTTPException(status_code=502, detail=f"Telegram API error: {body}")
         return {"ok": True, "latency_seconds": _time.perf_counter() - started}
     except HTTPException as e:
-        return {
-            "ok": False,
-            "latency_seconds": _time.perf_counter() - started,
-            "detail": str(e.detail),
-        }
+        return Response(
+            content=json.dumps({
+                "ok": False,
+                "latency_seconds": _time.perf_counter() - started,
+                "detail": str(e.detail),
+            }),
+            status_code=503,
+            media_type="application/json",
+        )
     except Exception as e:
-        return {
-            "ok": False,
-            "latency_seconds": _time.perf_counter() - started,
-            "detail": f"{type(e).__name__}: {e}",
-        }
+        return Response(
+            content=json.dumps({
+                "ok": False,
+                "latency_seconds": _time.perf_counter() - started,
+                "detail": f"{type(e).__name__}: {e}",
+            }),
+            status_code=503,
+            media_type="application/json",
+        )
 
 
 @app.get("/metrics")

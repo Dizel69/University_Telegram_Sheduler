@@ -56,14 +56,14 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
-  # Доступность Telegram + срок действия TLS-сертификата
+  # Доступность Telegram тем же путём, что и отправка (bot на host network)
   - job_name: "blackbox-telegram"
     metrics_path: /probe
     params:
-      module: ["http_tls"]
+      module: ["http_telegram_bot"]
     static_configs:
       - targets:
-          - https://api.telegram.org
+          - http://host.docker.internal:8081/health/telegram
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

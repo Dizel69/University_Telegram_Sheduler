@@ -25,6 +25,7 @@ from app.calendar_highlight_routes import router as calendar_highlight_router
 from app.teacher_routes import router as teacher_profiles_router
 from app.teacher_routes import touch_teacher_profile
 from app.feedback_routes import router as feedback_router
+from app.bot_internal_routes import router as bot_internal_router
 import httpx
 from typing import List, Optional
 import calendar as _calendar
@@ -72,6 +73,7 @@ app.include_router(subject_router)
 app.include_router(calendar_highlight_router)
 app.include_router(teacher_profiles_router)
 app.include_router(feedback_router)
+app.include_router(bot_internal_router)
 
 def _metric_get_or_create_counter(name: str, documentation: str, labels: list[str]):
     try:
@@ -524,6 +526,34 @@ def create_db_backup(_admin=Depends(require_admin)):
     return {"ok": True, **result}
 
 
+async def _mirror_group_post_to_dms(text: str, photos, documents, local_files, event_type: str) -> None:
+    """Копии групповых постов в личку (не worker-напоминания). Только если dm_mirror_posts."""
+    from app.bot_internal_routes import list_mirror_telegram_ids, should_mirror_event_type
+
+    if not should_mirror_event_type(event_type):
+        return
+    targets = list_mirror_telegram_ids()
+    if not targets:
+        return
+    payload_base = {"text": text}
+    if photos:
+        payload_base["photos"] = photos
+    if documents:
+        payload_base["documents"] = documents
+    if local_files:
+        payload_base["local_files"] = local_files
+    async with httpx.AsyncClient() as client:
+        for telegram_id in targets:
+            try:
+                await client.post(
+                    f"{BOT_SERVICE_URL}/send",
+                    json={**payload_base, "chat_id": telegram_id},
+                    timeout=45.0,
+                )
+            except Exception as e:
+                print("Предупреждение: не удалось продублировать пост в личку", telegram_id, e)
+
+
 async def _dispatch_to_bot(ev, *, include_calendar_link: bool = True, persist_message_id: bool = True):
     """
     Отправляет текст события в bot-service.
@@ -548,7 +578,7 @@ async def _dispatch_to_bot(ev, *, include_calendar_link: bool = True, persist_me
     message_id = None
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=10.0)
+            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=45.0)
             try:
                 resp_text = resp.text
             except Exception:
@@ -566,7 +596,7 @@ async def _dispatch_to_bot(ev, *, include_calendar_link: bool = True, persist_me
                 print('DEBUG: не получен message_id; повтор без thread_id')
                 payload2 = {k: v for k, v in payload.items() if k != "thread_id"}
                 try:
-                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=10.0)
+                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=45.0)
                     try:
                         resp2_text = resp2.text
                     except Exception:
@@ -581,6 +611,10 @@ async def _dispatch_to_bot(ev, *, include_calendar_link: bool = True, persist_me
                     print('Предупреждение: повтор без thread_id не удался:', e)
             if persist_message_id and message_id and getattr(ev, "id", None):
                 set_sent_message(ev.id, int(message_id))
+            if message_id:
+                await _mirror_group_post_to_dms(
+                    text, photos, documents, local_files, getattr(ev, "type", "") or ""
+                )
         except Exception as e:
             print("Предупреждение: ошибка при отправке на bot-service:", e)
     return message_id
@@ -1101,7 +1135,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
     print("DEBUG: send_now исходящий к bot-service:", payload)
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=15.0)
+            resp = await client.post(f"{BOT_SERVICE_URL}/send", json=payload, timeout=45.0)
             try:
                 resp_text = resp.text
             except Exception:
@@ -1119,7 +1153,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
                 print('DEBUG: send_now не получен message_id; повтор без thread_id')
                 payload2 = {k: v for k, v in payload.items() if k != "thread_id"}
                 try:
-                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=15.0)
+                    resp2 = await client.post(f"{BOT_SERVICE_URL}/send", json=payload2, timeout=45.0)
                     try:
                         resp2_text = resp2.text
                     except Exception:
@@ -1132,6 +1166,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
                     message_id = data2.get('message_id')
                     if message_id:
                         set_sent_message(ev.id, int(message_id))
+                        await _mirror_group_post_to_dms(text, photos, documents, local_files, ev.type or "")
                         return {"ok": True, "message_id": message_id}
                     else:
                         return {"ok": False, "error": data2}
@@ -1140,6 +1175,7 @@ async def send_now(event_id: int = Path(..., description="ID события"), a
             else:
                 if message_id:
                     set_sent_message(ev.id, int(message_id))
+                    await _mirror_group_post_to_dms(text, photos, documents, local_files, ev.type or "")
                     return {"ok": True, "message_id": message_id}
                 else:
                     return {"ok": False, "error": data}

@@ -50,6 +50,8 @@ BOT_SERVICE_URL=http://bot:8081
 # Если у сервера IPv4 до Telegram не работает, можно зафиксировать IPv6
 # для bot-контейнера через docker-compose extra_hosts.
 TELEGRAM_API_IPV6=2001:67c:4e8:f004::9
+# Если IPv4 и IPv6 до Telegram режутся провайдером — SOCKS/HTTP прокси:
+# TELEGRAM_PROXY=socks5h://127.0.0.1:1080
 
 # Для ссылок в Telegram на карточку события в UI
 # Если FRONTEND_URL не задан, backend попробует собрать его из HOST:3000
@@ -65,6 +67,15 @@ DEFAULT_CHAT_ID=-1001234567890
 # Не ставь сюда id группы — иначе сообщения попадут в беседу.
 # Как получить: напиши боту /start, затем узнай свой id через @userinfobot.
 FEEDBACK_CHAT_ID=123456789
+
+# Общий секрет backend ↔ bot ↔ worker для /internal/bot/* (если пусто — берётся ADMIN_TOKEN).
+# INTERNAL_SERVICE_TOKEN=change-me-internal
+
+# Утреннее расписание в личку (Europe/Moscow). Если на день пар нет — бот молчит.
+# DM_MORNING_SCHEDULE_TIME=07:30
+
+# Bot-сервис (network_mode: host) ходит в backend на localhost:
+# BACKEND_URL=http://127.0.0.1:8000
 
 # Опционально: маршрутизация по типам событий (переопределяет DEFAULT_CHAT_ID)
 CHAT_ID_SCHEDULE=-1001234567890
@@ -149,6 +160,9 @@ Backend нормализует типы в каноничные токены:
 
 - **`POST /send`**: отправить сообщение (`chat_id`, `thread_id` опционально, `text`).
 - **`POST /create_topic`**: создать тему в супергруппе (бот должен быть админом с правом управления темами).
+- **`GET /health`**: liveness; для личного бота ещё поля `polling` / `last_poll_ok_at` (long polling `getUpdates` внутри bot-сервиса, тот же curl IPv6/IPv4 канал).
+
+Студент в **личке** логинится тем же логином/паролем, что на сайте (`telegram_id` на `app_user`). В группах команды не обслуживаются. Копии постов в личку — только при включённом зеркале; групповые reminder’ы воркера в личку не дублируются. Утреннее расписание и пинги ДЗ идут только в ЛС по флагам из `/настройки`. Внутренние эндпоинты backend: `/internal/bot/*` (заголовок `X-INTERNAL-TOKEN`).
 
 ## Frontend
 
@@ -179,7 +193,9 @@ Backend нормализует типы в каноничные токены:
 - **401/403 с фронта**: проверь `ADMIN_TOKEN` и заголовок `X-ADMIN-TOKEN`.
 - **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (например `https://sysprog.duckdns.org`).
 - **HTTPS не поднимается**: открой на сервере/роутере TCP `80` и `443`, затем `docker compose logs caddy`.
-- **Telegram доступен только по IPv6**: в `.env` задай `TELEGRAM_API_IPV6`, затем пересоздай `bot`. `docker-compose.yml` зафиксирует `api.telegram.org` на этот IPv6 через `extra_hosts`. Если контейнер всё равно не выходит по IPv6, нужно включить IPv6 в Docker на сервере или использовать VPN/proxy.
+- **Telegram доступен только по IPv6**: в `.env` задай `TELEGRAM_API_IPV6`, затем пересоздай `bot`. Бот сам пробует IPv6 → IPv4 → DNS и запоминает рабочий маршрут.
+- **Telegram режется и по IPv4, и по IPv6**: подними локальный прокси и задай `TELEGRAM_PROXY=socks5h://127.0.0.1:1080`, затем перезапусти `bot`.
+- **Обратная связь / дни рождения не уходят, в Grafana «Telegram недоступен»**: смотри `worker_telegram_reachable` и логи `bot` (`Telegram unreachable`). Мониторинг теперь бьёт в `/health/telegram` бота, а не напрямую в `api.telegram.org` из docker-сети.
 - **Обратная связь не приходит в личку**: `FEEDBACK_CHAT_ID` должен быть **твоим** числовым user id (положительное число), не `DEFAULT_CHAT_ID` группы. Сначала открой бота и нажми `/start` — иначе Telegram запретит боту писать первым.
 
 ## Схема взаимодействия контейнеров

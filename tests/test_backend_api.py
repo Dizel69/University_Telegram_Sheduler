@@ -278,7 +278,7 @@ def test_create_and_send_uses_bot_service_and_stores_message_id(backend_client, 
                 "thread_id": 333,
                 "text": "#Объявление\n#General\nImportant update\nВремя: 10:15\nСсылка в календаре: http://127.0.0.1:3000/calendar/m15/event/1",
             },
-            "timeout": 10.0,
+            "timeout": 45.0,
         }
     ]
 
@@ -316,7 +316,7 @@ def test_send_telegram_only_does_not_persist_event(backend_client, backend_engin
                 "thread_id": 333,
                 "text": "#Объявление\n#General\nFlash notice\nВремя: 10:15",
             },
-            "timeout": 10.0,
+            "timeout": 45.0,
         }
     ]
 

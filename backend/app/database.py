@@ -21,9 +21,11 @@ def init_db() -> None:
     # Регистрация моделей для metadata
     from app.models import (  # noqa: F401
         AttendanceMark,
+        BotDialogState,
         CalendarDayRangeHighlight,
         Event,
         HomeworkCompletion,
+        PersonalReminderSent,
         SubjectSetting,
         TeacherProfile,
         TeacherSetting,

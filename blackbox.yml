@@ -18,6 +18,16 @@ modules:
       valid_status_codes: []
       fail_if_not_ssl: true
 
+  # Реальный путь приложения: blackbox -> bot-service /health/telegram -> Telegram
+  http_telegram_bot:
+    prober: http
+    timeout: 12s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      fail_if_not_ssl: false
+      preferred_ip_protocol: ip4
+
   # Проверка доступности TCP-порта
   tcp_connect:
     prober: tcp

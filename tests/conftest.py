@@ -21,11 +21,13 @@ os.environ.setdefault("BOT_TOKEN", "123456:test-token")
 os.environ.setdefault("DEFAULT_CHAT_ID", "100500")
 os.environ.setdefault("BOT_SERVICE_URL", "http://bot-service.test")
 os.environ.setdefault("BACKEND_URL", "http://backend.test")
+os.environ.setdefault("DISABLE_TELEGRAM_POLLING", "1")
+os.environ.setdefault("FEEDBACK_CHAT_ID", "777000")
 
 
 @pytest.fixture()
 def backend_engine(monkeypatch):
-    from app import account_routes, calendar_highlight_routes, crud, database, deps, main, models, teacher_routes  # noqa: F401
+    from app import account_routes, bot_internal_routes, calendar_highlight_routes, crud, database, deps, main, models, teacher_routes  # noqa: F401
     from app.models import CalendarDayRangeHighlight  # noqa: F401 — register table in metadata
 
     engine = create_engine(
@@ -35,7 +37,7 @@ def backend_engine(monkeypatch):
     )
     SQLModel.metadata.create_all(engine)
 
-    for module in (database, crud, deps, account_routes, calendar_highlight_routes, main, teacher_routes):
+    for module in (database, crud, deps, account_routes, bot_internal_routes, calendar_highlight_routes, main, teacher_routes):
         monkeypatch.setattr(module, "engine", engine, raising=False)
 
     main.app.dependency_overrides.clear()

@@ -56,6 +56,17 @@ class User(SQLModel, table=True):
     is_admin: bool = Field(default=False)
     is_owner: bool = Field(default=False)
     last_seen_at: Optional[dt.datetime] = Field(default=None, index=True)
+    telegram_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BigInteger, unique=True, nullable=True, index=True),
+    )
+    # None = вопрос ещё не задавали; True/False — ответ про копии постов в личку
+    dm_mirror_posts: bool = Field(default=False)
+    dm_mirror_asked: bool = Field(default=False)
+    # После логина выкл., пока не включат в /настройки
+    dm_morning_schedule: bool = Field(default=False)
+    dm_homework_reminder: bool = Field(default=False)
+    dm_homework_offset_hours: int = Field(default=24)
 
 
 class HomeworkCompletion(SQLModel, table=True):
@@ -132,6 +143,36 @@ class TeacherProfile(SQLModel, table=True):
 
     created_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
     updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+
+
+class BotDialogState(SQLModel, table=True):
+    """Короткоживущее состояние диалога Telegram (логин/пароль/ОС). Пароль не хранится."""
+
+    __tablename__ = "bot_dialog_state"
+
+    telegram_id: int = Field(sa_column=Column(BigInteger, primary_key=True))
+    state: str = Field(default="idle", index=True)
+    pending_login: Optional[str] = Field(default=None)
+    login_message_id: Optional[int] = Field(default=None)
+    pending_user_id: Optional[int] = Field(default=None)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
+
+
+class PersonalReminderSent(SQLModel, table=True):
+    """Идемпотентность личных утренних пингов и напоминаний о ДЗ (не групповые reminder_sent)."""
+
+    __tablename__ = "personal_reminder_sent"
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "dedupe_key", name="uq_personal_reminder"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="app_user.id", index=True)
+    event_id: Optional[int] = Field(default=None, foreign_key="event.id", index=True)
+    kind: str = Field(index=True)  # morning | homework
+    dedupe_key: str
+    sent_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
 
 
 class CalendarDayRangeHighlight(SQLModel, table=True):

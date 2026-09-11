@@ -63,6 +63,7 @@ services:
     environment:
       BOT_SERVICE_URL: http://host.docker.internal:8081
       BACKUP_DIR: /backup
+      TZ: ${TZ:-Europe/Moscow}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -89,10 +90,19 @@ services:
     build: ./bot
     restart: unless-stopped
     env_file: .env
+    environment:
+      BACKEND_URL: http://127.0.0.1:8000
+      TZ: ${TZ:-Europe/Moscow}
     network_mode: host
     volumes:
       - ./bot:/app
       - ./backend/uploads:/uploads:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/health > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
 
   # Worker для отправки напоминаний
   worker:
@@ -101,6 +111,7 @@ services:
     env_file: .env
     environment:
       BOT_SERVICE_URL: http://host.docker.internal:8081
+      TZ: ${TZ:-Europe/Moscow}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -259,6 +270,8 @@ services:
       - "--config.file=/etc/blackbox/blackbox.yml"
     volumes:
       - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "9115:9115"
     networks:
