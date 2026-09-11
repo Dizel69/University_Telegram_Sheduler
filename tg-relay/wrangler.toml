@@ -1,0 +1,6 @@
+name = "tg-relay"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# Токен задаётся секретом, а не здесь:
+#   npx wrangler secret put ALLOWED_BOT_TOKEN

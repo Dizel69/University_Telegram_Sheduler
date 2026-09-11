@@ -7,6 +7,13 @@ from fastapi.testclient import TestClient
 import bot_service
 
 
+@pytest.fixture(autouse=True)
+def _reset_telegram_routes():
+    bot_service._last_good_route = None
+    bot_service._route_cooldown_until.clear()
+    yield
+
+
 def test_health_and_metrics_routes():
     client = TestClient(bot_service.app)
 
@@ -275,3 +282,93 @@ async def test_telegram_call_raises_after_all_routes_fail(monkeypatch):
 
     assert exc.value.status_code == 502
     assert "Telegram unreachable" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_telegram_call_drops_last_good_after_tls_error(monkeypatch):
+    calls = []
+
+    async def fake_run_curl(args):
+        calls.append(args)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(
+                args,
+                returncode=35,
+                stdout="",
+                stderr="OpenSSL SSL_connect: SSL_ERROR_SYSCALL error:0A00010B:SSL routines:wrong version number",
+            )
+        return subprocess.CompletedProcess(
+            args,
+            returncode=0,
+            stdout='{"ok": true, "result": {"id": 1}}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(bot_service, "_run_curl", fake_run_curl)
+    bot_service._last_good_route = "ipv4-alt-3"
+
+    body = await bot_service._telegram_call("getMe", {})
+
+    assert body["ok"] is True
+    assert bot_service._last_good_route != "ipv4-alt-3"
+    assert bot_service._route_cooldown_until.get("ipv4-alt-3", 0) > 0
+
+
+@pytest.mark.asyncio
+async def test_telegram_call_skips_route_on_cooldown(monkeypatch):
+    calls = []
+
+    async def fake_run_curl(args):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args,
+            returncode=0,
+            stdout='{"ok": true, "result": {"id": 1}}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(bot_service, "_run_curl", fake_run_curl)
+    bot_service._last_good_route = "ipv4-resolve"
+    bot_service._route_cooldown_until["ipv4-resolve"] = bot_service._time.time() + 600
+
+    await bot_service._telegram_call("getMe", {})
+
+    assert "149.154.166.110" not in " ".join(calls[0])
+    assert bot_service._last_good_route != "ipv4-resolve"
+
+
+def test_custom_api_base_uses_single_route_without_ip_pinning(monkeypatch):
+    monkeypatch.setattr(bot_service, "TELEGRAM_PROXY", "")
+    monkeypatch.setattr(bot_service, "USING_CUSTOM_API_BASE", True)
+
+    routes = bot_service._route_variants()
+
+    assert [r["name"] for r in routes] == ["custom-api-base"]
+    assert routes[0]["resolve"] is None
+    assert routes[0]["family_flag"] is None
+
+
+@pytest.mark.asyncio
+async def test_getupdates_failover_uses_short_timeout(monkeypatch):
+    calls = []
+
+    async def fake_run_curl(args):
+        calls.append(args)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(args, returncode=35, stdout="", stderr="wrong version number")
+        return subprocess.CompletedProcess(
+            args,
+            returncode=0,
+            stdout='{"ok": true, "result": []}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(bot_service, "_run_curl", fake_run_curl)
+
+    await bot_service._telegram_call("getUpdates", {"timeout": 25}, long_poll=True)
+
+    def max_time(args):
+        return args[args.index("--max-time") + 1]
+
+    assert max_time(calls[0]) == "45"
+    assert max_time(calls[1]) == "8"

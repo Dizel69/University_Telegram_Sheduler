@@ -50,8 +50,13 @@ BOT_SERVICE_URL=http://bot:8081
 # Если у сервера IPv4 до Telegram не работает, можно зафиксировать IPv6
 # для bot-контейнера через docker-compose extra_hosts.
 TELEGRAM_API_IPV6=2001:67c:4e8:f004::9
-# Если IPv4 и IPv6 до Telegram режутся провайдером — SOCKS/HTTP прокси:
+# Если IPv4 и IPv6 до Telegram режутся провайдером — SOCKS/HTTP прокси.
+# Это НЕ готовый адрес: прокси должен реально слушать указанный порт.
 # TELEGRAM_PROXY=socks5h://127.0.0.1:1080
+
+# Либо свой релей Bot API (Cloudflare Worker и т.п.), если api.telegram.org
+# недоступен с сервера. Релей должен проксировать путь /bot<token>/<method>.
+# TELEGRAM_API_BASE=https://tg-relay.example.workers.dev
 
 # Для ссылок в Telegram на карточку события в UI
 # Если FRONTEND_URL не задан, backend попробует собрать его из HOST:3000
@@ -194,7 +199,47 @@ Backend нормализует типы в каноничные токены:
 - **Ссылки в Telegram ведут не туда**: выставь `FRONTEND_URL` (например `https://sysprog.duckdns.org`).
 - **HTTPS не поднимается**: открой на сервере/роутере TCP `80` и `443`, затем `docker compose logs caddy`.
 - **Telegram доступен только по IPv6**: в `.env` задай `TELEGRAM_API_IPV6`, затем пересоздай `bot`. Бот сам пробует IPv6 → IPv4 → DNS и запоминает рабочий маршрут.
-- **Telegram режется и по IPv4, и по IPv6**: подними локальный прокси и задай `TELEGRAM_PROXY=socks5h://127.0.0.1:1080`, затем перезапусти `bot`.
+- **Telegram режется и по IPv4, и по IPv6** (все маршруты дают `curl (28)`, а какой-то IP отвечает не-TLS мусором — `wrong version number`): нужен выход мимо сети хостера. Два варианта, оба требуют пересоздать `bot`:
+  - свой релей Bot API: `TELEGRAM_API_BASE=https://<твой-релей>` (тогда пиннинг IP отключается, бот ходит одним маршрутом);
+  - SOCKS/HTTP прокси: `TELEGRAM_PROXY=socks5h://host:port`.
+
+  Проверка, что прокси вообще живой (пустой ответ или `connection refused` — значит порт никто не слушает):
+
+  ```bash
+  docker compose exec bot sh -c 'printenv TELEGRAM_PROXY'
+  docker compose exec bot sh -c 'curl -sS -o /dev/null -w "%{http_code} %{time_total}\n" --max-time 15 -x "$TELEGRAM_PROXY" https://api.telegram.org'
+  ```
+
+  MTProto-прокси из Telegram-каналов (`tg://proxy?server=...&secret=...`) для Bot API **не годятся**: это отдельный протокол для клиентов, curl через него в `api.telegram.org` не пойдёт.
+
+### Релей Bot API на Cloudflare Workers
+
+Код в `tg-relay/`. Воркер принимает `/bot<token>/<method>` и пересылает в Telegram; `ALLOWED_BOT_TOKEN` не даёт использовать его как открытый релей для чужих ботов.
+
+Деплой (с машины, где Telegram и Cloudflare доступны):
+
+```bash
+cd tg-relay
+npx wrangler login
+npx wrangler deploy                         # выдаст https://tg-relay.<аккаунт>.workers.dev
+# Секрет кладётся после деплоя: до него воркера ещё нет.
+# Имя секрета вводится в команде, значение (BOT_TOKEN вида 123456:AA...) — в ответ на запрос.
+npx wrangler secret put ALLOWED_BOT_TOKEN
+```
+
+Проверка релея и подключение на сервере:
+
+```bash
+curl -sS "https://tg-relay.<аккаунт>.workers.dev/bot<BOT_TOKEN>/getMe"   # ожидается {"ok":true,...}
+
+# в .env на сервере
+TELEGRAM_API_BASE=https://tg-relay.<аккаунт>.workers.dev
+
+docker compose up -d --force-recreate bot
+docker compose logs bot --tail 20 | grep 'Telegram transport'
+```
+
+В логе должно быть `base=https://tg-relay...`, а `/health/telegram` — снова `ok`. Токен виден в URL, поэтому релей должен быть **твой**, и ссылку на воркер лучше не публиковать.
 - **Бот молчит в личке**: long polling (`getUpdates`) идёт тем же каналом, что и отправка. Если в Grafana растёт «Недоступность Telegram», бот **не видит** входящие. Проверь `docker compose logs bot | grep -E 'getUpdates|Telegram curl failed'`. Можно задать запасные IPv4: `TELEGRAM_API_IPV4_EXTRA=149.154.167.99,149.154.167.91`. Если IPv6 у тебя единственный рабочий путь — `TELEGRAM_PREFER_IPV6=1`.
 - **Обратная связь / дни рождения не уходят, в Grafana «Telegram недоступен»**: смотри `worker_telegram_reachable` и логи `bot` (`Telegram unreachable`). Мониторинг теперь бьёт в `/health/telegram` бота, а не напрямую в `api.telegram.org` из docker-сети.
 - **Обратная связь не приходит в личку**: `FEEDBACK_CHAT_ID` должен быть **твоим** числовым user id (положительное число), не `DEFAULT_CHAT_ID` группы. Сначала открой бота и нажми `/start` — иначе Telegram запретит боту писать первым.

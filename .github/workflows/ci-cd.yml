@@ -76,6 +76,9 @@ jobs:
                   ;;
                 .github/*|*.md|.gitignore|LICENSE)
                   ;;
+                tg-relay/*)
+                  # Релей живёт в Cloudflare, на сервер его деплоить не нужно.
+                  ;;
                 *)
                   deploy_app=true
                   ;;

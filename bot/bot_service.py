@@ -5,6 +5,7 @@ import os
 import subprocess
 import time as _time
 from pathlib import Path
+from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from starlette.responses import Response
@@ -33,8 +34,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN хранится в переменных окружения")
 
-TELEGRAM_HOST = "api.telegram.org"
-API_BASE = f"https://{TELEGRAM_HOST}/bot{BOT_TOKEN}"
+DEFAULT_API_BASE = "https://api.telegram.org"
+# Свой релей Bot API (Cloudflare Worker и т.п.), если api.telegram.org режут у хостера.
+# Путь /bot<token>/<method> релей должен проксировать как есть.
+TELEGRAM_API_BASE = (os.getenv("TELEGRAM_API_BASE") or DEFAULT_API_BASE).strip().rstrip("/")
+TELEGRAM_HOST = urlsplit(TELEGRAM_API_BASE).hostname or "api.telegram.org"
+# Пиннинг IP имеет смысл только для настоящего api.telegram.org.
+USING_CUSTOM_API_BASE = TELEGRAM_API_BASE != DEFAULT_API_BASE
+API_BASE = f"{TELEGRAM_API_BASE}/bot{BOT_TOKEN}"
 
 # Рабочие IP Telegram для явного route fallback.
 # 166.110 часто режется, соседние DC (167.x) иногда ещё живы.
@@ -48,6 +55,8 @@ TELEGRAM_PROXY = (os.getenv("TELEGRAM_PROXY") or "").strip()
 
 # Последний успешный маршрут — его пробуем первым, чтобы мёртвый IPv6 не съедал таймаут.
 _last_good_route: str | None = None
+# Имя маршрута -> unix time, до которого его не трогаем (DPI/битый IP).
+_route_cooldown_until: dict[str, float] = {}
 _service_started_at = _time.time()
 
 app = FastAPI(title="Сервис бота М15")
@@ -76,6 +85,17 @@ def _route_variants(*, long_poll: bool = False, quick: bool = False) -> list[dic
         return [
             {
                 "name": "proxy",
+                "family_flag": None,
+                "resolve": None,
+                "connect_timeout": "10" if long_poll else connect,
+                "max_time": max_time,
+            }
+        ]
+
+    if USING_CUSTOM_API_BASE:
+        return [
+            {
+                "name": "custom-api-base",
                 "family_flag": None,
                 "resolve": None,
                 "connect_timeout": "10" if long_poll else connect,
@@ -126,10 +146,28 @@ def _route_variants(*, long_poll: bool = False, quick: bool = False) -> list[dic
 
 def _ordered_routes(routes: list[dict]) -> list[dict]:
     if not _last_good_route:
-        return list(routes)
-    preferred = [r for r in routes if r["name"] == _last_good_route]
-    rest = [r for r in routes if r["name"] != _last_good_route]
-    return preferred + rest
+        ordered = list(routes)
+    else:
+        preferred = [r for r in routes if r["name"] == _last_good_route]
+        rest = [r for r in routes if r["name"] != _last_good_route]
+        ordered = preferred + rest
+    now = _time.time()
+    ready = [r for r in ordered if _route_cooldown_until.get(r["name"], 0) <= now]
+    return ready or ordered
+
+
+def _mark_route_failure(name: str, stderr: str, returncode: int) -> None:
+    global _last_good_route
+    if _last_good_route == name:
+        _last_good_route = None
+    err = (stderr or "").lower()
+    if returncode == 35 or "wrong version" in err or "ssl" in err:
+        cooldown = 600
+    elif returncode == 28:
+        cooldown = 120
+    else:
+        cooldown = 60
+    _route_cooldown_until[name] = _time.time() + cooldown
 
 
 def _apply_route_flags(cmd: list[str], route: dict) -> None:
@@ -161,15 +199,23 @@ async def _telegram_call(method: str, payload: dict, *, long_poll: bool = False,
     last_error = "unknown error"
     _started = _time.perf_counter()
     for round_idx in range(1, max_rounds + 1):
+        attempted = 0
         for route in route_variants:
+            connect_timeout = route["connect_timeout"]
+            max_time = route["max_time"]
+            # Long poll: 45s только на первом живом маршруте, иначе getUpdates
+            # минутами висит на каждом заблокированном IPv4.
+            if long_poll and attempted > 0:
+                connect_timeout, max_time = "2", "8"
+            attempted += 1
             cmd = [
                 "curl",
                 "-sS",
                 "--http1.1",
                 "--connect-timeout",
-                route["connect_timeout"],
+                connect_timeout,
                 "--max-time",
-                route["max_time"],
+                max_time,
                 "-X",
                 "POST",
                 url,
@@ -189,6 +235,7 @@ async def _telegram_call(method: str, payload: dict, *, long_poll: bool = False,
                     f"err={result.stderr.strip()}"
                 )
                 logger.warning("Telegram curl failed: %s", last_error)
+                _mark_route_failure(route["name"], result.stderr, result.returncode)
                 continue
 
             try:
@@ -198,6 +245,7 @@ async def _telegram_call(method: str, payload: dict, *, long_poll: bool = False,
                 raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
 
             _last_good_route = route["name"]
+            _route_cooldown_until.pop(route["name"], None)
             if method not in {"getUpdates", "getMe", "deleteWebhook"}:
                 logger.info("Telegram curl success round=%s route=%s", round_idx, route["name"])
                 TELEGRAM_MESSAGES_SENT.inc()
@@ -229,6 +277,9 @@ async def _telegram_call_multipart(method: str, fields: dict[str, object], file_
                 "--http1.1",
                 "--connect-timeout", route["connect_timeout"],
                 "--max-time", route["max_time"],
+                # Прокси и релеи часто не умеют 100-continue, а curl добавляет
+                # Expect сам на больших телах — выключаем заранее.
+                "-H", "Expect:",
                 "-X", "POST", url,
             ]
             _apply_route_flags(cmd, route)
@@ -250,12 +301,14 @@ async def _telegram_call_multipart(method: str, fields: dict[str, object], file_
                     f"round={round_idx} route={route['name']} rc={result.returncode} err={result.stderr.strip()}"
                 )
                 logger.warning("Telegram multipart curl failed: %s", last_error)
+                _mark_route_failure(route["name"], result.stderr, result.returncode)
                 continue
             try:
                 body = json.loads(result.stdout)
             except json.JSONDecodeError:
                 raise HTTPException(status_code=502, detail="Telegram returned invalid JSON")
             _last_good_route = route["name"]
+            _route_cooldown_until.pop(route["name"], None)
             return body
         if round_idx < 2:
             await asyncio.sleep(round_idx)
@@ -463,6 +516,11 @@ async def create_topic(req: CreateTopicRequest):
 
 @app.on_event("startup")
 async def _start_dm_polling():
+    logger.info(
+        "Telegram transport: base=%s proxy=%s",
+        TELEGRAM_API_BASE,
+        "on" if TELEGRAM_PROXY else "off",
+    )
     flag = (os.getenv("DISABLE_TELEGRAM_POLLING") or "").strip().lower()
     if flag in {"1", "true", "yes", "on"}:
         logger.info("Telegram polling disabled (DISABLE_TELEGRAM_POLLING)")
