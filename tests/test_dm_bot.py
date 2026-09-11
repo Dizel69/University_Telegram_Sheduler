@@ -71,6 +71,22 @@ async def test_private_start_asks_login(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_login_success_sends_menu_then_mirror_question(monkeypatch):
+    sent = []
+
+    async def fake_tg(method, payload, raise_on_not_ok=False):
+        sent.append((method, payload))
+        return {"ok": True}
+
+    monkeypatch.setattr(dm_bot, "tg", fake_tg)
+    await dm_bot._after_login_success(10, {"short_name": "Иванов И."}, ask_mirror=True)
+
+    assert len(sent) == 2
+    assert sent[0][1]["reply_markup"]["keyboard"][0][0]["text"] == "Сегодня"
+    assert sent[1][1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "mr:1"
+
+
+@pytest.mark.asyncio
 async def test_homework_callback_ignores_foreign_user(monkeypatch):
     calls = []
 

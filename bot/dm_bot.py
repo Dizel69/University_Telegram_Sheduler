@@ -11,6 +11,7 @@ import os
 from typing import Any, Optional
 
 import httpx
+from menu_keyboard import menu_keyboard
 from telegram_html import sanitize_telegram_html
 
 logger = logging.getLogger("bot-service.dm")
@@ -18,16 +19,6 @@ logger = logging.getLogger("bot-service.dm")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 INTERNAL_TOKEN = (os.getenv("INTERNAL_SERVICE_TOKEN") or os.getenv("ADMIN_TOKEN") or "").strip()
 GROUP_REFUSAL = "Напишите мне в личку."
-MENU_KEYBOARD = {
-    "keyboard": [
-        [{"text": "Сегодня"}, {"text": "Завтра"}],
-        [{"text": "Пара"}, {"text": "ДЗ"}],
-        [{"text": "Неделя"}],
-        [{"text": "Настройки"}, {"text": "Обратная связь"}],
-    ],
-    "resize_keyboard": True,
-    "is_persistent": True,
-}
 
 BTN_TO_CMD = {
     "сегодня": "/сегодня",
@@ -91,7 +82,10 @@ async def send_text(
     *,
     reply_markup: dict | None = None,
     reply_to: int | None = None,
+    keep_menu: bool = False,
 ) -> dict:
+    if keep_menu and reply_markup is None:
+        reply_markup = menu_keyboard()
     payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": sanitize_telegram_html(text),
@@ -101,7 +95,18 @@ async def send_text(
         payload["reply_markup"] = reply_markup
     if reply_to is not None:
         payload["reply_to_message_id"] = reply_to
-    return await tg("sendMessage", payload)
+    body = await tg("sendMessage", payload)
+    if body.get("ok"):
+        return body
+    logger.warning("sendMessage not ok chat=%s: %s", chat_id, body)
+    markup = payload.get("reply_markup")
+    if isinstance(markup, dict) and markup.get("is_persistent"):
+        payload["reply_markup"] = menu_keyboard(persistent=False)
+        body = await tg("sendMessage", payload)
+        if body.get("ok"):
+            return body
+        logger.warning("sendMessage retry without is_persistent failed: %s", body)
+    return body
 
 
 async def delete_message(chat_id: int, message_id: int) -> None:
@@ -219,7 +224,7 @@ async def _require_user(telegram_id: int) -> Optional[dict]:
 
 
 async def _send_menu(chat_id: int, text: str) -> None:
-    await send_text(chat_id, text, reply_markup=MENU_KEYBOARD)
+    await send_text(chat_id, text, reply_markup=menu_keyboard())
 
 
 async def _ask_login(chat_id: int, telegram_id: int) -> None:
@@ -229,16 +234,14 @@ async def _ask_login(chat_id: int, telegram_id: int) -> None:
 
 async def _after_login_success(chat_id: int, user: dict, ask_mirror: bool) -> None:
     hello = f"Здравствуйте, {user.get('short_name') or 'студент'}."
+    await _send_menu(chat_id, hello)
     if ask_mirror:
         await send_text(
             chat_id,
-            hello
-            + "\n\nХотите получать в этот чат копии сообщений, которые бот публикует в беседу группы "
+            "Хотите получать в этот чат копии сообщений, которые бот публикует в беседу группы "
             "(расписание, ДЗ, объявления)? Напоминания из общего чата сюда дублироваться не будут.",
             reply_markup=_mirror_keyboard(),
         )
-        return
-    await _send_menu(chat_id, hello)
 
 
 async def handle_start(chat_id: int, telegram_id: int) -> None:
@@ -317,21 +320,21 @@ async def handle_menu_command(chat_id: int, telegram_id: int, cmd: str) -> None:
             return
     if cmd == "/сегодня":
         resp = await backend_call("GET", "/internal/bot/day", params={"telegram_id": telegram_id})
-        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось загрузить день.")
+        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось загрузить день.", keep_menu=True)
         return
     if cmd == "/завтра":
         resp = await backend_call(
             "GET", "/internal/bot/day", params={"telegram_id": telegram_id, "offset": 1}
         )
-        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось загрузить день.")
+        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось загрузить день.", keep_menu=True)
         return
     if cmd == "/пара":
         resp = await backend_call("GET", "/internal/bot/next-lesson", params={"telegram_id": telegram_id})
-        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось найти пару.")
+        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось найти пару.", keep_menu=True)
         return
     if cmd == "/неделя":
         resp = await backend_call("GET", "/internal/bot/week", params={"telegram_id": telegram_id})
-        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось загрузить неделю.")
+        await send_text(chat_id, (resp.json() or {}).get("html") or "Не удалось загрузить неделю.", keep_menu=True)
         return
     if cmd == "/дз":
         await _send_homework_list(chat_id, telegram_id)
@@ -348,7 +351,7 @@ async def handle_menu_command(chat_id: int, telegram_id: int, cmd: str) -> None:
             chat_id,
             "Меню внизу экрана: Сегодня, Завтра, Пара, ДЗ, Неделя, Настройки, Обратная связь.\n"
             "Команды: /сегодня /завтра /пара /дз /неделя /настройки /выход /start",
-            reply_markup=MENU_KEYBOARD,
+            reply_markup=menu_keyboard(),
         )
         return
     if cmd == "/выход":
@@ -360,9 +363,9 @@ async def _send_homework_list(chat_id: int, telegram_id: int) -> None:
     data = resp.json() or {}
     items = data.get("items") or []
     if not items:
-        await send_text(chat_id, data.get("html") or "Открытых ДЗ нет.")
+        await send_text(chat_id, data.get("html") or "Открытых ДЗ нет.", keep_menu=True)
         return
-    await send_text(chat_id, data.get("html") or "<b>Открытые ДЗ</b>")
+    await send_text(chat_id, data.get("html") or "<b>Открытые ДЗ</b>", keep_menu=True)
     for item in items:
         await send_text(
             chat_id,
@@ -552,7 +555,7 @@ async def handle_message(message: dict) -> None:
                 detail = ""
             await send_text(int(chat_id), detail or "Не получилось отправить, попробуйте ещё раз.")
             return
-        await send_text(int(chat_id), "Отправили, спасибо.")
+        await send_text(int(chat_id), "Отправили, спасибо.", keep_menu=True)
         return
 
     if cmd == "/start":
@@ -592,7 +595,7 @@ async def handle_message(message: dict) -> None:
     if not await _require_user(int(telegram_id)):
         await send_text(int(chat_id), "Чтобы пользоваться ботом, напишите /start и войдите логином с сайта.")
         return
-    await send_text(int(chat_id), "Выберите пункт меню внизу экрана или /help")
+    await send_text(int(chat_id), "Выберите пункт меню внизу экрана или /help", keep_menu=True)
 
 
 async def handle_update(update: dict) -> None:

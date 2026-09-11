@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from starlette.responses import Response
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from telegram_html import sanitize_telegram_html
+from menu_keyboard import menu_keyboard
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bot-service")
@@ -301,6 +302,25 @@ def _effective_thread_id(thread_id: int | None) -> int | None:
     return None if tid == 1 else tid
 
 
+def _owner_feedback_menu_markup(chat_id: int, existing: dict | None) -> dict | None:
+    """В личке владельца (FEEDBACK_CHAT_ID) оставляем меню бота вместе с отзывом.
+
+    Групповые посты (отрицательный chat_id) не трогаем. Явный reply_markup не перезаписываем.
+    """
+    if existing is not None:
+        return existing
+    raw = (os.getenv("FEEDBACK_CHAT_ID") or "").strip()
+    if not raw:
+        return None
+    try:
+        owner_id = int(raw)
+    except ValueError:
+        return None
+    if owner_id <= 0 or int(chat_id) != owner_id:
+        return None
+    return menu_keyboard()
+
+
 def _apply_html_text(payload: dict, key: str = "text") -> None:
     """Санитизирует текст и включает parse_mode=HTML, чтобы эффекты были видны в Telegram."""
     raw = payload.get(key)
@@ -346,8 +366,9 @@ async def send_message(req: SendRequest):
             payload = {"chat_id": req.chat_id, "text": req.text}
             if thread_id is not None:
                 payload["message_thread_id"] = thread_id
-            if req.reply_markup is not None:
-                payload["reply_markup"] = req.reply_markup
+            markup = _owner_feedback_menu_markup(req.chat_id, req.reply_markup)
+            if markup is not None:
+                payload["reply_markup"] = markup
             _apply_html_text(payload, "text")
             body = await _telegram_call("sendMessage", payload)
 

@@ -39,6 +39,24 @@ def test_send_message_maps_thread_id_and_message_id(monkeypatch):
     assert response.json() == {"ok": True, "message_id": 99}
 
 
+def test_send_to_feedback_chat_attaches_owner_menu(monkeypatch):
+    captured = {}
+
+    async def fake_telegram_call(method, payload):
+        captured["payload"] = payload
+        return {"ok": True, "result": {"message_id": 7}}
+
+    monkeypatch.setenv("FEEDBACK_CHAT_ID", "777000")
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post("/send", json={"chat_id": 777000, "text": "🐛 Баг из сайта"})
+
+    assert response.status_code == 200
+    assert captured["payload"]["chat_id"] == 777000
+    assert captured["payload"]["reply_markup"]["keyboard"][0][0]["text"] == "Сегодня"
+
+
 def test_send_message_with_single_photo_uses_send_photo(monkeypatch):
     async def fake_telegram_call(method, payload):
         assert method == "sendPhoto"
