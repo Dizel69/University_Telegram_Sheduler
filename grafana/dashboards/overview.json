@@ -493,123 +493,6 @@
       "title": "Сводка по событиям", "type": "bargauge"
     },
 
-    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 121 }, "id": 105, "panels": [], "title": "Redis (кэш)", "type": "row" },
-
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
-        "mappings": [ { "type": "value", "options": { "1": { "text": "Онлайн", "color": "green", "index": 0 }, "0": { "text": "Офлайн", "color": "red", "index": 1 } } } ],
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 122 }, "id": 60,
-      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_up", "legendFormat": "Redis", "refId": "A" } ],
-      "title": "Состояние Redis", "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 100 } ] } }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 122 }, "id": 61,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_connected_clients", "legendFormat": "Клиенты", "refId": "A" } ],
-      "title": "Подключённые клиенты", "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "bytes",
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "blue", "value": null } ] } }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 122 }, "id": 62,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_memory_used_bytes", "legendFormat": "Память", "refId": "A" } ],
-      "title": "Используемая память", "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "ops",
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 122 }, "id": 63,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(redis_commands_processed_total[5m]))", "legendFormat": "Команд/с", "refId": "A" } ],
-      "title": "Команд в секунду", "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "percent", "min": 0, "max": 100,
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 95 } ] } }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 122 }, "id": 64,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "100 * sum(redis_keyspace_hits_total) / clamp_min(sum(redis_keyspace_hits_total) + sum(redis_keyspace_misses_total), 1)", "legendFormat": "Hit rate", "refId": "A" } ],
-      "title": "Попадания в кэш", "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short",
-        "thresholds": { "mode": "absolute", "steps": [ { "color": "purple", "value": null } ] } }, "overrides": [] },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 122 }, "id": 65,
-      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "pluginVersion": "11.2.2",
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(redis_db_keys)", "legendFormat": "Ключи", "refId": "A" } ],
-      "title": "Всего ключей", "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes",
-        "custom": { "drawStyle": "line", "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 126 }, "id": 66,
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "pluginVersion": "11.2.2",
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_memory_used_bytes", "legendFormat": "Использовано", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_memory_max_bytes", "legendFormat": "Лимит (maxmemory)", "refId": "B" }
-      ],
-      "title": "Память Redis", "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops",
-        "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 126 }, "id": 67,
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "pluginVersion": "11.2.2",
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(redis_commands_processed_total[5m]))", "legendFormat": "Команд/с", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(redis_expired_keys_total[5m]))", "legendFormat": "Истекло ключей/с", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(redis_evicted_keys_total[5m]))", "legendFormat": "Вытеснено ключей/с", "refId": "C" }
-      ],
-      "title": "Активность Redis", "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops",
-        "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 133 }, "id": 68,
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "pluginVersion": "11.2.2",
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(redis_keyspace_hits_total[5m]))", "legendFormat": "Попадания/с", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(redis_keyspace_misses_total[5m]))", "legendFormat": "Промахи/с", "refId": "B" }
-      ],
-      "title": "Попадания и промахи кэша", "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "short",
-        "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 133 }, "id": 69,
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "pluginVersion": "11.2.2",
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_connected_clients", "legendFormat": "Подключено клиентов", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "redis_blocked_clients", "legendFormat": "Заблокировано клиентов", "refId": "B" }
-      ],
-      "title": "Клиенты Redis", "type": "timeseries"
-    },
-
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 140 }, "id": 106, "panels": [], "title": "Службы мониторинга", "type": "row" },
 
     {
@@ -850,7 +733,7 @@
           "refId": "A"
         }
       ],
-      "title": "Логи PostgreSQL и Redis",
+      "title": "Логи PostgreSQL",
       "type": "logs"
     },
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 202 }, "id": 111, "panels": [], "title": "Активность пользователей", "type": "row" },

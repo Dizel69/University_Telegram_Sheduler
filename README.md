@@ -9,7 +9,6 @@
 - **`worker`**: APScheduler-воркер, периодически опрашивает backend на “пора напоминать” и отправляет напоминания через bot-service.
 - **`frontend`**: React + Vite UI (публичный календарь и админ-панель).
 - **`postgres`**: база данных (через `docker-compose.yml`).
-- **`redis`**: сейчас поднимается в `docker-compose.yml`, но в коде core-флоу не завязан на Redis.
 
 > В репозитории также есть папка `parser` (FastAPI + pdfplumber для парсинга PDF), **но в текущем `docker-compose.yml` она не подключена** Она будет удалена.
 
@@ -259,7 +258,6 @@ flowchart LR
     BOT["bot\n:8081"]
     WRK[worker]
     PG[(postgres)]
-    RD[(redis)]
 
     %% Мониторинг
     PR["prometheus\n:9090"]
@@ -279,12 +277,10 @@ flowchart LR
 
     %% Worker-потоки
     WRK -->|"REST/JSON: получение задач,\nсобытий и данных расписания"| BE
-    WRK -->|"Redis commands: очереди/кэши,\nключи задач и таймеров"| RD
     WRK -->|"HTTP к bot-сервису: триггер отправки\nуведомлений/напоминаний"| BOT
 
     %% Backend-хранилища
     BE -->|"SQL (INSERT/SELECT/UPDATE):\nпользователи, расписание, состояния"| PG
-    BE -->|"Redis commands: кэш,\nвременные данные, rate-limit"| RD
 
     %% Метрики и дашборды
     PR -->|"scrape /metrics: метрики приложения\n(HTTP latency, ошибки, бизнес-метрики)"| BE

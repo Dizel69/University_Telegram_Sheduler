@@ -239,7 +239,7 @@ jobs:
           script: |
             set -euo pipefail
             cd ${{ secrets.DEPLOY_PATH }}
-            MONITORING_SERVICES="prometheus grafana loki fluent-bit cadvisor blackbox-exporter node-exporter redis-exporter postgres-exporter"
+            MONITORING_SERVICES="prometheus grafana loki fluent-bit cadvisor blackbox-exporter node-exporter postgres-exporter"
             echo "Restarting monitoring services only: $MONITORING_SERVICES"
             flock -w 900 /tmp/m15-docker-compose.lock docker compose up -d --no-deps --pull missing --force-recreate $MONITORING_SERVICES
             docker compose ps $MONITORING_SERVICES

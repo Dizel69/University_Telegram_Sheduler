@@ -18,26 +18,6 @@ services:
     networks:
       - appnet
 
-  # Redis cache
-  redis:
-    image: redis:7
-    restart: unless-stopped
-    networks:
-      - appnet
-
-  # Redis exporter (Redis metrics for Prometheus)
-  redis-exporter:
-    image: oliver006/redis_exporter:v1.62.0
-    restart: unless-stopped
-    environment:
-      REDIS_ADDR: "redis://redis:6379"
-    depends_on:
-      - redis
-    ports:
-      - "9121:9121"
-    networks:
-      - appnet
-
   # Postgres exporter (DB metrics for Prometheus)
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -69,8 +49,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
     ports:
       - "8000:8000"
     volumes:
@@ -117,7 +95,6 @@ services:
     depends_on:
       - backend
       - bot
-      - redis
     volumes:
       - ./worker:/app
     healthcheck:
@@ -186,7 +163,6 @@ services:
       - cadvisor
       - node-exporter
       - postgres-exporter
-      - redis-exporter
       - blackbox-exporter
     networks:
       - appnet
@@ -224,7 +200,7 @@ services:
     networks:
       - appnet
 
-  # Fluent Bit → Loki (логи контейнеров backend, bot, worker, postgres, redis)
+  # Fluent Bit → Loki (логи контейнеров backend, bot, worker, postgres)
   fluent-bit:
     image: fluent/fluent-bit:2.2.3
     restart: unless-stopped
