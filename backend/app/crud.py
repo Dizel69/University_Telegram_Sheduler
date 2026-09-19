@@ -160,6 +160,13 @@ def update_events_by_series(series_id: str, **fields) -> int:
         return count
 
 
+def list_events_by_series(series_id: str) -> List[Event]:
+    """Возвращает все события с одинаковым series_id."""
+    with Session(engine) as session:
+        statement = select(Event).where(Event.series_id == series_id).order_by(Event.id)
+        return list(session.exec(statement).all())
+
+
 def delete_events_by_date(target_date: date_type) -> int:
     """
     Удаляет все события на определённую дату. Возвращает количество удалённых.

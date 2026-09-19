@@ -393,6 +393,223 @@ def test_create_and_send_transfer_includes_time(backend_client, monkeypatch):
     assert "Время: 08:05" in sent_text
 
 
+def test_event_update_with_sent_message_id_calls_edit(backend_client, backend_engine, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    create_response = backend_client.post(
+        "/events",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "announcement",
+            "subject": "General",
+            "body": "Important update",
+            "date": "2026-05-21",
+            "time": "10:15",
+            "chat_id": 222,
+            "topic_thread_id": 333,
+        },
+    )
+    assert create_response.status_code == 200
+    event_id = create_response.json()["id"]
+
+    with Session(backend_engine) as session:
+        ev = session.get(Event, event_id)
+        ev.sent_message_id = 777
+        session.add(ev)
+        session.commit()
+
+    update_response = backend_client.put(
+        f"/events/{event_id}",
+        headers=ADMIN_HEADERS,
+        json={"body": "Updated text"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json() == {"ok": True}
+    assert _FakeAsyncClient.calls == [
+        {
+            "url": "http://bot-service.test/edit",
+            "json": {
+                "chat_id": 222,
+                "message_id": 777,
+                "text": f"#Объявление\n#General\nUpdated text\nВремя: 10:15\nСсылка в календаре: http://127.0.0.1:3000/calendar/m15/event/{event_id}",
+            },
+            "timeout": 45.0,
+        }
+    ]
+
+
+def test_event_update_without_sent_message_id_does_not_call_bot(backend_client, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    create_response = backend_client.post(
+        "/events",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "announcement",
+            "subject": "General",
+            "body": "No telegram post",
+            "date": "2026-05-21",
+            "chat_id": 222,
+        },
+    )
+    event_id = create_response.json()["id"]
+
+    update_response = backend_client.put(
+        f"/events/{event_id}",
+        headers=ADMIN_HEADERS,
+        json={"body": "Still no telegram post"},
+    )
+    assert update_response.status_code == 200
+    assert _FakeAsyncClient.calls == []
+
+
+def test_event_update_does_not_touch_group_reminders(backend_client, backend_engine, monkeypatch):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    with Session(backend_engine) as session:
+        due = Event(
+            type="homework",
+            body="Due soon",
+            date=date.today() + timedelta(days=1),
+            time=time(9, 0),
+            reminder_offset_hours=48,
+            reminder_sent=False,
+            chat_id=123,
+            topic_thread_id=456,
+            sent_message_id=888,
+        )
+        session.add(due)
+        session.commit()
+        session.refresh(due)
+        due_id = due.id
+
+    update_response = backend_client.put(
+        f"/events/{due_id}",
+        headers=ADMIN_HEADERS,
+        json={"body": "Due soon, updated"},
+    )
+    assert update_response.status_code == 200
+    assert len(_FakeAsyncClient.calls) == 1
+    assert _FakeAsyncClient.calls[0]["url"] == "http://bot-service.test/edit"
+    assert all(not str(c["url"]).endswith("/send") for c in _FakeAsyncClient.calls)
+
+    reminders_response = backend_client.get("/events/due_reminders")
+    assert reminders_response.status_code == 200
+    reminders = reminders_response.json()
+    assert [event["id"] for event in reminders] == [due_id]
+    assert reminders[0]["body"] == "Due soon, updated"
+
+    with Session(backend_engine) as session:
+        updated = session.get(Event, due_id)
+        assert updated.reminder_sent is False
+        assert updated.sent_message_id == 888
+
+
+def test_event_update_apply_to_series_edits_only_instances_with_sent_message_id(
+    backend_client, backend_engine, monkeypatch
+):
+    from app import main
+
+    _FakeAsyncClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _FakeAsyncClient)
+
+    ids = []
+    for body in ("A", "B", "C"):
+        resp = backend_client.post(
+            "/events",
+            headers=ADMIN_HEADERS,
+            json={
+                "type": "announcement",
+                "subject": "General",
+                "body": body,
+                "date": "2026-05-21",
+                "time": "10:15",
+                "chat_id": 222,
+                "series_id": "series-1",
+            },
+        )
+        assert resp.status_code == 200
+        ids.append(resp.json()["id"])
+
+    with Session(backend_engine) as session:
+        first = session.get(Event, ids[0])
+        second = session.get(Event, ids[1])
+        first.sent_message_id = 101
+        second.sent_message_id = 202
+        session.add(first)
+        session.add(second)
+        session.commit()
+
+    update_response = backend_client.put(
+        f"/events/{ids[0]}",
+        headers=ADMIN_HEADERS,
+        params={"apply_to_series": True},
+        json={"body": "Shared text"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json() == {"ok": True, "updated": 3}
+
+    edit_calls = [c for c in _FakeAsyncClient.calls if str(c["url"]).endswith("/edit")]
+    send_calls = [c for c in _FakeAsyncClient.calls if str(c["url"]).endswith("/send")]
+    assert send_calls == []
+    assert [c["json"]["message_id"] for c in edit_calls] == [101, 202]
+    assert all(c["json"]["chat_id"] == 222 for c in edit_calls)
+    assert all("Shared text" in c["json"]["text"] for c in edit_calls)
+    assert all("message_thread_id" not in c["json"] and "thread_id" not in c["json"] for c in edit_calls)
+
+
+def test_event_update_edit_not_found_does_not_fail_or_resend(backend_client, backend_engine, monkeypatch):
+    from app import main
+
+    class _NotFoundResponse:
+        status_code = 400
+        text = '{"detail": "Bad Request: message to edit not found"}'
+
+        def json(self):
+            return {"detail": "Bad Request: message to edit not found"}
+
+    class _NotFoundClient(_FakeAsyncClient):
+        async def post(self, url, json, timeout):
+            self.calls.append({"url": url, "json": json, "timeout": timeout})
+            return _NotFoundResponse()
+
+    _NotFoundClient.calls = []
+    monkeypatch.setattr(main.httpx, "AsyncClient", _NotFoundClient)
+
+    create_response = backend_client.post(
+        "/events",
+        headers=ADMIN_HEADERS,
+        json={
+            "type": "announcement",
+            "body": "Gone from telegram",
+            "date": "2026-05-21",
+            "chat_id": 222,
+        },
+    )
+    event_id = create_response.json()["id"]
+    with Session(backend_engine) as session:
+        session.get(Event, event_id).sent_message_id = 555
+        session.commit()
+
+    update_response = backend_client.put(
+        f"/events/{event_id}",
+        headers=ADMIN_HEADERS,
+        json={"body": "Still in calendar"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json() == {"ok": True}
+    assert [c["url"] for c in _NotFoundClient.calls] == ["http://bot-service.test/edit"]
+
+
 def test_owner_user_management(backend_client):
     token = _login_admin(backend_client)
     headers = {"Authorization": f"Bearer {token}"}

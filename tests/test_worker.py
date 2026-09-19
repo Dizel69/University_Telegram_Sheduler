@@ -148,6 +148,7 @@ def test_check_and_send_sends_reminder_and_marks_sent(monkeypatch):
 
     client = FakeClient.instances[0]
     assert client.post_calls[0]["url"] == "http://bot-service.test/send"
+    assert all("/edit" not in call["url"] for call in client.post_calls)
     assert client.post_calls[0]["json"]["chat_id"] == 123
     assert client.post_calls[0]["json"]["thread_id"] == 456
     assert client.post_calls[0]["json"]["photos"] == ["https://example.com/1.jpg"]

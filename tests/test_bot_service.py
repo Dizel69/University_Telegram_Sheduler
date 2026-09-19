@@ -184,6 +184,89 @@ def test_send_message_returns_502_for_telegram_error(monkeypatch):
     assert "Telegram API error" in response.json()["detail"]
 
 
+def test_edit_message_uses_edit_message_text(monkeypatch):
+    async def fake_telegram_call(method, payload):
+        assert method == "editMessageText"
+        assert payload == {
+            "chat_id": 123,
+            "message_id": 99,
+            "text": "updated",
+            "parse_mode": "HTML",
+        }
+        assert "message_thread_id" not in payload
+        return {"ok": True, "result": {"message_id": 99}}
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post("/edit", json={"chat_id": 123, "message_id": 99, "text": "updated"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_edit_message_falls_back_to_caption(monkeypatch):
+    calls = []
+
+    async def fake_telegram_call(method, payload):
+        calls.append((method, payload))
+        if method == "editMessageText":
+            return {
+                "ok": False,
+                "error_code": 400,
+                "description": "Bad Request: there is no text in the message to edit",
+            }
+        assert method == "editMessageCaption"
+        assert payload["chat_id"] == 123
+        assert payload["message_id"] == 99
+        assert payload["caption"] == "updated"
+        assert payload["parse_mode"] == "HTML"
+        return {"ok": True, "result": {"message_id": 99}}
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post("/edit", json={"chat_id": 123, "message_id": 99, "text": "updated"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert [c[0] for c in calls] == ["editMessageText", "editMessageCaption"]
+
+
+def test_edit_message_returns_400_when_message_not_found(monkeypatch):
+    async def fake_telegram_call(method, payload):
+        return {
+            "ok": False,
+            "error_code": 400,
+            "description": "Bad Request: message to edit not found",
+        }
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post("/edit", json={"chat_id": 123, "message_id": 99, "text": "updated"})
+
+    assert response.status_code == 400
+    assert "message to edit not found" in response.json()["detail"]
+
+
+def test_edit_message_not_modified_is_ok(monkeypatch):
+    async def fake_telegram_call(method, payload):
+        return {
+            "ok": False,
+            "error_code": 400,
+            "description": "Bad Request: message is not modified",
+        }
+
+    monkeypatch.setattr(bot_service, "_telegram_call", fake_telegram_call)
+    client = TestClient(bot_service.app)
+
+    response = client.post("/edit", json={"chat_id": 123, "message_id": 99, "text": "same"})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
 def test_create_topic_returns_thread_id(monkeypatch):
     async def fake_telegram_call(method, payload):
         assert method == "createForumTopic"

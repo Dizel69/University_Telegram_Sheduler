@@ -620,6 +620,70 @@ async def _dispatch_to_bot(ev, *, include_calendar_link: bool = True, persist_me
     return message_id
 
 
+def _telegram_edit_is_missing(status_code: int, body) -> bool:
+    """Telegram/bot-service: 400 или «message to edit not found» — пост уже нет."""
+    if status_code == 400:
+        return True
+    text = ""
+    if isinstance(body, dict):
+        text = str(body.get("detail") or body.get("description") or body.get("error") or "")
+    else:
+        text = str(body or "")
+    return "message to edit not found" in text.lower()
+
+
+async def _edit_group_telegram_post(ev, *, resend_if_missing: bool = False) -> None:
+    """
+    Правит уже отправленный пост в групповом чате (Event.sent_message_id).
+    Зеркало в личку не трогаем. Если сообщения нет — логируем и молчим,
+    кроме явного resend_if_missing (тогда send как send_now).
+    """
+    message_id = getattr(ev, "sent_message_id", None)
+    if not message_id:
+        return
+    chat_id = _resolve_chat_id(ev)
+    if not chat_id:
+        print("Предупреждение: нет chat_id для edit сообщения", getattr(ev, "id", None))
+        return
+    text = _build_telegram_message_text(ev, include_calendar_link=True)
+    payload = {
+        "chat_id": int(chat_id),
+        "message_id": int(message_id),
+        "text": text,
+    }
+    print("DEBUG: исходящий edit к bot-service:", payload)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{BOT_SERVICE_URL}/edit", json=payload, timeout=45.0)
+            try:
+                resp_text = resp.text
+            except Exception:
+                resp_text = "<unable to read response body>"
+            print("DEBUG: ответ bot-service (edit):", resp.status_code, resp_text)
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            if _telegram_edit_is_missing(resp.status_code, data) or _telegram_edit_is_missing(resp.status_code, resp_text):
+                print(
+                    "Предупреждение: сообщение для edit не найдено",
+                    getattr(ev, "id", None),
+                    "message_id=",
+                    message_id,
+                )
+                if resend_if_missing:
+                    await _dispatch_to_bot(ev, include_calendar_link=True, persist_message_id=True)
+                return
+            if resp.status_code >= 400:
+                print(
+                    "Предупреждение: ошибка edit bot-service:",
+                    resp.status_code,
+                    resp_text,
+                )
+    except Exception as e:
+        print("Предупреждение: ошибка при edit на bot-service:", e)
+
+
 @app.post("/events/send", response_model=EventPublic)
 async def create_and_send(event_in: EventCreate, admin_ok: bool = Depends(require_admin)):
     """
@@ -1074,12 +1138,25 @@ def create_event(event_in: EventCreate, admin_ok: bool = Depends(require_admin))
 
 
 @app.put('/events/{event_id}')
-def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = Depends(require_admin), apply_to_series: bool = False):
+async def update_event_endpoint(
+    event_id: int,
+    update: EventUpdate,
+    admin_ok: bool = Depends(require_admin),
+    apply_to_series: bool = False,
+    resend_if_missing: bool = False,
+):
     """
     Обновляем поля события (используется рля переноса/перемещения событий).
     Если apply_to_series=True и событие часть серии, применяем изменения к всем событиям в серии.
+
+    Пост в группе: если есть sent_message_id — правим это сообщение тем же форматтером,
+    что при первой отправке. apply_to_series правит все экземпляры серии с sent_message_id
+    (у каждого свой message_id); без sent_message_id edit не вызываем.
+    Зеркало в личку и worker-напоминания не трогаем.
+    Если Telegram вернул 400 / message to edit not found — логируем и не падаем;
+    повторная отправка только при resend_if_missing=true.
     """
-    from .crud import update_event, get_event_by_id, update_events_by_series
+    from .crud import update_event, get_event_by_id, update_events_by_series, list_events_by_series
     ev = get_event_by_id(event_id)
     if not ev:
         raise HTTPException(status_code=404, detail='событие не найдено')
@@ -1091,6 +1168,8 @@ def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = D
         updated_ev = get_event_by_id(event_id)
         if updated_ev:
             touch_teacher_profile(updated_ev.teacher, updated_ev.subject or updated_ev.title)
+        for row in list_events_by_series(ev.series_id):
+            await _edit_group_telegram_post(row, resend_if_missing=resend_if_missing)
         return {'ok': True, 'updated': cnt}
     else:
         ok = update_event(event_id, **fields)
@@ -1099,6 +1178,7 @@ def update_event_endpoint(event_id: int, update: EventUpdate, admin_ok: bool = D
         updated_ev = get_event_by_id(event_id)
         if updated_ev:
             touch_teacher_profile(updated_ev.teacher, updated_ev.subject or updated_ev.title)
+            await _edit_group_telegram_post(updated_ev, resend_if_missing=resend_if_missing)
         return {'ok': True}
 
 @app.post("/events/{event_id}/send_now")

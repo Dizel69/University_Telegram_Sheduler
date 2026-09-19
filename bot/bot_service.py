@@ -326,6 +326,13 @@ class SendRequest(BaseModel):
     reply_markup: dict | None = None
 
 
+class EditRequest(BaseModel):
+    """Запрос на правку уже отправленного сообщения. thread_id для edit не нужен."""
+    chat_id: int
+    message_id: int
+    text: str
+
+
 class CreateTopicRequest(BaseModel):
     """Запрос на создание темы в чате."""
     chat_id: int
@@ -482,6 +489,65 @@ async def send_message(req: SendRequest):
         # Не логируем URL (там BOT_TOKEN), поэтому только тип/текст исключения.
         TELEGRAM_SEND_ERRORS.inc()
         logger.exception("Unexpected send failure: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Unexpected bot-service error")
+
+
+def _telegram_error_description(body: dict) -> str:
+    return str(body.get("description") or "")
+
+
+@app.post("/edit")
+async def edit_message(req: EditRequest):
+    """Правит текст или подпись уже отправленного сообщения в чате."""
+    try:
+        logger.info("POST /edit chat_id=%s message_id=%s", req.chat_id, req.message_id)
+        payload: dict[str, object] = {
+            "chat_id": req.chat_id,
+            "message_id": req.message_id,
+            "text": req.text,
+        }
+        _apply_html_text(payload, "text")
+        body = await _telegram_call("editMessageText", payload)
+
+        if not body.get("ok"):
+            desc = _telegram_error_description(body).lower()
+            if "there is no text in the message to edit" in desc or "no text in the message" in desc:
+                cap: dict[str, object] = {
+                    "chat_id": req.chat_id,
+                    "message_id": req.message_id,
+                    "caption": req.text,
+                }
+                _apply_html_text(cap, "caption")
+                body = await _telegram_call("editMessageCaption", cap)
+
+        if body.get("ok"):
+            return {"ok": True}
+
+        desc = _telegram_error_description(body)
+        desc_l = desc.lower()
+        if "message is not modified" in desc_l:
+            return {"ok": True, "unchanged": True}
+        if (
+            body.get("error_code") == 400
+            or "message to edit not found" in desc_l
+            or "message can't be edited" in desc_l
+        ):
+            logger.warning(
+                "Telegram edit 400: chat_id=%s message_id=%s desc=%s",
+                req.chat_id,
+                req.message_id,
+                desc,
+            )
+            raise HTTPException(status_code=400, detail=desc or "message to edit not found")
+
+        logger.warning("Telegram API error payload (edit): %s", body)
+        raise HTTPException(status_code=502, detail=f"Telegram API error: {body}")
+    except HTTPException:
+        TELEGRAM_SEND_ERRORS.inc()
+        raise
+    except Exception as e:
+        TELEGRAM_SEND_ERRORS.inc()
+        logger.exception("Unexpected edit failure: %s", type(e).__name__)
         raise HTTPException(status_code=500, detail="Unexpected bot-service error")
 
 
