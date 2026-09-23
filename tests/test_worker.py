@@ -315,6 +315,55 @@ def test_personal_reminders_go_to_telegram_user_not_group(monkeypatch):
     assert any(c["url"].endswith("/internal/bot/mark-personal-sent") for c in client.post_calls)
 
 
+def test_lesson_and_transfer_pings_stay_in_private_chat(monkeypatch):
+    _install_fake_client(
+        monkeypatch,
+        events=[],
+        personal={
+            "morning": [],
+            "homework": [],
+            "lesson_soon": [
+                {
+                    "user_id": 2,
+                    "telegram_id": 555001,
+                    "kind": "lesson_soon",
+                    "dedupe_key": "2026-09-21|логики|0|14:00",
+                    "text": "через 5 мин",
+                    "event_id": 1,
+                }
+            ],
+            "transfer_eve": [
+                {
+                    "user_id": 2,
+                    "telegram_id": 555001,
+                    "kind": "transfer_eve",
+                    "dedupe_key": "9",
+                    "text": "Перенос",
+                    "event_id": 9,
+                },
+                {
+                    "user_id": 3,
+                    "telegram_id": -1001234567890,
+                    "kind": "transfer_eve",
+                    "dedupe_key": "9",
+                    "text": "Перенос в группу",
+                    "event_id": 9,
+                },
+            ],
+        },
+    )
+
+    worker.check_and_send()
+
+    client = FakeClient.instances[0]
+    sends = [c for c in client.post_calls if c["url"].endswith("/send")]
+    assert [c["json"]["chat_id"] for c in sends] == [555001, 555001]
+    assert all(c["json"]["chat_id"] > 0 for c in sends)
+    marks = [c for c in client.post_calls if c["url"].endswith("/mark-personal-sent")]
+    assert [c["json"]["kind"] for c in marks] == ["lesson_soon", "transfer_eve"]
+    assert all(c["json"]["user_id"] == 2 for c in marks)
+
+
 def test_friday_db_backup_posts_to_admin_endpoint(monkeypatch):
     _install_fake_client(monkeypatch, events=[])
     monkeypatch.setattr(worker, "ADMIN_TOKEN", "secret-admin")

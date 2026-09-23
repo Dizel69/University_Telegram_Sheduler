@@ -146,6 +146,10 @@ def apply_additive_schema_migrations(engine) -> None:
                 "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_morning_schedule BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_homework_reminder BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_homework_offset_hours INTEGER DEFAULT 24",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_lesson_soon BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_lesson_offset_minutes INTEGER DEFAULT 5",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_lesson_slot_keys JSONB",
+                "ALTER TABLE app_user ADD COLUMN IF NOT EXISTS dm_transfer_eve BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE teacher_profile ADD COLUMN IF NOT EXISTS academic_degree TEXT",
                 "ALTER TABLE teacher_profile ADD COLUMN IF NOT EXISTS job_title TEXT",
             ]
@@ -180,6 +184,10 @@ def apply_additive_schema_migrations(engine) -> None:
                 "ALTER TABLE app_user ADD COLUMN dm_morning_schedule INTEGER DEFAULT 0",
                 "ALTER TABLE app_user ADD COLUMN dm_homework_reminder INTEGER DEFAULT 0",
                 "ALTER TABLE app_user ADD COLUMN dm_homework_offset_hours INTEGER DEFAULT 24",
+                "ALTER TABLE app_user ADD COLUMN dm_lesson_soon INTEGER DEFAULT 0",
+                "ALTER TABLE app_user ADD COLUMN dm_lesson_offset_minutes INTEGER DEFAULT 5",
+                "ALTER TABLE app_user ADD COLUMN dm_lesson_slot_keys TEXT",
+                "ALTER TABLE app_user ADD COLUMN dm_transfer_eve INTEGER DEFAULT 0",
                 "ALTER TABLE teacher_profile ADD COLUMN academic_degree TEXT",
                 "ALTER TABLE teacher_profile ADD COLUMN job_title TEXT",
             ]

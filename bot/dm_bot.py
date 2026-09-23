@@ -183,6 +183,29 @@ def _hw_keyboard(event_id: int, url: str, telegram_id: int, *, done: bool = Fals
     return {"inline_keyboard": [row]}
 
 
+def _slot_button_text(slot: dict) -> str:
+    mark = "✓ " if slot.get("selected") else ""
+    subject = str(slot.get("subject") or "Пара").strip() or "Пара"
+    tail = " ".join(
+        bit
+        for bit in (
+            str(slot.get("weekday_label") or "").strip(),
+            str(slot.get("time") or "").strip(),
+            str(slot.get("place_label") or "").strip(),
+        )
+        if bit
+    )
+    text = f"{mark}{subject} {tail}".strip() if tail else f"{mark}{subject}".strip()
+    if len(text) <= 64:
+        return text
+    reserved = f" {tail}" if tail else ""
+    budget = 64 - len(mark) - len(reserved)
+    if budget < 2:
+        return text[:63].rstrip() + "…"
+    short = subject[: budget - 1].rstrip() + "…"
+    return f"{mark}{short}{reserved}"
+
+
 def _settings_keyboard(user: dict) -> dict:
     def mark(on: bool) -> str:
         return "вкл" if on else "выкл"
@@ -192,27 +215,49 @@ def _settings_keyboard(user: dict) -> dict:
     for hours in (24, 12, 3, 1):
         prefix = "• " if hours == offset else ""
         offset_row.append({"text": f"{prefix}{hours}ч", "callback_data": f"st:o:{hours}"})
-    return {
-        "inline_keyboard": [
-            [{"text": f"Зеркало постов: {mark(user.get('dm_mirror_posts'))}", "callback_data": "st:p:t"}],
-            [{"text": f"Утреннее расписание: {mark(user.get('dm_morning_schedule'))}", "callback_data": "st:m:t"}],
-            [{"text": f"Напоминание о ДЗ: {mark(user.get('dm_homework_reminder'))}", "callback_data": "st:h:t"}],
-            offset_row,
-            [{"text": "Выйти из аккаунта", "callback_data": "st:out"}],
-        ]
-    }
+    lesson_offset = int(user.get("dm_lesson_offset_minutes") or 5)
+    lesson_row = []
+    for minutes in (5, 10, 30):
+        prefix = "• " if minutes == lesson_offset else ""
+        lesson_row.append({"text": f"{prefix}{minutes}м", "callback_data": f"st:lm:{minutes}"})
+    rows = [
+        [{"text": f"Зеркало постов: {mark(user.get('dm_mirror_posts'))}", "callback_data": "st:p:t"}],
+        [{"text": f"Утреннее расписание: {mark(user.get('dm_morning_schedule'))}", "callback_data": "st:m:t"}],
+        [{"text": f"Напоминание о ДЗ: {mark(user.get('dm_homework_reminder'))}", "callback_data": "st:h:t"}],
+        offset_row,
+        [{"text": f"Напоминание перед первой парой: {mark(user.get('dm_lesson_soon'))}", "callback_data": "st:ls:t"}],
+        lesson_row,
+        [{"text": f"На все пары: {mark(user.get('dm_lesson_all'))}", "callback_data": "st:la:t"}],
+    ]
+    for slot in user.get("lesson_slots") or []:
+        token = str(slot.get("token") or "").strip()
+        if not token:
+            continue
+        rows.append([{"text": _slot_button_text(slot), "callback_data": f"st:lk:{token}"}])
+    rows.append(
+        [{"text": f"Напоминать о переносах: {mark(user.get('dm_transfer_eve'))}", "callback_data": "st:tr:t"}]
+    )
+    rows.append([{"text": "Выйти из аккаунта", "callback_data": "st:out"}])
+    return {"inline_keyboard": rows}
 
 
 def _settings_html(user: dict) -> str:
     morning = user.get("morning_time") or "07:30"
-    return (
-        "<b>Настройки</b>\n"
-        f"Зеркало постов из беседы: {'да' if user.get('dm_mirror_posts') else 'нет'}\n"
-        f"Утреннее расписание ({morning} МСК): {'да' if user.get('dm_morning_schedule') else 'нет'}\n"
-        f"Напоминание о незакрытом ДЗ: {'да' if user.get('dm_homework_reminder') else 'нет'}\n"
-        f"За сколько часов: {int(user.get('dm_homework_offset_hours') or 24)}\n\n"
-        "Если на сегодня пар нет, утреннее сообщение не отправляем."
-    )
+    lines = [
+        "<b>Настройки</b>",
+        f"Зеркало постов из беседы: {'да' if user.get('dm_mirror_posts') else 'нет'}",
+        f"Утреннее расписание ({morning} МСК): {'да' if user.get('dm_morning_schedule') else 'нет'}",
+        f"Напоминание о незакрытом ДЗ: {'да' if user.get('dm_homework_reminder') else 'нет'}",
+        f"За сколько часов: {int(user.get('dm_homework_offset_hours') or 24)}",
+        f"Напоминание перед первой парой: {'да' if user.get('dm_lesson_soon') else 'нет'}",
+        f"За сколько минут: {int(user.get('dm_lesson_offset_minutes') or 5)}",
+        f"Напоминать о переносах: {'да' if user.get('dm_transfer_eve') else 'нет'}",
+        "",
+        "Если на сегодня пар нет, утреннее сообщение не отправляем.",
+    ]
+    if not (user.get("lesson_slots") or []):
+        lines.append("На ближайшие 7 дней первых пар нет.")
+    return "\n".join(lines)
 
 
 async def _require_user(telegram_id: int) -> Optional[dict]:
@@ -492,8 +537,18 @@ async def handle_callback(cb: dict) -> None:
             patch["dm_morning_schedule"] = not bool(user.get("dm_morning_schedule"))
         elif parts[1] == "h":
             patch["dm_homework_reminder"] = not bool(user.get("dm_homework_reminder"))
-        elif parts[1] == "o":
+        elif parts[1] == "o" and len(parts) >= 3:
             patch["dm_homework_offset_hours"] = int(parts[2])
+        elif parts[1] == "ls":
+            patch["dm_lesson_soon"] = not bool(user.get("dm_lesson_soon"))
+        elif parts[1] == "lm" and len(parts) >= 3:
+            patch["dm_lesson_offset_minutes"] = int(parts[2])
+        elif parts[1] == "la":
+            patch["dm_lesson_all"] = not bool(user.get("dm_lesson_all"))
+        elif parts[1] == "lk" and len(parts) >= 3 and parts[2]:
+            patch["dm_lesson_slot_toggle"] = parts[2]
+        elif parts[1] == "tr":
+            patch["dm_transfer_eve"] = not bool(user.get("dm_transfer_eve"))
         await backend_call("PATCH", "/internal/bot/settings", json=patch)
         await tg("answerCallbackQuery", {"callback_query_id": cb_id})
         await _send_settings(int(chat_id), int(telegram_id), message_id=message_id)

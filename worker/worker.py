@@ -184,7 +184,7 @@ def _internal_headers():
 
 
 def _send_personal_dms(client: httpx.Client):
-    """Личные утренние расписания и пинги ДЗ. Не в DEFAULT_CHAT_ID / группу."""
+    """Личка: утро, ДЗ, первая пара, перенос. Не в DEFAULT_CHAT_ID / группу."""
     try:
         r = client.get(
             f"{BACKEND_URL}/internal/bot/due-personal",
@@ -197,7 +197,13 @@ def _send_personal_dms(client: httpx.Client):
         print("⚠️ Worker: не удалось получить персональные напоминания:", e)
         return
 
-    for item in (data.get("morning") or []) + (data.get("homework") or []):
+    personal_items = (
+        (data.get("morning") or [])
+        + (data.get("homework") or [])
+        + (data.get("lesson_soon") or [])
+        + (data.get("transfer_eve") or [])
+    )
+    for item in personal_items:
         telegram_id = item.get("telegram_id")
         if not telegram_id:
             continue
@@ -205,8 +211,8 @@ def _send_personal_dms(client: httpx.Client):
             telegram_id = int(telegram_id)
         except (TypeError, ValueError):
             continue
-        if telegram_id < 0:
-            print("⚠️ Worker: пропуск личного пинга с групповым chat_id", telegram_id)
+        if telegram_id <= 0:
+            print("⚠️ Worker: пропуск личного пинга не в личку", telegram_id)
             continue
         payload = {"chat_id": telegram_id, "text": item.get("text") or ""}
         try:

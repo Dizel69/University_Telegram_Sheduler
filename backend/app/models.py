@@ -67,6 +67,13 @@ class User(SQLModel, table=True):
     dm_morning_schedule: bool = Field(default=False)
     dm_homework_reminder: bool = Field(default=False)
     dm_homework_offset_hours: int = Field(default=24)
+    # Напоминание в личку за N минут до первой пары предмета в этот день
+    dm_lesson_soon: bool = Field(default=False)
+    dm_lesson_offset_minutes: int = Field(default=5)
+    # Ключи «subject_key|weekday|HH:MM» (weekday 0=пн). Не event.id: серии повторяются.
+    dm_lesson_slot_keys: Optional[list[str]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    # Накануне переноса в 17:00 МСК, отдельно от списка пар
+    dm_transfer_eve: bool = Field(default=False)
 
 
 class HomeworkCompletion(SQLModel, table=True):
@@ -159,7 +166,7 @@ class BotDialogState(SQLModel, table=True):
 
 
 class PersonalReminderSent(SQLModel, table=True):
-    """Идемпотентность личных утренних пингов и напоминаний о ДЗ (не групповые reminder_sent)."""
+    """Идемпотентность личных пингов (утро, ДЗ, первая пара, перенос). Не групповые reminder_sent."""
 
     __tablename__ = "personal_reminder_sent"
 
@@ -170,7 +177,7 @@ class PersonalReminderSent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="app_user.id", index=True)
     event_id: Optional[int] = Field(default=None, foreign_key="event.id", index=True)
-    kind: str = Field(index=True)  # morning | homework
+    kind: str = Field(index=True)  # morning | homework | lesson_soon | transfer_eve
     dedupe_key: str
     sent_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
 

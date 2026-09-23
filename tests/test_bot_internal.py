@@ -284,3 +284,354 @@ def test_bot_feedback_goes_to_feedback_chat(backend_client, backend_engine, monk
     assert "600" in text
     assert "Иванов" in text
     assert "222" not in text
+
+
+def _freeze_msk(monkeypatch, moment: datetime) -> None:
+    from app import bot_internal_routes
+
+    monkeypatch.setattr(bot_internal_routes, "now_msk", lambda: moment)
+    monkeypatch.setattr(bot_internal_routes, "today_msk", lambda: moment.date())
+
+
+def _msk(year, month, day, hour, minute) -> datetime:
+    return datetime(year, month, day, hour, minute, tzinfo=ZoneInfo("Europe/Moscow"))
+
+
+def test_lesson_slots_keep_first_pair_and_select_all_is_snapshot(backend_client, backend_engine, monkeypatch):
+    _freeze_msk(monkeypatch, _msk(2026, 9, 21, 9, 0))
+    monday = date(2026, 9, 21)
+    assert monday.weekday() == 0
+
+    with Session(backend_engine) as session:
+        user = _student(session, telegram_id=710, login="slots_user")
+        rows = [
+            Event(type="schedule", subject="Неклассические логики", body="лекция", date=monday, time=time(14, 0), room="200"),
+            Event(type="schedule", subject="Неклассические логики", body="вторая", date=monday, time=time(15, 55), room="201"),
+            Event(type="exam_control", subject="Неклассические логики", body="экзамен", date=monday, time=time(9, 0), room="ЭКЗ"),
+            Event(type="transfer", subject="Неклассические логики", body="перенос", date=monday, time=time(8, 0), room="ПЕР"),
+            Event(
+                type="schedule",
+                subject="Методы искусственного интеллекта",
+                body="подключение https://meetings.tversu.ru/j/1",
+                date=date(2026, 9, 22),
+                time=time(15, 55),
+            ),
+            Event(
+                type="schedule",
+                subject="Методы искусственного интеллекта",
+                body="третья",
+                date=date(2026, 9, 22),
+                time=time(17, 45),
+                room="10",
+            ),
+            Event(type="schedule", subject="МОЗИ", body="1", date=date(2026, 9, 26), time=time(10, 15), room="12"),
+            Event(type="schedule", subject="МОЗИ", body="2", date=date(2026, 9, 26), time=time(12, 10), room="13"),
+            Event(type="schedule", subject="МОЗИ", body="3", date=date(2026, 9, 26), time=time(14, 0), room="14"),
+            Event(
+                type="schedule",
+                subject="Вебинар",
+                body="online",
+                date=date(2026, 9, 23),
+                time=time(12, 0),
+                room="https://meetings.tversu.ru/j/2",
+            ),
+        ]
+        for row in rows:
+            session.add(row)
+        session.commit()
+        tid = user.telegram_id
+
+    me = backend_client.get("/internal/bot/me", params={"telegram_id": tid}, headers=INTERNAL)
+    assert me.status_code == 200
+    payload = me.json()["user"]
+    assert payload["dm_lesson_soon"] is False
+    assert payload["dm_lesson_offset_minutes"] == 5
+    assert payload["dm_transfer_eve"] is False
+    assert payload["dm_lesson_all"] is False
+    slots = {row["key"]: row for row in payload["lesson_slots"]}
+    assert set(slots) == {
+        "неклассические логики|0|14:00",
+        "методы искусственного интеллекта|1|15:55",
+        "вебинар|2|12:00",
+        "мози|5|10:15",
+    }
+    assert slots["неклассические логики|0|14:00"]["place_label"] == "ауд 200"
+    assert slots["неклассические логики|0|14:00"]["weekday_label"] == "Пн"
+    ai = slots["методы искусственного интеллекта|1|15:55"]
+    assert ai["place_label"] == "ссылка"
+    assert ai["link"] == "https://meetings.tversu.ru/j/1"
+    assert "17:45" not in ai["time"]
+    webinar = slots["вебинар|2|12:00"]
+    assert webinar["place_label"] == "ссылка"
+    assert webinar["room"] is None
+    assert "ауд" not in webinar["place_label"]
+    assert slots["мози|5|10:15"]["time"] == "10:15"
+    assert not any(row["time"] in {"12:10", "17:45", "09:00"} for row in slots.values())
+    assert not any(row["room"] in {"201", "10", "13", "14", "ЭКЗ", "ПЕР"} for row in slots.values())
+
+    selected = backend_client.patch(
+        "/internal/bot/settings",
+        json={"telegram_id": tid, "dm_lesson_all": True},
+        headers=INTERNAL,
+    )
+    assert selected.status_code == 200
+    chosen = selected.json()["user"]
+    assert chosen["dm_lesson_all"] is True
+    assert set(chosen["dm_lesson_slot_keys"]) == set(slots)
+
+    quiet = backend_client.get("/internal/bot/due-personal", headers=INTERNAL).json()
+    assert quiet["lesson_soon"] == []
+
+    _freeze_msk(monkeypatch, _msk(2026, 9, 22, 15, 50))
+    armed = backend_client.patch(
+        "/internal/bot/settings",
+        json={"telegram_id": tid, "dm_lesson_soon": True, "dm_lesson_offset_minutes": 5},
+        headers=INTERNAL,
+    )
+    assert armed.status_code == 200
+    soon = backend_client.get("/internal/bot/due-personal", headers=INTERNAL).json()["lesson_soon"]
+    assert len(soon) == 1
+    assert soon[0]["telegram_id"] == tid
+    assert "https://meetings.tversu.ru/j/1" in soon[0]["text"]
+    assert "через 5 мин" in soon[0]["text"]
+    assert "15:55" in soon[0]["text"]
+    assert "17:45" not in soon[0]["text"]
+    assert "ауд http" not in soon[0]["text"]
+
+    _freeze_msk(monkeypatch, _msk(2026, 9, 21, 9, 0))
+    with Session(backend_engine) as session:
+        session.add(
+            Event(
+                type="schedule",
+                subject="Новая дисциплина",
+                body="ещё не было",
+                date=date(2026, 9, 24),
+                time=time(9, 0),
+                room="1",
+            )
+        )
+        session.commit()
+
+    again = backend_client.get("/internal/bot/me", params={"telegram_id": tid}, headers=INTERNAL).json()["user"]
+    assert "новая дисциплина|3|09:00" not in again["dm_lesson_slot_keys"]
+    assert again["dm_lesson_all"] is False
+
+    refreshed = backend_client.patch(
+        "/internal/bot/settings",
+        json={"telegram_id": tid, "dm_lesson_all": True},
+        headers=INTERNAL,
+    )
+    assert "новая дисциплина|3|09:00" in refreshed.json()["user"]["dm_lesson_slot_keys"]
+
+    bad = backend_client.patch(
+        "/internal/bot/settings",
+        json={"telegram_id": tid, "dm_lesson_offset_minutes": 15},
+        headers=INTERNAL,
+    )
+    assert bad.status_code == 400
+
+
+def test_lesson_soon_offset_skips_later_pair_same_day(backend_client, backend_engine, monkeypatch):
+    monday = date(2026, 9, 21)
+    with Session(backend_engine) as session:
+        user = _student(
+            session,
+            telegram_id=720,
+            login="soon_user",
+            dm_lesson_soon=True,
+            dm_lesson_offset_minutes=5,
+            dm_lesson_slot_keys=[
+                "неклассические логики|0|14:00",
+                "дискретная математика|0|14:01",
+            ],
+        )
+        session.add(Event(type="schedule", subject="Неклассические логики", body="1", date=monday, time=time(14, 0), room="200"))
+        session.add(Event(type="schedule", subject="Неклассические логики", body="2", date=monday, time=time(15, 55), room="201"))
+        session.add(Event(type="schedule", subject="Дискретная математика", body="1", date=monday, time=time(14, 1), room="202"))
+        session.commit()
+        user_id = user.id
+
+    def due_at(hour, minute, offset):
+        _freeze_msk(monkeypatch, _msk(2026, 9, 21, hour, minute))
+        patched = backend_client.patch(
+            "/internal/bot/settings",
+            json={"telegram_id": 720, "dm_lesson_offset_minutes": offset, "dm_lesson_soon": True},
+            headers=INTERNAL,
+        )
+        assert patched.status_code == 200
+        response = backend_client.get("/internal/bot/due-personal", headers=INTERNAL)
+        assert response.status_code == 200
+        items = response.json()["lesson_soon"]
+        assert all(item["telegram_id"] > 0 for item in items)
+        assert all("chat_id" not in item for item in items)
+        return items
+
+    at_30 = due_at(13, 30, 30)
+    assert [item["text"] for item in at_30 if "логик" in item["text"].lower() or "Логик" in item["text"]]
+    assert len(at_30) == 1
+    assert "14:00" in at_30[0]["text"]
+    assert "через 30 мин" in at_30[0]["text"]
+    assert "ауд 200" in at_30[0]["text"]
+    assert "15:55" not in at_30[0]["text"]
+
+    assert due_at(13, 33, 30) == []
+    at_10 = due_at(13, 50, 10)
+    assert len(at_10) == 1
+    assert "через 10 мин" in at_10[0]["text"]
+    assert "14:00" in at_10[0]["text"]
+    assert due_at(13, 50, 5) == []
+
+    at_5 = due_at(13, 55, 5)
+    assert len(at_5) == 1
+    assert "через 5 мин" in at_5[0]["text"]
+    assert "14:00" in at_5[0]["text"]
+
+    both = due_at(13, 56, 5)
+    assert len(both) == 2
+    assert {item["dedupe_key"] for item in both} == {
+        "2026-09-21|неклассические логики|0|14:00",
+        "2026-09-21|дискретная математика|0|14:01",
+    }
+    assert all("15:55" not in item["text"] for item in both)
+
+    assert due_at(15, 50, 5) == []
+
+    first = due_at(13, 55, 5)[0]
+    marked = backend_client.post(
+        "/internal/bot/mark-personal-sent",
+        json={
+            "user_id": user_id,
+            "kind": "lesson_soon",
+            "dedupe_key": first["dedupe_key"],
+            "event_id": first["event_id"],
+        },
+        headers=INTERNAL,
+    )
+    assert marked.status_code == 200
+    again = due_at(13, 55, 5)
+    assert all(item["dedupe_key"] != first["dedupe_key"] for item in again)
+
+
+def test_transfer_eve_is_personal_and_schedule_ping_still_fires(backend_client, backend_engine, monkeypatch):
+    with Session(backend_engine) as session:
+        user = _student(
+            session,
+            telegram_id=730,
+            login="transfer_user",
+            dm_transfer_eve=True,
+            dm_lesson_soon=True,
+            dm_lesson_offset_minutes=5,
+            dm_lesson_slot_keys=["теория графов|1|11:20"],
+        )
+        _student(
+            session,
+            login="transfer_offline",
+            dm_transfer_eve=True,
+            dm_lesson_soon=True,
+            dm_lesson_slot_keys=["теория графов|1|11:20"],
+        )
+        _student(
+            session,
+            telegram_id=-100555,
+            login="transfer_group",
+            dm_transfer_eve=True,
+            dm_lesson_soon=True,
+            dm_lesson_slot_keys=["теория графов|1|11:20"],
+        )
+        _student(session, telegram_id=731, login="transfer_off", dm_transfer_eve=False, dm_lesson_soon=False)
+        moved = Event(
+            type="transfer",
+            subject="Теория графов",
+            body="НЕ_ДУБЛИРОВАТЬ_УТРО https://meetings.tversu.ru/move/1",
+            date=date(2026, 9, 22),
+            time=time(11, 20),
+            room="405",
+            reminder_sent=True,
+            chat_id=-100555,
+        )
+        session.add(moved)
+        session.add(
+            Event(
+                type="schedule",
+                subject="Теория графов",
+                body="обычная пара",
+                date=date(2026, 9, 22),
+                time=time(11, 20),
+                room="405",
+            )
+        )
+        session.commit()
+        session.refresh(moved)
+        transfer_id = moved.id
+        user_id = user.id
+
+    _freeze_msk(monkeypatch, _msk(2026, 9, 21, 16, 59))
+    early = backend_client.get("/internal/bot/due-personal", headers=INTERNAL).json()
+    assert early["transfer_eve"] == []
+
+    _freeze_msk(monkeypatch, _msk(2026, 9, 21, 17, 0))
+    due = backend_client.get("/internal/bot/due-personal", headers=INTERNAL).json()
+    assert len(due["transfer_eve"]) == 1
+    item = due["transfer_eve"][0]
+    assert item["telegram_id"] == 730
+    assert item["telegram_id"] > 0
+    assert item["kind"] == "transfer_eve"
+    assert item["dedupe_key"] == str(transfer_id)
+    assert item["event_id"] == transfer_id
+    assert "Перенос" in item["text"]
+    assert "Теория графов" in item["text"]
+    assert "22.09.2026" in item["text"]
+    assert "11:20" in item["text"]
+    assert "ауд 405" in item["text"]
+    assert "https://meetings.tversu.ru/move/1" in item["text"]
+    assert "НЕ_ДУБЛИРОВАТЬ_УТРО" not in item["text"]
+    assert "Расписание" not in item["text"]
+    assert due["lesson_soon"] == []
+    assert all(row["user_id"] == user_id for row in due["transfer_eve"])
+
+    group = backend_client.get("/events/due_reminders")
+    assert group.status_code == 200
+    assert transfer_id not in {row["id"] for row in group.json()}
+
+    _freeze_msk(monkeypatch, _msk(2026, 9, 22, 17, 0))
+    day_of = backend_client.get("/internal/bot/due-personal", headers=INTERNAL).json()
+    assert day_of["transfer_eve"] == []
+
+    _freeze_msk(monkeypatch, _msk(2026, 9, 22, 11, 15))
+    lesson = backend_client.get("/internal/bot/due-personal", headers=INTERNAL).json()["lesson_soon"]
+    assert len(lesson) == 1
+    assert lesson[0]["telegram_id"] == 730
+    assert "Теория графов" in lesson[0]["text"]
+    assert "через 5 мин" in lesson[0]["text"]
+    assert "ауд 405" in lesson[0]["text"]
+
+
+def test_logout_resets_lesson_and_transfer_flags(backend_client, backend_engine):
+    with Session(backend_engine) as session:
+        user = _student(session, telegram_id=740, login="logout_slots")
+        login_name = user.login
+
+    patched = backend_client.patch(
+        "/internal/bot/settings",
+        json={
+            "telegram_id": 740,
+            "dm_lesson_soon": True,
+            "dm_lesson_offset_minutes": 30,
+            "dm_transfer_eve": True,
+            "dm_morning_schedule": True,
+        },
+        headers=INTERNAL,
+    )
+    assert patched.status_code == 200
+
+    out = backend_client.post("/internal/bot/logout", json={"telegram_id": 740}, headers=INTERNAL)
+    assert out.status_code == 200
+    with Session(backend_engine) as session:
+        saved = session.exec(select(User).where(User.login == login_name)).one()
+        assert saved.telegram_id is None
+        assert not saved.dm_lesson_soon
+        assert saved.dm_lesson_offset_minutes == 5
+        assert not saved.dm_lesson_slot_keys
+        assert not saved.dm_transfer_eve
+        assert not saved.dm_morning_schedule
+        assert not saved.dm_homework_reminder

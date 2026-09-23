@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import os
 import re
@@ -22,6 +23,7 @@ from app.database import engine
 from app.deps import require_internal_service
 from app.models import BotDialogState, Event, HomeworkCompletion, PersonalReminderSent, User
 from app.security import verify_password
+from app.subject_routes import clean_subject_name, normalize_subject_key
 from app.type_utils import canonical_event_type
 
 router = APIRouter(prefix="/internal/bot", tags=["internal-bot"], include_in_schema=False)
@@ -34,7 +36,19 @@ DM_MORNING_SCHEDULE_TIME = (os.getenv("DM_MORNING_SCHEDULE_TIME") or "07:30").st
 LESSON_TYPES = {"schedule", "exam_control", "transfer"}
 MIRROR_TYPES = {"schedule", "homework", "announcement", "exam_control", "transfer"}
 ALLOWED_HW_OFFSETS = {1, 3, 12, 24}
+ALLOWED_LESSON_OFFSETS = {5, 10, 30}
+# Poll воркера ~60с: пинг пары чуть позже отметки «за N минут», не до самого начала.
+LESSON_SOON_GRACE = timedelta(minutes=2)
+TRANSFER_EVE_TIME = time(17, 0)
+SLOT_LOOKAHEAD_DAYS = 6
+WEEKDAY_LABELS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 _TAG_RE = re.compile(r"<[^>]+>")
+_HTTP_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_BARE_HOST_RE = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s]*)?", re.IGNORECASE)
+_BARE_FIND_RE = re.compile(
+    r"(?<![\w@/])((?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>\"']*)?)",
+    re.IGNORECASE,
+)
 
 DIALOG_IDLE = "idle"
 DIALOG_WAIT_LOGIN = "wait_login"
@@ -179,6 +193,194 @@ def _user_by_telegram(session: Session, telegram_id: int) -> Optional[User]:
     return session.exec(select(User).where(User.telegram_id == telegram_id)).first()
 
 
+def _clean_url(raw: str) -> str:
+    return (raw or "").strip().rstrip(").,;]>\"'")
+
+
+def _looks_like_url(value: Optional[str]) -> bool:
+    text = (value or "").strip()
+    if not text or any(ch.isspace() for ch in text):
+        return False
+    low = text.lower()
+    if low.startswith("http://") or low.startswith("https://"):
+        return True
+    if not _BARE_HOST_RE.fullmatch(text):
+        return False
+    host = text.split("/", 1)[0]
+    return host.count(".") >= 2 or "/" in text
+
+
+def _first_link(text: Optional[str]) -> Optional[str]:
+    raw = text or ""
+    http = _HTTP_RE.search(raw)
+    if http:
+        return _clean_url(http.group(0))
+    bare = _BARE_FIND_RE.search(raw)
+    if not bare:
+        return None
+    found = _clean_url(bare.group(1))
+    return found if _looks_like_url(found) else None
+
+
+def _event_link(ev: Event) -> Optional[str]:
+    room = (ev.room or "").strip()
+    if _looks_like_url(room):
+        return _clean_url(room)
+    return _first_link(ev.body)
+
+
+def _place_lines(room: Optional[str], link: Optional[str]) -> list[str]:
+    room_text = (room or "").strip()
+    lines: list[str] = []
+    if room_text and not _looks_like_url(room_text):
+        lines.append(f"ауд {room_text}")
+    if link:
+        lines.append(link)
+    elif room_text and _looks_like_url(room_text):
+        lines.append(_clean_url(room_text))
+    return lines
+
+
+def _button_place(room: Optional[str], link: Optional[str]) -> str:
+    room_text = (room or "").strip()
+    parts: list[str] = []
+    if room_text and not _looks_like_url(room_text):
+        parts.append(f"ауд {room_text}")
+    if link or _looks_like_url(room_text):
+        parts.append("ссылка")
+    return " ".join(parts)
+
+
+def _slot_token(key: str) -> str:
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+
+
+def _lesson_keys(user: User) -> list[str]:
+    raw = user.dm_lesson_slot_keys
+    if not isinstance(raw, list):
+        return []
+    keys: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            keys.append(item.strip())
+    return keys
+
+
+def build_first_slots(events: list[Event], origin: date) -> list[dict]:
+    """Первая пара предмета в день недели: минимальное time среди type=schedule.
+
+    Ключ стабильный (subject_key|weekday|HH:MM), без event.id конкретной недели.
+    exam_control и transfer в список не входят.
+    """
+    grouped: dict[tuple[str, int], Event] = {}
+    for ev in events:
+        if canonical_event_type(ev.type or "") != "schedule":
+            continue
+        if ev.date is None or ev.time is None:
+            continue
+        name = clean_subject_name(ev.subject or ev.title)
+        subject_key = normalize_subject_key(name)
+        if not subject_key:
+            continue
+        weekday = ev.date.weekday()
+        current = grouped.get((subject_key, weekday))
+        if current is None or (ev.time, ev.id or 0) < (current.time or time.max, current.id or 0):
+            grouped[(subject_key, weekday)] = ev
+
+    slots: list[dict] = []
+    for ev in grouped.values():
+        name = clean_subject_name(ev.subject or ev.title)
+        subject_key = normalize_subject_key(name)
+        weekday = ev.date.weekday() if ev.date else 0
+        hhmm = _clock(ev.time)
+        if not hhmm:
+            continue
+        slot_key = f"{subject_key}|{weekday}|{hhmm}"
+        link = _event_link(ev)
+        room = (ev.room or "").strip() or None
+        slots.append(
+            {
+                "key": slot_key,
+                "token": _slot_token(slot_key),
+                "subject": name or "Пара",
+                "weekday": weekday,
+                "weekday_label": WEEKDAY_LABELS[weekday],
+                "time": hhmm,
+                "start_time": ev.time,
+                "room": None if _looks_like_url(room) else room,
+                "link": link,
+                "place_label": _button_place(room, link),
+                "event_id": ev.id,
+            }
+        )
+    slots.sort(
+        key=lambda s: (
+            (int(s["weekday"]) - origin.weekday()) % 7,
+            s["time"],
+            str(s["subject"]).casefold(),
+        )
+    )
+    return slots
+
+
+def _events_between(session: Session, start: date, end: date) -> list[Event]:
+    return list(session.exec(select(Event).where(Event.date >= start, Event.date <= end)).all())
+
+
+def _week_first_slots(session: Session, origin: Optional[date] = None) -> list[dict]:
+    today = origin or today_msk()
+    end = today + timedelta(days=SLOT_LOOKAHEAD_DAYS)
+    return build_first_slots(_events_between(session, today, end), today)
+
+
+def _public_slots(slots: list[dict], selected: set[str]) -> list[dict]:
+    rows = []
+    for slot in slots:
+        rows.append(
+            {
+                "key": slot["key"],
+                "token": slot["token"],
+                "subject": slot["subject"],
+                "weekday": slot["weekday"],
+                "weekday_label": slot["weekday_label"],
+                "time": slot["time"],
+                "room": slot.get("room"),
+                "link": slot.get("link"),
+                "place_label": slot.get("place_label") or "",
+                "selected": slot["key"] in selected,
+            }
+        )
+    return rows
+
+
+def format_lesson_soon_text(slot: dict, offset_min: int) -> str:
+    lines = [f"<b>{_esc(slot.get('subject') or 'Пара')}</b>", _esc(slot.get("time") or "")]
+    room = slot.get("room")
+    link = slot.get("link")
+    if room:
+        lines.append(_esc(f"ауд {room}"))
+    if link:
+        lines.append(_esc(link))
+    lines.append(f"через {int(offset_min)} мин")
+    return "\n".join(line for line in lines if line)
+
+
+def format_transfer_eve_text(ev: Event) -> str:
+    subject = clean_subject_name(ev.subject or ev.title) or "Перенос"
+    lines = ["<b>Перенос</b>", _esc(subject)]
+    when = []
+    if ev.date:
+        when.append(ev.date.strftime("%d.%m.%Y"))
+    clock = _clock(ev.time)
+    if clock:
+        when.append(clock)
+    if when:
+        lines.append(_esc(" ".join(when)))
+    for part in _place_lines(ev.room, _event_link(ev)):
+        lines.append(_esc(part))
+    return "\n".join(lines)
+
+
 def _dialog(session: Session, telegram_id: int) -> BotDialogState:
     row = session.get(BotDialogState, telegram_id)
     if row:
@@ -206,14 +408,23 @@ def _public_user(user: User) -> dict:
         "dm_morning_schedule": bool(user.dm_morning_schedule),
         "dm_homework_reminder": bool(user.dm_homework_reminder),
         "dm_homework_offset_hours": int(user.dm_homework_offset_hours or 24),
+        "dm_lesson_soon": bool(user.dm_lesson_soon),
+        "dm_lesson_offset_minutes": int(user.dm_lesson_offset_minutes or 5),
+        "dm_lesson_slot_keys": _lesson_keys(user),
+        "dm_transfer_eve": bool(user.dm_transfer_eve),
     }
 
 
-def _settings_payload(user: User) -> dict:
+def _settings_payload(user: User, slots: Optional[list[dict]] = None) -> dict:
     data = _public_user(user)
     data["morning_time"] = DM_MORNING_SCHEDULE_TIME
     data["timezone"] = "Europe/Moscow"
     data["morning_silent_if_empty"] = True
+    selected = set(_lesson_keys(user))
+    public = _public_slots(slots or [], selected)
+    current_keys = [row["key"] for row in public]
+    data["lesson_slots"] = public
+    data["dm_lesson_all"] = bool(current_keys) and all(key in selected for key in current_keys)
     return data
 
 
@@ -242,6 +453,11 @@ class SettingsPatch(BaseModel):
     dm_morning_schedule: Optional[bool] = None
     dm_homework_reminder: Optional[bool] = None
     dm_homework_offset_hours: Optional[int] = None
+    dm_lesson_soon: Optional[bool] = None
+    dm_lesson_offset_minutes: Optional[int] = None
+    dm_lesson_all: Optional[bool] = None
+    dm_lesson_slot_toggle: Optional[str] = None
+    dm_transfer_eve: Optional[bool] = None
     dm_mirror_asked: Optional[bool] = None
 
 
@@ -358,6 +574,10 @@ def bot_logout(body: TelegramIdBody, _: bool = Depends(require_internal_service)
             user.dm_morning_schedule = False
             user.dm_homework_reminder = False
             user.dm_homework_offset_hours = 24
+            user.dm_lesson_soon = False
+            user.dm_lesson_offset_minutes = 5
+            user.dm_lesson_slot_keys = []
+            user.dm_transfer_eve = False
             session.add(user)
         dialog = session.get(BotDialogState, body.telegram_id)
         if dialog:
@@ -372,7 +592,7 @@ def bot_me(telegram_id: int, _: bool = Depends(require_internal_service)):
         user = _user_by_telegram(session, telegram_id)
         if not user:
             return {"user": None}
-        return {"user": _settings_payload(user)}
+        return {"user": _settings_payload(user, _week_first_slots(session))}
 
 
 @router.patch("/settings")
@@ -395,10 +615,38 @@ def bot_settings(body: SettingsPatch, _: bool = Depends(require_internal_service
             if hours not in ALLOWED_HW_OFFSETS:
                 raise HTTPException(status_code=400, detail="Допустимо 24, 12, 3 или 1 час")
             user.dm_homework_offset_hours = hours
+        if body.dm_lesson_soon is not None:
+            user.dm_lesson_soon = bool(body.dm_lesson_soon)
+        if body.dm_lesson_offset_minutes is not None:
+            minutes = int(body.dm_lesson_offset_minutes)
+            if minutes not in ALLOWED_LESSON_OFFSETS:
+                raise HTTPException(status_code=400, detail="Допустимо 5, 10 или 30 минут")
+            user.dm_lesson_offset_minutes = minutes
+        if body.dm_lesson_slot_toggle:
+            token = body.dm_lesson_slot_toggle.strip()
+            match = next(
+                (slot for slot in _week_first_slots(session) if slot["token"] == token or slot["key"] == token),
+                None,
+            )
+            if not match:
+                raise HTTPException(status_code=400, detail="Слот не найден")
+            keys = _lesson_keys(user)
+            if match["key"] in keys:
+                keys = [key for key in keys if key != match["key"]]
+            else:
+                keys.append(match["key"])
+            user.dm_lesson_slot_keys = keys
+        if body.dm_lesson_all is not None:
+            if body.dm_lesson_all:
+                user.dm_lesson_slot_keys = [slot["key"] for slot in _week_first_slots(session)]
+            else:
+                user.dm_lesson_slot_keys = []
+        if body.dm_transfer_eve is not None:
+            user.dm_transfer_eve = bool(body.dm_transfer_eve)
         session.add(user)
         session.commit()
         session.refresh(user)
-        return {"ok": True, "user": _settings_payload(user)}
+        return {"ok": True, "user": _settings_payload(user, _week_first_slots(session))}
 
 
 @router.get("/day")
@@ -622,14 +870,18 @@ def should_mirror_event_type(event_type: Optional[str]) -> bool:
 
 @router.get("/due-personal")
 def due_personal(_: bool = Depends(require_internal_service)):
-    """Утреннее расписание и пинги ДЗ только в личку. Если пар нет — молчим."""
+    """Утро, ДЗ, первая пара и перенос — только в личку. Если пар нет — утро молчит."""
     now = now_msk()
     today = now.date()
     morning = _parse_hhmm(DM_MORNING_SCHEDULE_TIME)
     morning_due = (now.hour, now.minute) >= (morning.hour, morning.minute)
+    tomorrow = today + timedelta(days=1)
+    transfer_eve_due = (now.hour, now.minute) >= (TRANSFER_EVE_TIME.hour, TRANSFER_EVE_TIME.minute)
 
     out_morning = []
     out_hw = []
+    out_lesson = []
+    out_transfer = []
     with Session(engine) as session:
         users = session.exec(select(User).where(User.telegram_id.is_not(None))).all()
         sent_rows = session.exec(select(PersonalReminderSent)).all()
@@ -648,6 +900,13 @@ def due_personal(_: bool = Depends(require_internal_service)):
         for c in completions:
             done_map.setdefault(c.user_id, set()).add(c.event_id)
 
+        today_first = build_first_slots([ev for ev in all_events if ev.date == today], today)
+        transfers_tomorrow = [
+            ev
+            for ev in all_events
+            if ev.date == tomorrow and canonical_event_type(ev.type or "") == "transfer"
+        ]
+
         for user in users:
             tid = int(user.telegram_id)
             if user.dm_morning_schedule and morning_due and today_lessons:
@@ -662,44 +921,88 @@ def due_personal(_: bool = Depends(require_internal_service)):
                             "text": day_html,
                         }
                     )
-            if not user.dm_homework_reminder:
-                continue
-            offset = int(user.dm_homework_offset_hours or 24)
-            done = done_map.get(user.id, set())
-            for ev in all_events:
-                if canonical_event_type(ev.type or "") != "homework":
-                    continue
-                if ev.id in done or ev.date is None:
-                    continue
-                event_time = ev.time if ev.time else time.min
-                due_at = datetime.combine(ev.date, event_time, tzinfo=MSK)
-                remind_at = due_at - timedelta(hours=offset)
-                if now < remind_at:
-                    continue
-                key = str(ev.id)
-                if (user.id, "homework", key) in sent:
-                    continue
-                title = (ev.subject or ev.title or "ДЗ").strip()
-                when = ev.date.strftime("%d.%m")
-                clock = _clock(ev.time)
-                if clock:
-                    when = f"{when} {clock}"
-                text = (
-                    f"<b>Напоминание о ДЗ</b>\n{_esc(title)}\nдо {_esc(when)}\n"
-                    f"{_esc(_plain_body(ev.body or ''))}"
-                ).strip()
-                out_hw.append(
-                    {
-                        "user_id": user.id,
-                        "telegram_id": tid,
-                        "event_id": ev.id,
-                        "kind": "homework",
-                        "dedupe_key": key,
-                        "text": text,
-                        "url": event_card_url(ev.id),
-                    }
-                )
-    return {"morning": out_morning, "homework": out_hw}
+            if user.dm_homework_reminder:
+                offset = int(user.dm_homework_offset_hours or 24)
+                done = done_map.get(user.id, set())
+                for ev in all_events:
+                    if canonical_event_type(ev.type or "") != "homework":
+                        continue
+                    if ev.id in done or ev.date is None:
+                        continue
+                    event_time = ev.time if ev.time else time.min
+                    due_at = datetime.combine(ev.date, event_time, tzinfo=MSK)
+                    remind_at = due_at - timedelta(hours=offset)
+                    if now < remind_at:
+                        continue
+                    key = str(ev.id)
+                    if (user.id, "homework", key) in sent:
+                        continue
+                    title = (ev.subject or ev.title or "ДЗ").strip()
+                    when = ev.date.strftime("%d.%m")
+                    clock = _clock(ev.time)
+                    if clock:
+                        when = f"{when} {clock}"
+                    text = (
+                        f"<b>Напоминание о ДЗ</b>\n{_esc(title)}\nдо {_esc(when)}\n"
+                        f"{_esc(_plain_body(ev.body or ''))}"
+                    ).strip()
+                    out_hw.append(
+                        {
+                            "user_id": user.id,
+                            "telegram_id": tid,
+                            "event_id": ev.id,
+                            "kind": "homework",
+                            "dedupe_key": key,
+                            "text": text,
+                            "url": event_card_url(ev.id),
+                        }
+                    )
+            if tid > 0 and user.dm_lesson_soon:
+                offset_min = int(user.dm_lesson_offset_minutes or 5)
+                if offset_min not in ALLOWED_LESSON_OFFSETS:
+                    offset_min = 5
+                selected = set(_lesson_keys(user))
+                for slot in today_first:
+                    if slot["key"] not in selected or slot.get("start_time") is None:
+                        continue
+                    start = datetime.combine(today, slot["start_time"], tzinfo=MSK)
+                    remind_at = start - timedelta(minutes=offset_min)
+                    if now < remind_at or now >= remind_at + LESSON_SOON_GRACE or now >= start:
+                        continue
+                    dedupe = f"{today.isoformat()}|{slot['key']}"
+                    if (user.id, "lesson_soon", dedupe) in sent:
+                        continue
+                    out_lesson.append(
+                        {
+                            "user_id": user.id,
+                            "telegram_id": tid,
+                            "event_id": slot.get("event_id"),
+                            "kind": "lesson_soon",
+                            "dedupe_key": dedupe,
+                            "text": format_lesson_soon_text(slot, offset_min),
+                        }
+                    )
+            if tid > 0 and user.dm_transfer_eve and transfer_eve_due:
+                for ev in transfers_tomorrow:
+                    dedupe = str(ev.id)
+                    if (user.id, "transfer_eve", dedupe) in sent:
+                        continue
+                    out_transfer.append(
+                        {
+                            "user_id": user.id,
+                            "telegram_id": tid,
+                            "event_id": ev.id,
+                            "kind": "transfer_eve",
+                            "dedupe_key": dedupe,
+                            "text": format_transfer_eve_text(ev),
+                        }
+                    )
+    return {
+        "morning": out_morning,
+        "homework": out_hw,
+        "lesson_soon": out_lesson,
+        "transfer_eve": out_transfer,
+    }
 
 
 @router.post("/mark-personal-sent")
