@@ -5,3 +5,9 @@
 	encode gzip
 	reverse_proxy frontend:5173
 }
+
+# openGym на том же сервере (контейнер слушает хост :8080, отдельный compose)
+195.58.153.88.sslip.io {
+	encode gzip
+	reverse_proxy host.docker.internal:8080
+}

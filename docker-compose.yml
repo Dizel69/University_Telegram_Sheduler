@@ -133,6 +133,8 @@ services:
       - "443:443/udp"
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:-sysprog.duckdns.org}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
