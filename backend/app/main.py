@@ -815,6 +815,15 @@ def list_teachers():
     return get_distinct_teachers()
 
 
+@app.get("/subjects", response_model=List[str])
+def list_schedule_subjects():
+    """
+    Уникальные предметы из пар расписания — подсказки при создании домашки.
+    """
+    from .crud import get_distinct_schedule_subjects
+    return get_distinct_schedule_subjects()
+
+
 @app.delete('/events/day')
 def delete_events_day(date: str, admin_ok: bool = Depends(require_admin)):
     """

@@ -6,6 +6,7 @@ import ErrorBoundary from './ErrorBoundary'
 import { bearerAuthHeaders } from './authHeaders'
 import { eventTemporalClass, isOngoingEvent } from './eventTime'
 import FormattedTextEditor, { FormattedBody } from './FormattedTextEditor'
+import SubjectAutocomplete from './SubjectAutocomplete'
 import CalendarAgenda from './CalendarAgenda'
 import { useMediaQuery } from './useMediaQuery'
 import {
@@ -926,7 +927,9 @@ export default function Calendar({ isAdmin = false }) {
         for (const d of occurrences) {
           const payload = {
             type,
-            subject: type === 'exam_control' ? (subject.trim() || null) : (type === 'homework' ? (title.trim() || null) : null),
+            subject: type === 'exam_control'
+              ? (subject.trim() || null)
+              : (type === 'homework' ? (subject.trim() || title.trim() || null) : null),
             title: title || null,
             body: body || '',
             date: d,
@@ -980,10 +983,14 @@ export default function Calendar({ isAdmin = false }) {
                     <option value="announcement">Объявление</option>
                   </select>
                 </div>
-                {type === 'exam_control' && (
+                {(type === 'exam_control' || type === 'homework') && (
                   <div>
                     <label className="label">Предмет</label>
-                    <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математический анализ" />
+                    {type === 'homework' ? (
+                      <SubjectAutocomplete value={subject} onChange={setSubject} placeholder="Например: Математика" />
+                    ) : (
+                      <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математический анализ" />
+                    )}
                   </div>
                 )}
                 <div>

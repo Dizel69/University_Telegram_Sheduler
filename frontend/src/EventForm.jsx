@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import TeacherAutocomplete, { rememberTeacher } from './TeacherAutocomplete'
+import SubjectAutocomplete from './SubjectAutocomplete'
 import FormattedTextEditor from './FormattedTextEditor'
 import { isEmptyFormattedText } from './telegramHtml'
 
@@ -244,7 +245,11 @@ export default function EventForm({ onCreated }) {
 
         <div>
           <label className="label">Предмет / Тема</label>
-          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математика" />
+          {type === 'homework' ? (
+            <SubjectAutocomplete value={subject} onChange={setSubject} placeholder="Например: Математика" />
+          ) : (
+            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математика" />
+          )}
         </div>
 
         <div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import axios from 'axios'
 import { getSemesterForDate } from './semesterCalendar'
 import TeacherAutocomplete, { rememberTeacher } from './TeacherAutocomplete'
+import SubjectAutocomplete from './SubjectAutocomplete'
 import FormattedTextEditor from './FormattedTextEditor'
 
 export default function EditEventModal({ ev, onClose, onSaved }) {
@@ -118,7 +119,7 @@ export default function EditEventModal({ ev, onClose, onSaved }) {
               <>
                 <div>
                   <label className="label">Предмет / тема</label>
-                  <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Например: Математика" />
+                  <SubjectAutocomplete value={subject} onChange={setSubject} placeholder="Например: Математика" />
                 </div>
                 <div>
                   <label className="label">Семестр</label>

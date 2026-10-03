@@ -62,6 +62,31 @@ def test_event_lifecycle_and_calendar_filter(backend_client, backend_engine):
     assert missing_response.status_code == 404
 
 
+def test_subjects_autocomplete_lists_schedule_pairs(backend_client, backend_engine):
+    created = []
+    for payload in (
+        {"type": "schedule", "subject": "Математика", "title": "Лекция 1", "body": "", "date": "2026-09-01"},
+        {"type": "schedule", "subject": "математика", "body": "", "date": "2026-09-02"},
+        {"type": "schedule", "title": "Физика", "body": "", "date": "2026-09-03"},
+        {"type": "homework", "subject": "Только домашка", "body": "решить", "date": "2026-09-04"},
+        {"type": "schedule", "subject": "матан", "body": "", "date": "2026-09-05"},
+    ):
+        response = backend_client.post("/events", headers=ADMIN_HEADERS, json=payload)
+        assert response.status_code == 200
+        created.append(response.json()["id"])
+
+    with Session(backend_engine) as session:
+        session.add(SubjectSetting(subject_key="матан", display_name="Математический анализ"))
+        session.commit()
+
+    response = backend_client.get("/subjects")
+    assert response.status_code == 200
+    assert response.json() == ["Математика", "Математический анализ", "Физика"]
+
+    for event_id in created:
+        assert backend_client.delete(f"/events/{event_id}", headers=ADMIN_HEADERS).status_code == 200
+
+
 def test_event_update_via_jwt_admin_updates_time(backend_client, backend_engine):
     """Админ через Bearer JWT (не X-ADMIN-TOKEN) — правка времени и подсветки дней."""
     token = _login_admin(backend_client)

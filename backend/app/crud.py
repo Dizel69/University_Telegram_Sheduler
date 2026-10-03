@@ -55,6 +55,45 @@ def get_distinct_teachers() -> List[str]:
     return sorted(seen.values(), key=lambda s: s.casefold())
 
 
+def get_distinct_schedule_subjects() -> List[str]:
+    """
+    Уникальные названия предметов из пар расписания.
+    Нужен для автодополнения поля предмета при создании домашнего задания.
+    Если предмет переименован в настройках, возвращается отображаемое имя.
+    """
+    import re
+
+    from .models import SubjectSetting
+    from .type_utils import canonical_event_type
+
+    def clean(value) -> str:
+        text = str(value or "").replace("\u00a0", " ").strip()
+        return re.sub(r"\s+", " ", text)
+
+    with Session(engine) as session:
+        events = session.exec(select(Event)).all()
+        settings = {
+            row.subject_key: row
+            for row in session.exec(select(SubjectSetting)).all()
+        }
+
+    seen = {}
+    for ev in events:
+        if canonical_event_type(ev.type or "") != "schedule":
+            continue
+        raw = clean(ev.subject) or clean(ev.title)
+        if not raw:
+            continue
+        setting = settings.get(raw.casefold())
+        name = clean(setting.display_name) if setting and clean(getattr(setting, "display_name", "")) else raw
+        if not name:
+            continue
+        key = name.casefold()
+        if key not in seen:
+            seen[key] = name
+    return sorted(seen.values(), key=lambda s: s.casefold())
+
+
 def get_due_reminders(now: datetime | None = None) -> List[Event]:
     """
     Возвращает события, у которых reminder_sent == False и время напоминания <= now.

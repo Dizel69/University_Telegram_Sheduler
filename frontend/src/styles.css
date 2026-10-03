@@ -97,11 +97,12 @@ input[type="checkbox"],input[type="radio"]{
   flex-shrink:0;
 }
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:0.85}
-.teacher-autocomplete{position:relative;width:100%}
-.teacher-autocomplete>input{width:100%}
-.teacher-autocomplete-list{position:absolute;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);max-height:220px;overflow-y:auto;z-index:1100}
-.teacher-autocomplete-item{padding:8px 10px;border-radius:7px;cursor:pointer;color:var(--text);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.teacher-autocomplete-item.is-active,.teacher-autocomplete-item:hover{background:var(--accent-soft);color:var(--accent)}
+.teacher-autocomplete,.subject-autocomplete{position:relative;width:100%}
+.subject-autocomplete.is-open{z-index:30}
+.teacher-autocomplete>input,.subject-autocomplete>input{width:100%}
+.teacher-autocomplete-list,.subject-autocomplete-list{position:absolute;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);max-height:220px;overflow-y:auto;z-index:1100}
+.teacher-autocomplete-item,.subject-autocomplete-item{padding:8px 10px;border-radius:7px;cursor:pointer;color:var(--text);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.teacher-autocomplete-item.is-active,.teacher-autocomplete-item:hover,.subject-autocomplete-item.is-active,.subject-autocomplete-item:hover{background:var(--accent-soft);color:var(--accent)}
 .password-field-wrap{position:relative;width:100%}
 .password-field-wrap input{width:100%;padding-right:42px}
 .password-field-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border:none;background:transparent;color:var(--muted);cursor:pointer;border-radius:8px}
