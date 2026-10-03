@@ -5,7 +5,6 @@ export const ACADEMIC_SEMESTERS = [
   { label: 'Четвёртый семестр', start: '2027-02-01', end: '2027-07-01' },
 ]
 
-/** Значение фильтра по умолчанию на вкладке домашних заданий. */
 export const SECOND_SEMESTER_LABEL = 'Второй семестр'
 
 /** Старые подписи в БД → актуальные (для фильтра и отображения). */
@@ -33,12 +32,6 @@ export function ymdFromDate(d) {
   return `${y}-${m}-${day}`
 }
 
-export function getSemesterPeriodByLabel(label) {
-  const t = normalizeSemesterLabel(label)
-  if (!t) return null
-  return ACADEMIC_SEMESTERS.find(s => s.label === t) || null
-}
-
 /**
  * Семестр для указанной календарной даты (строка YYYY-MM-DD или Date).
  */
@@ -59,15 +52,4 @@ export function getSemesterForDate(dateInput) {
 /** Семестр из календаря, который сейчас идёт по сегодняшней дате. */
 export function getCurrentSemesterByToday() {
   return getSemesterForDate(new Date())
-}
-
-/** Каноническое название семестра, который ещё не начался относительно todayYmd. */
-export function isFutureCanonicalSemesterLabel(label, todayYmd) {
-  const p = getSemesterPeriodByLabel(label)
-  if (!p) return false
-  return p.start > todayYmd
-}
-
-export function listCanonicalSemesterLabelsStartedBy(todayYmd) {
-  return ACADEMIC_SEMESTERS.filter(s => s.start <= todayYmd).map(s => s.label)
 }
